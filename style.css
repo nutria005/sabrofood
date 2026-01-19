@@ -1374,3 +1374,81 @@ body {
     width: 100%;
   }
 }
+
+/* ===================================
+   BARCODE SYSTEM
+   =================================== */
+
+/* Barcode Search in POS */
+.barcode-search {
+  border: 2px solid hsl(var(--primary) / 0.3);
+  background: hsl(var(--primary) / 0.05);
+}
+
+.barcode-search .search-input {
+  background: hsl(var(--primary) / 0.05);
+  font-family: 'Courier New', monospace;
+  font-weight: 600;
+}
+
+.barcode-search .search-input:focus {
+  background: white;
+  border-color: hsl(var(--primary));
+}
+
+/* Asignar Códigos View */
+.asignar-content {
+  max-width: 1200px;
+}
+
+.product-row {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 16px;
+  background: hsl(var(--card));
+  border: 1px solid hsl(var(--border));
+  border-radius: 12px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.product-row:hover {
+  border-color: hsl(var(--primary));
+  box-shadow: var(--shadow-md);
+  transform: translateY(-2px);
+}
+
+/* Codigo de barras badges */
+.codigo-asignado {
+  color: hsl(var(--success));
+  font-weight: 600;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.sin-codigo {
+  color: hsl(var(--warning));
+  font-style: italic;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+/* Scanner Modal Enhancements */
+#reader {
+  width: 100%;
+  max-width: 500px;
+  margin: 0 auto;
+  border-radius: 12px;
+  overflow: hidden;
+}
+
+#escanerStatus {
+  margin-top: 16px;
+  text-align: center;
+  font-weight: 600;
+  font-size: 15px;
+}
+

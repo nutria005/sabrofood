@@ -420,7 +420,28 @@ document.addEventListener('DOMContentLoaded', () => {
             renderProductos();
         }, 300));
     }
+    
+    // Event listener para búsqueda por código de barras
+    const inputCodigoBarras = document.getElementById('inputCodigoBarras');
+    if (inputCodigoBarras) {
+        inputCodigoBarras.addEventListener('keypress', async (e) => {
+            if (e.key === 'Enter') {
+                const codigo = e.target.value.trim();
+                if (codigo) {
+                    const producto = await buscarPorCodigoBarras(codigo);
+                    if (producto) {
+                        agregarAlCarrito(producto.id);
+                        mostrarNotificacion(`✅ ${producto.nombre} agregado al carrito`, 'success');
+                        e.target.value = '';
+                    } else {
+                        mostrarNotificacion('❌ Código de barras no encontrado', 'error');
+                    }
+                }
+            }
+        });
+    }
 });
+
 
 function debounce(func, wait) {
     let timeout;
@@ -627,6 +648,13 @@ async function cargarInventario() {
         } else if (stockBajo) {
             estadoBadge = 'badge-warning';
             estadoTexto = 'Stock Bajo';
+        
+        // Código de barras status
+        let codigoBarrasHTML = '';
+        if (p.codigo_barra && p.codigo_barra.trim() !== '') {
+            codigoBarrasHTML = `<span class="codigo-asignado">✅ ${p.codigo_barra}</span>`;
+        } else {
+            codigoBarrasHTML = `<span class="sin-codigo">⚠️ Sin código</span>`;
         }
         
         return `
@@ -635,6 +663,7 @@ async function cargarInventario() {
                 <td>${p.categoria || '-'}</td>
                 <td>$${formatoMoneda(p.precio)}</td>
                 <td><strong>${Math.floor(p.stock)}</strong></td>
+                <td>${codigoBarrasHTML}</td>
                 <td><span class="badge ${estadoBadge}">${estadoTexto}</span></td>
                 <td>
                     <button class="btn-icon" onclick="editarProducto(${p.id})" title="Editar">
