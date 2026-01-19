@@ -1623,3 +1623,34 @@ body {
     }
 }
 
+
+/* =============================================
+   BOTÓN DE ACTUALIZACIÓN FORZADA
+   ============================================= */
+
+.btn-link {
+    background: none;
+    border: none;
+    color: hsl(var(--muted-foreground));
+    cursor: pointer;
+    font-size: 13px;
+    padding: 8px;
+    transition: all 0.2s ease;
+    text-decoration: none;
+    font-family: 'Inter', sans-serif;
+}
+
+.btn-link:hover {
+    color: hsl(var(--primary));
+    text-decoration: underline;
+}
+
+.btn-link:active {
+    transform: scale(0.98);
+}
+
+.btn-force-update {
+    margin-top: 12px;
+    width: 100%;
+    text-align: center;
+}
