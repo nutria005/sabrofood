@@ -653,7 +653,8 @@ async function cargarInventario() {
         // Código de barras status
         let codigoBarrasHTML = '';
         if (p.codigo_barra && p.codigo_barra.trim() !== '') {
-            codigoBarrasHTML = `<span class="codigo-asignado">✅ ${p.codigo_barra}</span>`;
+            const codigoEscapado = escapeHtml(p.codigo_barra);
+            codigoBarrasHTML = `<span class="codigo-asignado">✅ ${codigoEscapado}</span>`;
         } else {
             codigoBarrasHTML = `<span class="sin-codigo">⚠️ Sin código</span>`;
         }
@@ -761,6 +762,12 @@ function verDetalleVenta(id) {
 
 function formatoMoneda(numero) {
     return Math.round(numero).toLocaleString('es-CL');
+}
+
+function escapeHtml(text) {
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
 }
 
 function mostrarNotificacion(mensaje, tipo = 'info') {
