@@ -1290,7 +1290,7 @@ let chartMetodosPago = null;
 let chartTopProductos = null;
 
 async function cargarDashboard() {
-    const periodo = parseInt(document.getElementById('dashboardPeriodo')?.value) || 7;
+    const periodo = parseInt(document.getElementById('dashboardPeriodo')?.value, 10) || 7;
     
     try {
         // Cargar ventas del período
@@ -1349,7 +1349,7 @@ function calcularKPIs(ventas) {
 }
 
 function generarGraficoVentasDiarias(ventas) {
-    const periodo = parseInt(document.getElementById('dashboardPeriodo')?.value) || 7;
+    const periodo = parseInt(document.getElementById('dashboardPeriodo')?.value, 10) || 7;
     
     // Agrupar ventas por día
     const ventasPorDia = {};
