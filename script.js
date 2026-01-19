@@ -1290,7 +1290,7 @@ let chartMetodosPago = null;
 let chartTopProductos = null;
 
 async function cargarDashboard() {
-    const periodo = parseInt(document.getElementById('dashboardPeriodo')?.value || 7);
+    const periodo = parseInt(document.getElementById('dashboardPeriodo')?.value) || 7;
     
     try {
         // Cargar ventas del período
@@ -1344,12 +1344,12 @@ function calcularKPIs(ventas) {
     document.getElementById('kpiVentasMes').textContent = '$' + formatoMoneda(totalMes);
     
     // Ticket promedio
-    const ticketPromedio = ventas.length > 0 ? totalMes / ventasMes.length : 0;
+    const ticketPromedio = ventasMes.length > 0 ? totalMes / ventasMes.length : 0;
     document.getElementById('kpiTicketPromedio').textContent = '$' + formatoMoneda(ticketPromedio);
 }
 
 function generarGraficoVentasDiarias(ventas) {
-    const periodo = parseInt(document.getElementById('dashboardPeriodo')?.value || 7);
+    const periodo = parseInt(document.getElementById('dashboardPeriodo')?.value) || 7;
     
     // Agrupar ventas por día
     const ventasPorDia = {};
@@ -1592,6 +1592,22 @@ function generarTablaVendedores(ventas) {
 }
 
 async function mostrarStockCritico() {
+    // Cargar productos actualizados si el array está vacío
+    if (productos.length === 0) {
+        try {
+            const { data, error } = await supabaseClient
+                .from('productos')
+                .select('*')
+                .order('nombre', { ascending: true });
+            
+            if (!error && data) {
+                productos = data;
+            }
+        } catch (error) {
+            console.error('Error cargando productos:', error);
+        }
+    }
+    
     const productosCriticos = productos.filter(p => p.stock <= (p.stock_minimo || 5));
     
     const container = document.getElementById('stockCritico');
