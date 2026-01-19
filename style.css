@@ -1648,3 +1648,9 @@ body {
 .btn-link:active {
     transform: scale(0.98);
 }
+
+.btn-force-update {
+    margin-top: 12px;
+    width: 100%;
+    text-align: center;
+}

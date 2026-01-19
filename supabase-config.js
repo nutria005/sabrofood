@@ -25,7 +25,7 @@ if (typeof supabase !== 'undefined') {
 // Verificar conexión
 if (supabaseClient) {
   console.log('🧪 Probando conexión a Supabase...');
-  supabaseClient.from('productos').select('count').then(({ data, error }) => {
+  supabaseClient.from('productos').select('id').limit(1).then(({ data, error }) => {
     if (error) {
       console.error('❌ Error de conexión:', error.message);
     } else {

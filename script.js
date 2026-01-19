@@ -73,8 +73,13 @@ function forzarActualizacion() {
 
 // Detectar si la página viene de caché y mostrar notificación
 window.addEventListener('pageshow', function(event) {
-    if (event.persisted || (window.performance && window.performance.navigation.type === 2)) {
+    if (event.persisted) {
         console.warn('⚠️ Página cargada desde caché. Puede que no veas la última versión.');
+    } else if (window.performance) {
+        const navEntries = window.performance.getEntriesByType('navigation');
+        if (navEntries.length > 0 && navEntries[0].type === 'back_forward') {
+            console.warn('⚠️ Página cargada desde caché de navegación. Puede que no veas la última versión.');
+        }
     }
 });
 
@@ -231,7 +236,6 @@ async function cargarProductos() {
         const { data, error } = await supabaseClient
             .from('productos')
             .select('*')
-            .eq('activo', true)  // IMPORTANTE: Agregar este filtro
             .order('nombre', { ascending: true });
         
         console.log('📊 Respuesta de Supabase:');
