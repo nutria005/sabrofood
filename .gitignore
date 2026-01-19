@@ -4,8 +4,8 @@ __pycache__/
 node_modules/
 supabase-config.js
 
-# Archivos SQL con información sensible
-*.sql
+# Archivos SQL con información sensible (excepto migrations)
+!database/migration.sql
 estructura_base_datos.sql
 productos_parte_1_economicos.sql
 productos_parte_2_premium.sql
