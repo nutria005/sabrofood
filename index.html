@@ -1,0 +1,614 @@
+<!DOCTYPE html>
+<html lang="es" data-theme="light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sabrofood - Sistema POS</title>
+    <link rel="stylesheet" href="style.css?v=2026d">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">
+</head>
+<body>
+    <!-- LOGIN SCREEN -->
+    <div id="loginScreen" class="login-container">
+        <div class="login-card">
+            <div class="login-header">
+                <div class="login-icon">�</div>
+                <h1>Sabrofood</h1>
+                <p>Sistema de Punto de Venta</p>
+            </div>
+            <div class="login-body">
+                <div class="form-group">
+                    <label for="loginUsername">Vendedor</label>
+                    <select id="loginUsername" class="form-select">
+                        <option value="">Seleccionar vendedor...</option>
+                        <option value="Jonathan R.">Jonathan R.</option>
+                        <option value="Sebastian">Sebastian</option>
+                        <option value="Juan Antonio">Juan Antonio</option>
+                        <option value="Diego Sr.">Diego Sr. (Padre)</option>
+                        <option value="Diego Jr.">Diego Jr. (Hijo)</option>
+                        <option value="Hugo">Hugo</option>
+                        <option value="Pablo">Pablo</option>
+                        <option value="Emil">Emil</option>
+                        <option value="Jonathan J.">Jonathan J.</option>
+                        <option value="Jefe">Jefe (Encargado)</option>
+                    </select>
+                </div>
+                <button id="loginBtn" class="btn btn-primary btn-block" onclick="handleLogin()">
+                    <span>Iniciar Sesión</span>
+                    <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
+                        <path d="M7.5 15L12.5 10L7.5 5" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                    </svg>
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- MAIN APP -->
+    <div id="mainApp" class="app-container" style="display: none;">
+        <!-- SIDEBAR (Desktop) -->
+        <aside class="sidebar">
+            <div class="sidebar-header">
+                <div class="sidebar-logo">
+                    <span class="logo-icon">�</span>
+                    <span class="logo-text">Sabrofood</span>
+                </div>
+            </div>
+
+            <nav class="sidebar-nav">
+                <button class="nav-item active" data-view="pos" onclick="cambiarVista('pos')">
+                    <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
+                        <path d="M3 3h6v6H3V3zm8 0h6v6h-6V3zM3 11h6v6H3v-6zm8 0h6v6h-6v-6z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                    </svg>
+                    <span>Punto de Venta</span>
+                </button>
+                <button class="nav-item" data-view="inventory" onclick="cambiarVista('inventory')">
+                    <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
+                        <path d="M4 7h12M4 7l2-4h8l2 4M4 7v9a2 2 0 002 2h8a2 2 0 002-2V7" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                    </svg>
+                    <span>Inventario</span>
+                </button>
+                <button class="nav-item" data-view="sales" onclick="cambiarVista('sales')">
+                    <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
+                        <path d="M3 3v14a2 2 0 002 2h14M7 13l4-4 3 3 5-5" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                    </svg>
+                    <span>Ventas</span>
+                </button>
+                <button class="nav-item" id="btnAsignarCodigos" data-view="asignar" onclick="cambiarVista('asignar')" style="display: none;">
+                    <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
+                        <rect x="3" y="4" width="14" height="12" rx="2" stroke="currentColor" stroke-width="2" fill="none"/>
+                        <path d="M5 7h2M5 10h2M5 13h2M9 7h6M9 10h6M9 13h6" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+                    </svg>
+                    <span>Asignar Códigos</span>
+                </button>
+            </nav>
+
+            <div class="sidebar-footer">
+                <div class="user-info">
+                    <div class="user-avatar">
+                        <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
+                            <circle cx="10" cy="7" r="3" stroke="currentColor" stroke-width="2"/>
+                            <path d="M4 17c0-2.8 2.7-5 6-5s6 2.2 6 5" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+                        </svg>
+                    </div>
+                    <div class="user-details">
+                        <div class="user-name" id="sidebarUsername">Usuario</div>
+                        <div class="user-role">Vendedor</div>
+                    </div>
+                </div>
+                <button class="btn-logout" onclick="handleLogout()">
+                    <svg width="18" height="18" viewBox="0 0 20 20" fill="none">
+                        <path d="M13 3h4v14h-4M8 16l-5-5 5-5M3 11h11" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                    </svg>
+                </button>
+            </div>
+        </aside>
+
+        <!-- MAIN CONTENT -->
+        <main class="main-content">
+            <!-- POS VIEW -->
+            <div id="posView" class="view-container">
+                <div class="view-header">
+                    <div class="view-title">
+                        <h2>Punto de Venta</h2>
+                        <p class="view-subtitle">Gestiona tus ventas</p>
+                    </div>
+                    <div class="view-actions">
+                        <button class="btn btn-primary" onclick="abrirEscaner()" style="margin-right: 12px;">
+                            <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
+                                <rect x="3" y="3" width="18" height="18" rx="2" stroke="currentColor" stroke-width="2"/>
+                                <path d="M9 9h6M9 12h6M9 15h6" stroke="currentColor" stroke-width="2"/>
+                            </svg>
+                            <span>ESCANEAR</span>
+                        </button>
+                        <span class="user-badge" id="topUsername">Usuario</span>
+                    </div>
+                </div>
+
+                <div class="pos-layout">
+                    <div class="pos-products">
+                        <!-- Search -->
+                        <div class="search-box">
+                            <svg width="20" height="20" viewBox="0 0 20 20" fill="none" class="search-icon">
+                                <circle cx="9" cy="9" r="6" stroke="currentColor" stroke-width="2"/>
+                                <path d="M13 13l4 4" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+                            </svg>
+                            <input type="text" id="searchInput" placeholder="Buscar productos..." class="search-input">
+                        </div>
+
+                        <!-- Categories -->
+                        <div class="categories-scroll">
+                            <button class="category-chip active" data-categoria="Todos" onclick="filtrarCategoria('Todos')">Todos</button>
+                            <button class="category-chip" data-categoria="Adulto" onclick="filtrarCategoria('Adulto')">🐕 Adulto</button>
+                            <button class="category-chip" data-categoria="Cachorro" onclick="filtrarCategoria('Cachorro')">🐶 Cachorro</button>
+                            <button class="category-chip" data-categoria="Senior" onclick="filtrarCategoria('Senior')">🦴 Senior</button>
+                            <button class="category-chip" data-categoria="Gato" onclick="filtrarCategoria('Gato')">🐈 Gato</button>
+                            <button class="category-chip" data-categoria="Gatito" onclick="filtrarCategoria('Gatito')">🐱 Gatito</button>
+                            <button class="category-chip" data-categoria="Arena" onclick="filtrarCategoria('Arena')">🏖️ Arena</button>
+                            <button class="category-chip" data-categoria="Snacks" onclick="filtrarCategoria('Snacks')">🍖 Snacks</button>
+                            <button class="category-chip" data-categoria="Accesorios" onclick="filtrarCategoria('Accesorios')">🎾 Accesorios</button>
+                        </div>
+
+                        <!-- Products Grid -->
+                        <div class="products-grid" id="productosGrid">
+                            <div class="loading-state">
+                                <div class="spinner"></div>
+                                <p>Cargando productos...</p>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Cart Sidebar -->
+                    <div class="pos-cart">
+                        <div class="cart-header">
+                            <h3>Carrito</h3>
+                            <button class="btn-icon" onclick="limpiarCarrito()" title="Limpiar carrito">
+                                <svg width="18" height="18" viewBox="0 0 20 20" fill="none">
+                                    <path d="M3 6h14M8 6V4a2 2 0 012-2h0a2 2 0 012 2v2m3 0v10a2 2 0 01-2 2H7a2 2 0 01-2-2V6h10z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                                </svg>
+                            </button>
+                        </div>
+
+                        <div class="cart-items" id="carritoItems">
+                            <div class="cart-empty">
+                                <svg width="64" height="64" viewBox="0 0 64 64" fill="none">
+                                    <circle cx="32" cy="32" r="30" stroke="currentColor" stroke-width="2" opacity="0.2"/>
+                                    <path d="M20 24h24l-2 16H22l-2-16z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                                    <circle cx="26" cy="48" r="2" fill="currentColor"/>
+                                    <circle cx="38" cy="48" r="2" fill="currentColor"/>
+                                </svg>
+                                <p>Tu carrito está vacío</p>
+                                <span>Agrega productos para comenzar</span>
+                            </div>
+                        </div>
+
+                        <div class="cart-footer">
+                            <div class="cart-total">
+                                <span>Total</span>
+                                <span class="total-amount" id="totalAmount">$0</span>
+                            </div>
+                            <button class="btn btn-success btn-block" id="btnCobrar" onclick="abrirModalCobro()" disabled>
+                                <span>Procesar Pago</span>
+                                <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
+                                    <path d="M7.5 15L12.5 10L7.5 5" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                                </svg>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- INVENTORY VIEW -->
+            <div id="inventoryView" class="view-container" style="display: none;">
+                <div class="view-header">
+                    <div class="view-title">
+                        <h2>Gestión de Inventario</h2>
+                        <p class="view-subtitle">Control de stock y productos</p>
+                    </div>
+                </div>
+
+                <div class="inventory-content">
+                    <div class="inventory-stats">
+                        <div class="stat-card">
+                            <div class="stat-icon bg-blue">
+                                <svg width="24" height="24" viewBox="0 0 20 20" fill="none">
+                                    <path d="M4 7h12M4 7l2-4h8l2 4M4 7v9a2 2 0 002 2h8a2 2 0 002-2V7" stroke="currentColor" stroke-width="2"/>
+                                </svg>
+                            </div>
+                            <div class="stat-content">
+                                <p class="stat-label">Total Productos</p>
+                                <p class="stat-value" id="totalProductos">0</p>
+                            </div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="stat-icon bg-green">
+                                <svg width="24" height="24" viewBox="0 0 20 20" fill="none">
+                                    <path d="M5 10l3 3 7-7" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                                </svg>
+                            </div>
+                            <div class="stat-content">
+                                <p class="stat-label">En Stock</p>
+                                <p class="stat-value" id="enStock">0</p>
+                            </div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="stat-icon bg-orange">
+                                <svg width="24" height="24" viewBox="0 0 20 20" fill="none">
+                                    <path d="M10 6v6l4 2" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+                                    <circle cx="10" cy="10" r="7" stroke="currentColor" stroke-width="2"/>
+                                </svg>
+                            </div>
+                            <div class="stat-content">
+                                <p class="stat-label">Stock Bajo</p>
+                                <p class="stat-value" id="stockBajo">0</p>
+                            </div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="stat-icon bg-red">
+                                <svg width="24" height="24" viewBox="0 0 20 20" fill="none">
+                                    <path d="M10 6v4m0 4h.01" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+                                    <circle cx="10" cy="10" r="7" stroke="currentColor" stroke-width="2"/>
+                                </svg>
+                            </div>
+                            <div class="stat-content">
+                                <p class="stat-label">Sin Stock</p>
+                                <p class="stat-value" id="sinStock">0</p>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="inventory-table-container">
+                        <table class="inventory-table" id="inventoryTable">
+                            <thead>
+                                <tr>
+                                    <th>Producto</th>
+                                    <th>Categoría</th>
+                                    <th>Precio</th>
+                                    <th>Stock</th>
+                                    <th>Estado</th>
+                                    <th>Acciones</th>
+                                </tr>
+                            </thead>
+                            <tbody id="inventoryTableBody">
+                                <tr>
+                                    <td colspan="6" class="text-center">
+                                        <div class="loading-state">
+                                            <div class="spinner"></div>
+                                            <p>Cargando inventario...</p>
+                                        </div>
+                                    </td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+
+            <!-- SALES VIEW -->
+            <div id="salesView" class="view-container" style="display: none;">
+                <div class="view-header">
+                    <div class="view-title">
+                        <h2>Historial de Ventas</h2>
+                        <p class="view-subtitle">Registro de transacciones</p>
+                    </div>
+                </div>
+
+                <div class="sales-content">
+                    <div class="sales-stats">
+                        <div class="stat-card-large">
+                            <div class="stat-icon bg-green">
+                                <svg width="28" height="28" viewBox="0 0 20 20" fill="none">
+                                    <path d="M12 2v6h6M3 10a7 7 0 019-6.71M3 10h6m-6 0a7 7 0 009 6.71" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                                </svg>
+                            </div>
+                            <div class="stat-content">
+                                <p class="stat-label">Ventas del Día</p>
+                                <p class="stat-value-large" id="ventasHoy">$0</p>
+                            </div>
+                        </div>
+                        <div class="stat-card-large">
+                            <div class="stat-icon bg-blue">
+                                <svg width="28" height="28" viewBox="0 0 20 20" fill="none">
+                                    <path d="M3 3v14a2 2 0 002 2h14M7 13l4-4 3 3 5-5" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                                </svg>
+                            </div>
+                            <div class="stat-content">
+                                <p class="stat-label">Total Transacciones</p>
+                                <p class="stat-value-large" id="totalTransacciones">0</p>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="sales-table-container">
+                        <table class="sales-table" id="salesTable">
+                            <thead>
+                                <tr>
+                                    <th>ID</th>
+                                    <th>Fecha/Hora</th>
+                                    <th>Vendedor</th>
+                                    <th>Productos</th>
+                                    <th>Total</th>
+                                    <th>Método Pago</th>
+                                    <th>Acciones</th>
+                                </tr>
+                            </thead>
+                            <tbody id="salesTableBody">
+                                <tr>
+                                    <td colspan="7" class="text-center">
+                                        <div class="loading-state">
+                                            <div class="spinner"></div>
+                                            <p>Cargando ventas...</p>
+                                        </div>
+                                    </td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </main>
+
+        <!-- MOBILE BOTTOM NAV -->
+        <nav class="bottom-nav">
+            <button class="bottom-nav-item active" data-view="pos" onclick="cambiarVista('pos')">
+                <svg width="24" height="24" viewBox="0 0 20 20" fill="none">
+                    <path d="M3 3h6v6H3V3zm8 0h6v6h-6V3zM3 11h6v6H3v-6zm8 0h6v6h-6v-6z" stroke="currentColor" stroke-width="2"/>
+                </svg>
+                <span>POS</span>
+            </button>
+            <button class="bottom-nav-item" data-view="inventory" onclick="cambiarVista('inventory')">
+                <svg width="24" height="24" viewBox="0 0 20 20" fill="none">
+                    <path d="M4 7h12M4 7l2-4h8l2 4M4 7v9a2 2 0 002 2h8a2 2 0 002-2V7" stroke="currentColor" stroke-width="2"/>
+                </svg>
+                <span>Inventario</span>
+            </button>
+            <button class="bottom-nav-item" data-view="sales" onclick="cambiarVista('sales')">
+                <svg width="24" height="24" viewBox="0 0 20 20" fill="none">
+                    <path d="M3 3v14a2 2 0 002 2h14M7 13l4-4 3 3 5-5" stroke="currentColor" stroke-width="2"/>
+                </svg>
+                <span>Ventas</span>
+            </button>
+            <button class="bottom-nav-item" id="btnAsignarCodigosBottom" data-view="asignar" onclick="cambiarVista('asignar')" style="display: none;">
+                <svg width="24" height="24" viewBox="0 0 20 20" fill="none">
+                    <rect x="3" y="4" width="14" height="12" rx="2" stroke="currentColor" stroke-width="2" fill="none"/>
+                    <path d="M5 7h2M5 10h2M9 7h6M9 10h6" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+                </svg>
+                <span>Asignar</span>
+            </button>
+        </nav>
+    </div>
+
+    <!-- MODAL: Checkout -->
+    <div id="modalCobro" class="modal">
+        <div class="modal-overlay" onclick="cerrarModalCobro()"></div>
+        <div class="modal-content modal-large">
+            <div class="modal-header">
+                <h3>Procesar Pago</h3>
+                <button class="btn-close" onclick="cerrarModalCobro()">
+                    <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
+                        <path d="M15 5L5 15M5 5l10 10" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+                    </svg>
+                </button>
+            </div>
+            <div class="modal-body">
+                <div class="checkout-total">
+                    <span>Total a Pagar</span>
+                    <span class="checkout-amount" id="pagoTotal">$0</span>
+                </div>
+
+                <div class="payment-methods">
+                    <button class="payment-method active" data-metodo="Efectivo" onclick="seleccionarMetodo('Efectivo')">
+                        <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
+                            <rect x="2" y="6" width="20" height="12" rx="2" stroke="currentColor" stroke-width="2"/>
+                            <path d="M12 9v6m-3-3h6" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+                        </svg>
+                        <span>Efectivo</span>
+                    </button>
+                    <button class="payment-method" data-metodo="Tarjeta" onclick="seleccionarMetodo('Tarjeta')">
+                        <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
+                            <rect x="2" y="5" width="20" height="14" rx="2" stroke="currentColor" stroke-width="2"/>
+                            <path d="M2 10h20" stroke="currentColor" stroke-width="2"/>
+                        </svg>
+                        <span>Tarjeta</span>
+                    </button>
+                    <button class="payment-method" data-metodo="Transferencia" onclick="seleccionarMetodo('Transferencia')">
+                        <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
+                            <rect x="5" y="2" width="14" height="20" rx="2" stroke="currentColor" stroke-width="2"/>
+                            <path d="M12 18h.01" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+                        </svg>
+                        <span>Transferencia</span>
+                    </button>
+                </div>
+
+                <div id="areaEfectivo" class="cash-input-area">
+                    <div class="form-group">
+                        <label>Monto Entregado</label>
+                        <input type="number" id="montoEntregado" class="form-input" placeholder="0" oninput="calcularVuelto()">
+                    </div>
+
+                    <div class="quick-cash">
+                        <button class="cash-btn" onclick="agregarBillete(1000)">$1.000</button>
+                        <button class="cash-btn" onclick="agregarBillete(2000)">$2.000</button>
+                        <button class="cash-btn" onclick="agregarBillete(5000)">$5.000</button>
+                        <button class="cash-btn" onclick="agregarBillete(10000)">$10.000</button>
+                        <button class="cash-btn" onclick="agregarBillete(20000)">$20.000</button>
+                        <button class="cash-btn" onclick="agregarBillete(50000)">$50.000</button>
+                    </div>
+
+                    <div class="change-display" id="vueltoContainer">
+                        <span>Vuelto</span>
+                        <span class="change-amount" id="vueltoAmount">$0</span>
+                    </div>
+                </div>
+
+                <div id="pagosRegistrados"></div>
+                <div id="montoPendiente" style="display:none;">
+                    <span>Pendiente:</span>
+                    <span id="pendienteAmount">$0</span>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" onclick="agregarPagoParcial()">Pago Parcial</button>
+                <button class="btn btn-success" id="btnFinalizarVenta" onclick="finalizarVenta()">
+                    <span>Finalizar Venta</span>
+                    <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
+                        <path d="M5 10l3 3 7-7" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                    </svg>
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- MODAL: Abrir Saco -->
+    <div id="modalAbrirSaco" class="modal">
+        <div class="modal-overlay" onclick="cerrarModalSaco()"></div>
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>Abrir Saco para Venta a Granel</h3>
+                <button class="btn-close" onclick="cerrarModalSaco()">
+                    <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
+                        <path d="M15 5L5 15M5 5l10 10" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+                    </svg>
+                </button>
+            </div>
+            <div class="modal-body">
+                <div class="sack-info">
+                    <p><strong>Producto:</strong> <span id="sacoNombre">-</span></p>
+                    <p><strong>Stock actual:</strong> <span id="sacoStock">0</span> unidades</p>
+                    <p><strong>Peso:</strong> <span id="sacoPeso">-</span></p>
+                </div>
+                <div class="alert alert-warning">
+                    ⚠️ Se descontará 1 unidad del inventario al abrir el saco
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" onclick="cerrarModalSaco()">Cancelar</button>
+                <button class="btn btn-primary" id="btnConfirmarSaco" onclick="confirmarAbrirSaco()">Confirmar</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- MODAL: Escáner de Códigos -->
+    <div id="modalEscaner" class="modal">
+        <div class="modal-overlay" onclick="cerrarEscaner()"></div>
+        <div class="modal-content modal-large">
+            <div class="modal-header">
+                <h3>📷 Escanear Código de Barras</h3>
+                <button class="btn-close" onclick="cerrarEscaner()">
+                    <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
+                        <path d="M15 5L5 15M5 5l10 10" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+                    </svg>
+                </button>
+            </div>
+            <div class="modal-body">
+                <div class="alert alert-info" style="margin-bottom: 16px;">
+                    <strong id="rolMensaje">Modo Vendedor:</strong> Escanea para agregar al carrito
+                </div>
+                <div id="reader" style="width: 100%; max-width: 500px; margin: 0 auto;"></div>
+                <div id="escanerStatus" style="margin-top: 16px; text-align: center; font-weight: 600;"></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- MODAL: Editar Producto (Solo Encargado) -->
+    <div id="modalEditarProducto" class="modal">
+        <div class="modal-overlay" onclick="cerrarModalEditar()"></div>
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>✏️ Editar Producto</h3>
+                <button class="btn-close" onclick="cerrarModalEditar()">
+                    <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
+                        <path d="M15 5L5 15M5 5l10 10" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+                    </svg>
+                </button>
+            </div>
+            <div class="modal-body">
+                <div class="form-group">
+                    <label>Producto</label>
+                    <input type="text" id="editNombre" class="form-input" readonly>
+                </div>
+                <div class="form-group">
+                    <label>Precio</label>
+                    <input type="number" id="editPrecio" class="form-input" placeholder="Nuevo precio">
+                </div>
+                <div class="form-group">
+                    <label>Stock Actual</label>
+                    <input type="number" id="editStock" class="form-input" placeholder="Nuevo stock">
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" onclick="cerrarModalEditar()">Cancelar</button>
+                <button class="btn btn-success" onclick="guardarEdicion()">Guardar Cambios</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- MODAL: Nuevo Producto (Solo Encargado) -->
+    <div id="modalNuevoProducto" class="modal">
+        <div class="modal-overlay" onclick="cerrarModalNuevo()"></div>
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>➕ Registrar Nuevo Producto</h3>
+                <button class="btn-close" onclick="cerrarModalNuevo()">
+                    <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
+                        <path d="M15 5L5 15M5 5l10 10" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+                    </svg>
+                </button>
+            </div>
+            <div class="modal-body">
+                <div class="alert alert-warning">
+                    ⚠️ Producto no encontrado. Regístralo ahora:
+                </div>
+                <div class="form-group">
+                    <label>Código de Barras</label>
+                    <input type="text" id="nuevoCodigoBarra" class="form-input" readonly>
+                </div>
+                <div class="form-group">
+                    <label>Nombre del Producto</label>
+                    <input type="text" id="nuevoNombre" class="form-input" placeholder="Ej: Champion Adulto 25kg">
+                </div>
+                <div class="form-group">
+                    <label>Marca</label>
+                    <input type="text" id="nuevoMarca" class="form-input" placeholder="Ej: Champion">
+                </div>
+                <div class="form-group">
+                    <label>Categoría</label>
+                    <select id="nuevoCategoria" class="form-select">
+                        <option value="Adulto">Adulto</option>
+                        <option value="Cachorro">Cachorro</option>
+                        <option value="Senior">Senior</option>
+                        <option value="Gato Adulto">Gato Adulto</option>
+                        <option value="Gatito">Gatito</option>
+                        <option value="Arena">Arena</option>
+                        <option value="Snacks">Snacks</option>
+                        <option value="Accesorios">Accesorios</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>Precio</label>
+                    <input type="number" id="nuevoPrecio" class="form-input" placeholder="0">
+                </div>
+                <div class="form-group">
+                    <label>Stock Inicial</label>
+                    <input type="number" id="nuevoStock" class="form-input" placeholder="0">
+                </div>
+                <div class="form-group">
+                    <label>Stock Mínimo</label>
+                    <input type="number" id="nuevoStockMin" class="form-input" placeholder="3" value="3">
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" onclick="cerrarModalNuevo()">Cancelar</button>
+                <button class="btn btn-primary" onclick="guardarNuevoProducto()">Registrar Producto</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- SCRIPTS -->
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
+    <script src="supabase-config.js?v=2026e"></script>
+    <script src="script.js?v=2026e"></script>
+</body>
+</html>
