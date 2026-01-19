@@ -1,6 +1,13 @@
 // MODERN POS SYSTEM - JavaScript
 // ===============================
 
+// Versión de la aplicación
+const APP_VERSION = '1.1.0-20260119';
+
+// Mostrar versión en consola
+console.log(`📱 Sabrofood POS v${APP_VERSION}`);
+console.log('🔗 Conectando a Supabase...');
+
 // Estado global
 let currentUser = '';
 let currentUserRole = ''; // 'vendedor' o 'encargado'
@@ -28,8 +35,68 @@ const ROLES = {
     'Admin': 'encargado' // Encargado/Admin
 };
 
+// ===================================
+// FORZAR ACTUALIZACIÓN (CACHE BUSTING)
+// ===================================
+
+function forzarActualizacion() {
+    if (confirm('Esto borrará el caché y recargará la aplicación. ¿Continuar?')) {
+        // Borrar localStorage
+        localStorage.clear();
+        
+        // Borrar sessionStorage
+        sessionStorage.clear();
+        
+        // Desregistrar Service Workers si existen
+        if ('serviceWorker' in navigator) {
+            navigator.serviceWorker.getRegistrations().then(function(registrations) {
+                for(let registration of registrations) {
+                    registration.unregister();
+                }
+            });
+        }
+        
+        // Borrar cache API si existe
+        if ('caches' in window) {
+            caches.keys().then(function(names) {
+                for (let name of names) {
+                    caches.delete(name);
+                }
+            });
+        }
+        
+        // Recargar con timestamp único para evitar caché
+        const timestamp = new Date().getTime();
+        window.location.href = window.location.origin + window.location.pathname + '?nocache=' + timestamp;
+    }
+}
+
+// Detectar si la página viene de caché y mostrar notificación
+window.addEventListener('pageshow', function(event) {
+    if (event.persisted || (window.performance && window.performance.navigation.type === 2)) {
+        console.warn('⚠️ Página cargada desde caché. Puede que no veas la última versión.');
+    }
+});
+
+// Verificar si hay nueva versión disponible
+function verificarVersion() {
+    const versionGuardada = localStorage.getItem('app_version');
+    
+    if (versionGuardada && versionGuardada !== APP_VERSION) {
+        console.log(`🔄 Nueva versión detectada: ${versionGuardada} → ${APP_VERSION}`);
+        
+        // Mostrar notificación de actualización
+        if (confirm('¡Hay una nueva versión disponible! ¿Deseas actualizar ahora?')) {
+            forzarActualizacion();
+        }
+    }
+    
+    localStorage.setItem('app_version', APP_VERSION);
+}
+
 // Inicialización
 document.addEventListener('DOMContentLoaded', () => {
+    verificarVersion();
     console.log('🚀 Iniciando POS System...');
     initApp();
 });
@@ -146,41 +213,44 @@ function cambiarVista(vista) {
 async function cargarProductos() {
     try {
         console.log('📦 Cargando productos desde Supabase...');
-        console.log('🔍 Cliente Supabase:', supabaseClient);
+        console.log('🔍 Cliente Supabase:', supabaseClient ? '✅ Conectado' : '❌ No conectado');
+        console.log('🌐 URL:', window.location.href);
+        console.log('📱 App Version:', APP_VERSION);
         
         if (typeof supabaseClient === 'undefined' || !supabaseClient) {
             console.error('❌ Supabase no está configurado');
             mostrarNotificacion('Error: Supabase no conectado', 'error');
+            console.warn('⚠️ Usando productos MOCK de prueba');
             mostrarProductosMock();
             return;
         }
         
         console.log('🔍 Consultando tabla productos...');
-        console.log('📡 URL:', SUPABASE_CONFIG?.url);
+        console.log('📡 Supabase URL:', SUPABASE_CONFIG?.url);
         
         const { data, error } = await supabaseClient
             .from('productos')
             .select('*')
+            .eq('activo', true)  // IMPORTANTE: Agregar este filtro
             .order('nombre', { ascending: true });
         
         console.log('📊 Respuesta de Supabase:');
-        console.log('  - Data:', data ? `${data.length} registros` : 'null');
+        console.log('  - Productos encontrados:', data ? data.length : 0);
         console.log('  - Error:', error);
         
         if (error) {
             console.error('❌ Error Supabase:', error);
             console.error('   Código:', error.code);
             console.error('   Mensaje:', error.message);
-            console.error('   Detalles:', error.details);
-            console.error('   Hint:', error.hint);
             mostrarNotificacion('Error al cargar productos: ' + error.message, 'error');
+            console.warn('⚠️ Usando productos MOCK de prueba');
             mostrarProductosMock();
             return;
         }
         
         if (!data || data.length === 0) {
-            console.warn('⚠️ No hay productos en la base de datos');
-            mostrarNotificacion('No hay productos en la base de datos', 'warning');
+            console.warn('⚠️ No hay productos activos en la base de datos');
+            mostrarNotificacion('No hay productos activos', 'warning');
             productos = [];
             renderProductos();
             return;
@@ -189,13 +259,14 @@ async function cargarProductos() {
         productos = data;
         console.log(`✅ ${productos.length} productos cargados correctamente`);
         console.log('📋 Primeros 3 productos:', productos.slice(0, 3));
-        mostrarNotificacion(`${productos.length} productos cargados`, 'success');
+        mostrarNotificacion(`${productos.length} productos cargados de Supabase`, 'success');
         renderProductos();
         
     } catch (error) {
         console.error('❌ Error crítico:', error);
         console.error('   Stack:', error.stack);
         mostrarNotificacion('Error al cargar productos', 'error');
+        console.warn('⚠️ Usando productos MOCK de prueba');
         mostrarProductosMock();
     }
 }

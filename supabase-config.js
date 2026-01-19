@@ -1,5 +1,6 @@
 // CONFIGURACIÓN DE SUPABASE
-// Configuración del proyecto Supabase para Sabrofood POS
+// Version: 1.1.0-20260119
+console.log('🔧 Cargando configuración de Supabase...');
 
 const SUPABASE_CONFIG = {
   // URL de tu proyecto Supabase
@@ -19,4 +20,16 @@ if (typeof supabase !== 'undefined') {
   console.log('🔑 Cliente inicializado correctamente');
 } else {
   console.error('❌ Supabase library no cargada. Verifica que el script CDN esté antes de este archivo.');
+}
+
+// Verificar conexión
+if (supabaseClient) {
+  console.log('🧪 Probando conexión a Supabase...');
+  supabaseClient.from('productos').select('count').then(({ data, error }) => {
+    if (error) {
+      console.error('❌ Error de conexión:', error.message);
+    } else {
+      console.log('✅ Conexión exitosa a Supabase');
+    }
+  });
 }

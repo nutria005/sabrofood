@@ -4,7 +4,13 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Sabrofood - Sistema POS</title>
-    <link rel="stylesheet" href="style.css?v=2026d">
+    
+    <!-- META TAGS ANTI-CACHÉ -->
+    <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+    <meta http-equiv="Pragma" content="no-cache">
+    <meta http-equiv="Expires" content="0">
+    
+    <link rel="stylesheet" href="style.css?v=20260119-fix">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">
@@ -40,6 +46,16 @@
                     <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
                         <path d="M7.5 15L12.5 10L7.5 5" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
                     </svg>
+                </button>
+                
+                <!-- Botón de actualización forzada -->
+                <button 
+                    type="button"
+                    onclick="forzarActualizacion()" 
+                    class="btn-link"
+                    style="margin-top: 12px; width: 100%; text-align: center; font-size: 13px; color: hsl(var(--muted-foreground)); background: none; border: none; cursor: pointer; padding: 8px;"
+                >
+                    🔄 ¿No ves tus productos? Haz clic aquí
                 </button>
             </div>
         </div>
@@ -789,7 +805,7 @@
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
-    <script src="supabase-config.js?v=2026e"></script>
-    <script src="script.js?v=2026e"></script>
+    <script src="supabase-config.js?v=20260119-fix"></script>
+    <script src="script.js?v=20260119-fix"></script>
 </body>
 </html>
