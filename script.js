@@ -25,7 +25,7 @@ const ROLES = {
     'Pablo': 'vendedor',
     'Emil': 'vendedor',
     'Jonathan J.': 'vendedor',
-    'Jefe': 'encargado' // Encargado/Admin
+    'Admin': 'encargado' // Encargado/Admin
 };
 
 // Inicialización
@@ -652,8 +652,8 @@ async function cargarInventario() {
         
         // Código de barras status
         let codigoBarrasHTML = '';
-        if (p.codigo_barra && p.codigo_barra.trim() !== '') {
-            const codigoEscapado = escapeHtml(p.codigo_barra);
+        if (p.codigo_barras && p.codigo_barras.trim() !== '') {
+            const codigoEscapado = escapeHtml(p.codigo_barras);
             codigoBarrasHTML = `<span class="codigo-asignado">✅ ${codigoEscapado}</span>`;
         } else {
             codigoBarrasHTML = `<span class="sin-codigo">⚠️ Sin código</span>`;
@@ -915,7 +915,7 @@ async function buscarPorCodigoBarras(codigoBarra) {
         const { data, error } = await supabaseClient
             .from('productos')
             .select('*')
-            .eq('codigo_barra', codigoBarra)
+            .eq('codigo_barras', codigoBarra)
             .single();
         
         if (error) {
@@ -1065,7 +1065,7 @@ async function guardarNuevoProducto() {
         const { data, error } = await supabaseClient
             .from('productos')
             .insert([{
-                codigo_barra: codigoBarra,
+                codigo_barras: codigoBarra,
                 nombre: nombre,
                 marca: marca,
                 categoria: categoria,
@@ -1106,7 +1106,7 @@ async function cargarProductosSinCodigo() {
         const { data, error } = await supabaseClient
             .from('productos')
             .select('*')
-            .or('codigo_barra.is.null,codigo_barra.eq.')
+            .or('codigo_barras.is.null,codigo_barras.eq.')
             .order('nombre');
         
         if (error) throw error;
@@ -1245,7 +1245,7 @@ async function asignarCodigoAProducto(codigoBarra) {
         const { data: existente } = await supabaseClient
             .from('productos')
             .select('nombre')
-            .eq('codigo_barra', codigoBarra)
+            .eq('codigo_barras', codigoBarra)
             .single();
         
         if (existente) {
@@ -1257,7 +1257,7 @@ async function asignarCodigoAProducto(codigoBarra) {
         // Asignar código al producto
         const { error } = await supabaseClient
             .from('productos')
-            .update({ codigo_barra: codigoBarra })
+            .update({ codigo_barras: codigoBarra })
             .eq('id', productoSeleccionado.id);
         
         if (error) throw error;
