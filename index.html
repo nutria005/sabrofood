@@ -63,6 +63,15 @@
                     </svg>
                     <span>Punto de Venta</span>
                 </button>
+                <button class="nav-item" data-view="dashboard" onclick="cambiarVista('dashboard')">
+                    <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
+                        <rect x="3" y="3" width="6" height="6" rx="1" stroke="currentColor" stroke-width="2"/>
+                        <rect x="11" y="3" width="6" height="6" rx="1" stroke="currentColor" stroke-width="2"/>
+                        <rect x="3" y="11" width="6" height="6" rx="1" stroke="currentColor" stroke-width="2"/>
+                        <rect x="11" y="11" width="6" height="6" rx="1" stroke="currentColor" stroke-width="2"/>
+                    </svg>
+                    <span>Dashboard</span>
+                </button>
                 <button class="nav-item" data-view="inventory" onclick="cambiarVista('inventory')">
                     <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
                         <path d="M4 7h12M4 7l2-4h8l2 4M4 7v9a2 2 0 002 2h8a2 2 0 002-2V7" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
@@ -386,6 +395,129 @@
                     </div>
                 </div>
             </div>
+
+            <!-- DASHBOARD VIEW -->
+            <div id="dashboardView" class="view-container" style="display: none;">
+                <div class="view-header">
+                    <div class="view-title">
+                        <h2>📊 Dashboard</h2>
+                        <p class="view-subtitle">Análisis de ventas y rendimiento</p>
+                    </div>
+                    <div class="view-actions">
+                        <select id="dashboardPeriodo" class="form-select" onchange="actualizarDashboard()">
+                            <option value="7">Últimos 7 días</option>
+                            <option value="30">Últimos 30 días</option>
+                            <option value="90">Últimos 90 días</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div class="dashboard-content">
+                    <!-- KPIs Cards -->
+                    <div class="kpi-grid">
+                        <div class="kpi-card">
+                            <div class="kpi-icon bg-green">💰</div>
+                            <div class="kpi-content">
+                                <p class="kpi-label">Ventas Hoy</p>
+                                <p class="kpi-value" id="kpiVentasHoy">$0</p>
+                                <p class="kpi-change" id="kpiVentasHoyChange">+0%</p>
+                            </div>
+                        </div>
+                        <div class="kpi-card">
+                            <div class="kpi-icon bg-blue">📅</div>
+                            <div class="kpi-content">
+                                <p class="kpi-label">Ventas esta Semana</p>
+                                <p class="kpi-value" id="kpiVentasSemana">$0</p>
+                                <p class="kpi-change" id="kpiVentasSemanaChange">+0%</p>
+                            </div>
+                        </div>
+                        <div class="kpi-card">
+                            <div class="kpi-icon bg-purple">📆</div>
+                            <div class="kpi-content">
+                                <p class="kpi-label">Ventas este Mes</p>
+                                <p class="kpi-value" id="kpiVentasMes">$0</p>
+                                <p class="kpi-change" id="kpiVentasMesChange">+0%</p>
+                            </div>
+                        </div>
+                        <div class="kpi-card">
+                            <div class="kpi-icon bg-orange">🛒</div>
+                            <div class="kpi-content">
+                                <p class="kpi-label">Ticket Promedio</p>
+                                <p class="kpi-value" id="kpiTicketPromedio">$0</p>
+                                <p class="kpi-change" id="kpiTicketChange">+0%</p>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Gráficos -->
+                    <div class="charts-grid">
+                        <!-- Gráfico de Ventas por Día -->
+                        <div class="chart-card">
+                            <div class="chart-header">
+                                <h3>Ventas Diarias</h3>
+                                <p>Evolución de ventas en el período seleccionado</p>
+                            </div>
+                            <div class="chart-container">
+                                <canvas id="chartVentasDiarias"></canvas>
+                            </div>
+                        </div>
+
+                        <!-- Gráfico de Métodos de Pago -->
+                        <div class="chart-card chart-card-small">
+                            <div class="chart-header">
+                                <h3>Métodos de Pago</h3>
+                                <p>Distribución de pagos</p>
+                            </div>
+                            <div class="chart-container">
+                                <canvas id="chartMetodosPago"></canvas>
+                            </div>
+                        </div>
+
+                        <!-- Gráfico de Top Productos -->
+                        <div class="chart-card chart-card-wide">
+                            <div class="chart-header">
+                                <h3>Top 10 Productos Más Vendidos</h3>
+                                <p>Por cantidad de unidades vendidas</p>
+                            </div>
+                            <div class="chart-container">
+                                <canvas id="chartTopProductos"></canvas>
+                            </div>
+                        </div>
+
+                        <!-- Tabla de Rendimiento por Vendedor -->
+                        <div class="chart-card chart-card-small">
+                            <div class="chart-header">
+                                <h3>👥 Rendimiento por Vendedor</h3>
+                                <p>Comparativa del período</p>
+                            </div>
+                            <div class="table-container">
+                                <table class="vendedores-table">
+                                    <thead>
+                                        <tr>
+                                            <th>Vendedor</th>
+                                            <th>Ventas</th>
+                                            <th>Total</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="tablaVendedores">
+                                        <tr>
+                                            <td colspan="3" class="text-center">Cargando...</td>
+                                        </tr>
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Stock Crítico -->
+                    <div class="alert-section">
+                        <h3>⚠️ Productos con Stock Bajo</h3>
+                        <div id="stockCritico" class="stock-alerts">
+                            <p>Cargando...</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
         </main>
 
         <!-- MOBILE BOTTOM NAV -->
@@ -395,6 +527,15 @@
                     <path d="M3 3h6v6H3V3zm8 0h6v6h-6V3zM3 11h6v6H3v-6zm8 0h6v6h-6v-6z" stroke="currentColor" stroke-width="2"/>
                 </svg>
                 <span>POS</span>
+            </button>
+            <button class="bottom-nav-item" data-view="dashboard" onclick="cambiarVista('dashboard')">
+                <svg width="24" height="24" viewBox="0 0 20 20" fill="none">
+                    <rect x="3" y="3" width="6" height="6" rx="1" stroke="currentColor" stroke-width="2"/>
+                    <rect x="11" y="3" width="6" height="6" rx="1" stroke="currentColor" stroke-width="2"/>
+                    <rect x="3" y="11" width="6" height="6" rx="1" stroke="currentColor" stroke-width="2"/>
+                    <rect x="11" y="11" width="6" height="6" rx="1" stroke="currentColor" stroke-width="2"/>
+                </svg>
+                <span>Dashboard</span>
             </button>
             <button class="bottom-nav-item" data-view="inventory" onclick="cambiarVista('inventory')">
                 <svg width="24" height="24" viewBox="0 0 20 20" fill="none">
@@ -647,6 +788,7 @@
     <!-- SCRIPTS -->
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
     <script src="supabase-config.js?v=2026e"></script>
     <script src="script.js?v=2026e"></script>
 </body>

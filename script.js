@@ -113,7 +113,8 @@ function cambiarVista(vista) {
         'pos': 'posView',
         'inventory': 'inventoryView',
         'sales': 'salesView',
-        'asignar': 'asignarView'
+        'asignar': 'asignarView',
+        'dashboard': 'dashboardView'
     };
     
     document.getElementById(viewMap[vista]).style.display = 'block';
@@ -133,6 +134,8 @@ function cambiarVista(vista) {
         cargarVentas();
     } else if (vista === 'asignar') {
         cargarProductosSinCodigo();
+    } else if (vista === 'dashboard') {
+        cargarDashboard();
     }
 }
 
@@ -1276,4 +1279,344 @@ async function asignarCodigoAProducto(codigoBarra) {
         mostrarNotificacion('Error al asignar código', 'error');
         cerrarEscaner();
     }
+}
+
+// ===================================
+// DASHBOARD Y GRÁFICOS
+// ===================================
+
+let chartVentasDiarias = null;
+let chartMetodosPago = null;
+let chartTopProductos = null;
+
+async function cargarDashboard() {
+    const periodo = parseInt(document.getElementById('dashboardPeriodo')?.value || 7);
+    
+    try {
+        // Cargar ventas del período
+        const fechaInicio = new Date();
+        fechaInicio.setDate(fechaInicio.getDate() - periodo);
+        
+        const { data: ventas, error } = await supabaseClient
+            .from('ventas')
+            .select('*, ventas_items(*), ventas_pagos(*)')
+            .gte('created_at', fechaInicio.toISOString())
+            .order('created_at', { ascending: true });
+        
+        if (error) throw error;
+        
+        // Calcular KPIs
+        calcularKPIs(ventas);
+        
+        // Generar gráficos
+        generarGraficoVentasDiarias(ventas);
+        generarGraficoMetodosPago(ventas);
+        await generarGraficoTopProductos(periodo);
+        generarTablaVendedores(ventas);
+        mostrarStockCritico();
+        
+    } catch (error) {
+        console.error('Error cargando dashboard:', error);
+        mostrarNotificacion('Error cargando dashboard', 'error');
+    }
+}
+
+function calcularKPIs(ventas) {
+    const hoy = new Date().toDateString();
+    const inicioSemana = new Date();
+    inicioSemana.setDate(inicioSemana.getDate() - 7);
+    const inicioMes = new Date();
+    inicioMes.setMonth(inicioMes.getMonth() - 1);
+    
+    // Ventas hoy
+    const ventasHoy = ventas.filter(v => new Date(v.created_at).toDateString() === hoy);
+    const totalHoy = ventasHoy.reduce((sum, v) => sum + v.total, 0);
+    document.getElementById('kpiVentasHoy').textContent = '$' + formatoMoneda(totalHoy);
+    
+    // Ventas semana
+    const ventasSemana = ventas.filter(v => new Date(v.created_at) >= inicioSemana);
+    const totalSemana = ventasSemana.reduce((sum, v) => sum + v.total, 0);
+    document.getElementById('kpiVentasSemana').textContent = '$' + formatoMoneda(totalSemana);
+    
+    // Ventas mes
+    const ventasMes = ventas.filter(v => new Date(v.created_at) >= inicioMes);
+    const totalMes = ventasMes.reduce((sum, v) => sum + v.total, 0);
+    document.getElementById('kpiVentasMes').textContent = '$' + formatoMoneda(totalMes);
+    
+    // Ticket promedio
+    const ticketPromedio = ventas.length > 0 ? totalMes / ventasMes.length : 0;
+    document.getElementById('kpiTicketPromedio').textContent = '$' + formatoMoneda(ticketPromedio);
+}
+
+function generarGraficoVentasDiarias(ventas) {
+    const periodo = parseInt(document.getElementById('dashboardPeriodo')?.value || 7);
+    
+    // Agrupar ventas por día
+    const ventasPorDia = {};
+    for (let i = 0; i < periodo; i++) {
+        const fecha = new Date();
+        fecha.setDate(fecha.getDate() - (periodo - 1 - i));
+        const key = fecha.toLocaleDateString('es-CL', { month: 'short', day: 'numeric' });
+        ventasPorDia[key] = 0;
+    }
+    
+    ventas.forEach(v => {
+        const fecha = new Date(v.created_at);
+        const key = fecha.toLocaleDateString('es-CL', { month: 'short', day: 'numeric' });
+        if (ventasPorDia[key] !== undefined) {
+            ventasPorDia[key] += v.total;
+        }
+    });
+    
+    const labels = Object.keys(ventasPorDia);
+    const data = Object.values(ventasPorDia);
+    
+    const ctx = document.getElementById('chartVentasDiarias');
+    
+    // Destruir gráfico anterior si existe
+    if (chartVentasDiarias) {
+        chartVentasDiarias.destroy();
+    }
+    
+    chartVentasDiarias = new Chart(ctx, {
+        type: 'line',
+        data: {
+            labels: labels,
+            datasets: [{
+                label: 'Ventas ($)',
+                data: data,
+                borderColor: 'rgb(99, 102, 241)',
+                backgroundColor: 'rgba(99, 102, 241, 0.1)',
+                tension: 0.4,
+                fill: true,
+                borderWidth: 3
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+                legend: {
+                    display: false
+                },
+                tooltip: {
+                    callbacks: {
+                        label: (context) => '$' + formatoMoneda(context.parsed.y)
+                    }
+                }
+            },
+            scales: {
+                y: {
+                    beginAtZero: true,
+                    ticks: {
+                        callback: (value) => '$' + formatoMoneda(value)
+                    }
+                }
+            }
+        }
+    });
+}
+
+function generarGraficoMetodosPago(ventas) {
+    const metodos = {
+        'Efectivo': 0,
+        'Tarjeta': 0,
+        'Transferencia': 0
+    };
+    
+    ventas.forEach(v => {
+        if (v.ventas_pagos && v.ventas_pagos.length > 0) {
+            v.ventas_pagos.forEach(p => {
+                if (metodos[p.metodo] !== undefined) {
+                    metodos[p.metodo] += p.monto;
+                }
+            });
+        } else {
+            // Fallback si no hay detalle de pagos
+            metodos['Efectivo'] += v.total;
+        }
+    });
+    
+    const ctx = document.getElementById('chartMetodosPago');
+    
+    if (chartMetodosPago) {
+        chartMetodosPago.destroy();
+    }
+    
+    chartMetodosPago = new Chart(ctx, {
+        type: 'doughnut',
+        data: {
+            labels: Object.keys(metodos),
+            datasets: [{
+                data: Object.values(metodos),
+                backgroundColor: [
+                    'rgb(34, 197, 94)',
+                    'rgb(59, 130, 246)',
+                    'rgb(168, 85, 247)'
+                ],
+                borderWidth: 0
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+                legend: {
+                    position: 'bottom'
+                },
+                tooltip: {
+                    callbacks: {
+                        label: (context) => {
+                            const label = context.label || '';
+                            const value = '$' + formatoMoneda(context.parsed);
+                            const total = context.dataset.data.reduce((a, b) => a + b, 0);
+                            const percentage = ((context.parsed / total) * 100).toFixed(1);
+                            return `${label}: ${value} (${percentage}%)`;
+                        }
+                    }
+                }
+            }
+        }
+    });
+}
+
+async function generarGraficoTopProductos(periodo) {
+    try {
+        const fechaInicio = new Date();
+        fechaInicio.setDate(fechaInicio.getDate() - periodo);
+        
+        const { data: items, error } = await supabaseClient
+            .from('ventas_items')
+            .select('producto_nombre, cantidad, ventas!inner(created_at)')
+            .gte('ventas.created_at', fechaInicio.toISOString());
+        
+        if (error) throw error;
+        
+        // Agrupar por producto
+        const productosMap = {};
+        items.forEach(item => {
+            const nombre = item.producto_nombre;
+            if (!productosMap[nombre]) {
+                productosMap[nombre] = 0;
+            }
+            productosMap[nombre] += item.cantidad;
+        });
+        
+        // Ordenar y tomar top 10
+        const topProductos = Object.entries(productosMap)
+            .sort((a, b) => b[1] - a[1])
+            .slice(0, 10);
+        
+        const labels = topProductos.map(p => p[0]);
+        const data = topProductos.map(p => p[1]);
+        
+        const ctx = document.getElementById('chartTopProductos');
+        
+        if (chartTopProductos) {
+            chartTopProductos.destroy();
+        }
+        
+        chartTopProductos = new Chart(ctx, {
+            type: 'bar',
+            data: {
+                labels: labels,
+                datasets: [{
+                    label: 'Unidades Vendidas',
+                    data: data,
+                    backgroundColor: 'rgba(99, 102, 241, 0.8)',
+                    borderColor: 'rgb(99, 102, 241)',
+                    borderWidth: 1
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                indexAxis: 'y',
+                plugins: {
+                    legend: {
+                        display: false
+                    }
+                },
+                scales: {
+                    x: {
+                        beginAtZero: true
+                    }
+                }
+            }
+        });
+        
+    } catch (error) {
+        console.error('Error generando top productos:', error);
+    }
+}
+
+function generarTablaVendedores(ventas) {
+    const vendedoresMap = {};
+    
+    ventas.forEach(v => {
+        const vendedor = v.vendedor_nombre || 'Sin asignar';
+        if (!vendedoresMap[vendedor]) {
+            vendedoresMap[vendedor] = {
+                numVentas: 0,
+                total: 0
+            };
+        }
+        vendedoresMap[vendedor].numVentas++;
+        vendedoresMap[vendedor].total += v.total;
+    });
+    
+    const vendedoresArray = Object.entries(vendedoresMap)
+        .map(([nombre, datos]) => ({
+            nombre,
+            ...datos
+        }))
+        .sort((a, b) => b.total - a.total);
+    
+    const tbody = document.getElementById('tablaVendedores');
+    
+    if (vendedoresArray.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="3" class="text-center">No hay datos</td></tr>';
+        return;
+    }
+    
+    tbody.innerHTML = vendedoresArray.map((v, index) => {
+        const medalla = index === 0 ? '🥇' : index === 1 ? '🥈' : index === 2 ? '🥉' : '';
+        return `
+            <tr>
+                <td><strong>${medalla} ${v.nombre}</strong></td>
+                <td>${v.numVentas}</td>
+                <td><strong>$${formatoMoneda(v.total)}</strong></td>
+            </tr>
+        `;
+    }).join('');
+}
+
+async function mostrarStockCritico() {
+    const productosCriticos = productos.filter(p => p.stock <= (p.stock_minimo || 5));
+    
+    const container = document.getElementById('stockCritico');
+    
+    if (productosCriticos.length === 0) {
+        container.innerHTML = '<p style="color: hsl(142 76% 36%);">✅ Todos los productos tienen stock suficiente</p>';
+        return;
+    }
+    
+    container.innerHTML = productosCriticos.map(p => {
+        const critico = p.stock === 0;
+        return `
+            <div class="stock-alert-item ${critico ? 'critico' : 'bajo'}">
+                <div>
+                    <strong>${p.nombre}</strong>
+                    <p>${p.marca} - ${p.categoria}</p>
+                </div>
+                <div class="stock-badge ${critico ? 'badge-danger' : 'badge-warning'}">
+                    ${critico ? '🔴 Sin stock' : '🟡 Stock bajo: ' + Math.floor(p.stock)}
+                </div>
+            </div>
+        `;
+    }).join('');
+}
+
+function actualizarDashboard() {
+    cargarDashboard();
 }
