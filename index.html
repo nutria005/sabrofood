@@ -139,6 +139,19 @@
                         <p class="view-subtitle">Gestiona tus ventas</p>
                     </div>
                     <div class="view-actions">
+                        <button id="btnAdminPrecios" class="btn btn-secondary" onclick="abrirModalAdminPrecios()" style="display: none;">
+                            <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
+                                <path d="M12 2v20M17 5H9.5a3.5 3.5 0 000 7h5a3.5 3.5 0 010 7H6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                            </svg>
+                            <span>Administrar Precios</span>
+                        </button>
+                        
+                        <button class="btn btn-secondary" onclick="cambiarUsuario()" title="Cambiar usuario">
+                            <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
+                                <path d="M16 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2M8.5 11a4 4 0 100-8 4 4 0 000 8zM20 8v6M23 11h-6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                            </svg>
+                        </button>
+                        
                         <button class="btn btn-primary" onclick="abrirEscaner()" style="margin-right: 12px;">
                             <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
                                 <rect x="3" y="3" width="18" height="18" rx="2" stroke="currentColor" stroke-width="2"/>
@@ -796,6 +809,47 @@
             <div class="modal-footer">
                 <button class="btn btn-secondary" onclick="cerrarModalNuevo()">Cancelar</button>
                 <button class="btn btn-primary" onclick="guardarNuevoProducto()">Registrar Producto</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- MODAL: Administrar Precios (Solo Encargado) -->
+    <div id="modalAdminPrecios" class="modal">
+        <div class="modal-overlay" onclick="cerrarModalAdminPrecios()"></div>
+        <div class="modal-content modal-large" style="max-width: 900px;">
+            <div class="modal-header">
+                <h3>💰 Administrar Precios</h3>
+                <button class="btn-close" onclick="cerrarModalAdminPrecios()">
+                    <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
+                        <path d="M15 5L5 15M5 5l10 10" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+                    </svg>
+                </button>
+            </div>
+            <div class="modal-body" style="padding: 0;">
+                <div style="max-height: 60vh; overflow-y: auto;">
+                    <table class="tabla-precios" style="width: 100%; border-collapse: collapse;">
+                        <thead style="position: sticky; top: 0; background: hsl(var(--card)); z-index: 10;">
+                            <tr>
+                                <th style="padding: 12px; text-align: left; border-bottom: 2px solid hsl(var(--border));">Producto</th>
+                                <th style="padding: 12px; text-align: left; border-bottom: 2px solid hsl(var(--border));">Categoría</th>
+                                <th style="padding: 12px; text-align: center; border-bottom: 2px solid hsl(var(--border));">Stock</th>
+                                <th style="padding: 12px; text-align: center; border-bottom: 2px solid hsl(var(--border)); width: 150px;">Precio</th>
+                            </tr>
+                        </thead>
+                        <tbody id="tablaAdminPrecios">
+                            <!-- Se llena dinámicamente -->
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" onclick="cerrarModalAdminPrecios()">Cancelar</button>
+                <button class="btn btn-primary" onclick="guardarCambiosPrecios()">
+                    <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
+                        <path d="M5 10l3 3 7-7" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                    </svg>
+                    <span>Guardar Cambios</span>
+                </button>
             </div>
         </div>
     </div>

@@ -20,6 +20,7 @@ let pagosRegistrados = [];
 let categoriaActual = 'Todos';
 let html5QrCode = null;
 let productoEditando = null;
+let realtimeChannel = null; // Canal de sincronización en tiempo real
 
 // Roles de usuarios
 const ROLES = {
@@ -107,9 +108,226 @@ document.addEventListener('DOMContentLoaded', () => {
 });
 
 function initApp() {
+    // Verificar si hay sesión guardada
+    const sesionGuardada = localStorage.getItem('sabrofood_user');
+    
+    if (sesionGuardada) {
+        try {
+            const userData = JSON.parse(sesionGuardada);
+            
+            // Auto-login
+            currentUser = userData.username;
+            currentUserRole = userData.role;
+            
+            console.log('🔄 Sesión recuperada:', currentUser);
+            
+            // Mostrar app directamente
+            document.getElementById('loginScreen').style.display = 'none';
+            document.getElementById('mainApp').style.display = 'grid';
+            
+            // Actualizar UI
+            document.getElementById('sidebarUsername').textContent = currentUser;
+            document.getElementById('topUsername').textContent = currentUser;
+            
+            // Mostrar botones según rol
+            if (currentUserRole === 'encargado') {
+                document.getElementById('btnAsignarCodigos').style.display = 'flex';
+                document.getElementById('btnAsignarCodigosBottom').style.display = 'flex';
+                const btnAdminPrecios = document.getElementById('btnAdminPrecios');
+                if (btnAdminPrecios) {
+                    btnAdminPrecios.style.display = 'inline-flex';
+                }
+            } else {
+                document.getElementById('btnAsignarCodigos').style.display = 'none';
+                document.getElementById('btnAsignarCodigosBottom').style.display = 'none';
+                const btnAdminPrecios = document.getElementById('btnAdminPrecios');
+                if (btnAdminPrecios) {
+                    btnAdminPrecios.style.display = 'none';
+                }
+            }
+            
+            // Cargar datos
+            cargarProductos();
+            inicializarRealtime();
+            
+            return;
+            
+        } catch (error) {
+            console.error('Error recuperando sesión:', error);
+            localStorage.removeItem('sabrofood_user');
+        }
+    }
+    
     // Mostrar pantalla de login
     document.getElementById('loginScreen').style.display = 'flex';
     document.getElementById('mainApp').style.display = 'none';
+}
+
+// ===================================
+// SISTEMA DE SINCRONIZACIÓN REALTIME
+// ===================================
+
+/**
+ * Inicializar suscripción a cambios en tiempo real
+ */
+function inicializarRealtime() {
+    if (!supabaseClient) {
+        console.warn('⚠️ Supabase no disponible, Realtime deshabilitado');
+        return;
+    }
+
+    console.log('🔴 Iniciando suscripción Realtime...');
+
+    // Crear canal para escuchar cambios en productos
+    realtimeChannel = supabaseClient
+        .channel('productos-changes')
+        .on(
+            'postgres_changes',
+            {
+                event: 'UPDATE',
+                schema: 'public',
+                table: 'productos'
+            },
+            (payload) => {
+                console.log('🔄 Cambio detectado en producto:', payload.new);
+                actualizarProductoEnTiempoReal(payload.new);
+            }
+        )
+        .subscribe((status) => {
+            if (status === 'SUBSCRIBED') {
+                console.log('✅ Suscripción Realtime activa');
+                mostrarNotificacion('Sistema en tiempo real activado', 'success');
+            }
+        });
+}
+
+/**
+ * Actualizar producto en el DOM sin recargar página
+ */
+function actualizarProductoEnTiempoReal(productoActualizado) {
+    // Actualizar en el array local
+    const index = productos.findIndex(p => p.id === productoActualizado.id);
+    if (index !== -1) {
+        productos[index] = productoActualizado;
+    }
+
+    // Actualizar visualmente en la grilla de productos
+    const productCard = document.querySelector(`[data-producto-id="${productoActualizado.id}"]`);
+    if (productCard) {
+        const stockElement = productCard.querySelector('.product-stock');
+        const stock = productoActualizado.stock || 0;
+        
+        // Actualizar número de stock
+        if (stock === 0) {
+            stockElement.textContent = 'Sin stock';
+            stockElement.className = 'product-stock stock-out';
+            productCard.style.opacity = '0.6';
+            productCard.style.cursor = 'not-allowed';
+            productCard.onclick = null;
+        } else if (stock <= (productoActualizado.stock_minimo || 5)) {
+            stockElement.textContent = Math.floor(stock);
+            stockElement.className = 'product-stock stock-low';
+        } else {
+            stockElement.textContent = Math.floor(stock);
+            stockElement.className = 'product-stock stock-ok';
+        }
+
+        // Animación de actualización
+        productCard.style.animation = 'pulse 0.5s ease-in-out';
+        setTimeout(() => {
+            productCard.style.animation = '';
+        }, 500);
+    }
+
+    // Actualizar productos en carrito si están afectados
+    actualizarStockEnCarrito(productoActualizado);
+}
+
+/**
+ * Actualizar stock disponible en items del carrito
+ */
+function actualizarStockEnCarrito(productoActualizado) {
+    const itemEnCarrito = carrito.find(item => item.id === productoActualizado.id);
+    
+    if (itemEnCarrito) {
+        itemEnCarrito.stock = productoActualizado.stock;
+        
+        // Si la cantidad en carrito supera el stock disponible
+        if (itemEnCarrito.cantidad > productoActualizado.stock) {
+            mostrarNotificacion(
+                `⚠️ Stock actualizado: ${productoActualizado.nombre} ahora tiene ${productoActualizado.stock} unidades`,
+                'warning'
+            );
+        }
+        
+        renderCarrito();
+    }
+}
+
+/**
+ * Validación final de stock antes de cobrar
+ */
+async function validarStockAntesDeVenta() {
+    if (!supabaseClient) return true;
+
+    try {
+        // Obtener IDs de productos en carrito
+        const productosIds = carrito.map(item => item.id);
+
+        // Consultar stock actual en DB
+        const { data: productosActuales, error } = await supabaseClient
+            .from('productos')
+            .select('id, nombre, stock')
+            .in('id', productosIds);
+
+        if (error) throw error;
+
+        // Verificar cada producto
+        for (const item of carrito) {
+            const productoActual = productosActuales.find(p => p.id === item.id);
+            
+            if (!productoActual) {
+                mostrarNotificacion(`❌ Producto "${item.nombre}" no encontrado`, 'error');
+                return false;
+            }
+
+            if (productoActual.stock < item.cantidad) {
+                mostrarNotificacion(
+                    `❌ Stock insuficiente: "${productoActual.nombre}"\n` +
+                    `Disponible: ${productoActual.stock} | En carrito: ${item.cantidad}\n` +
+                    `Alguien más acaba de comprar este producto.`,
+                    'error'
+                );
+                
+                // Actualizar carrito con stock real
+                item.stock = productoActual.stock;
+                if (item.cantidad > productoActual.stock) {
+                    item.cantidad = productoActual.stock;
+                }
+                renderCarrito();
+                
+                return false;
+            }
+        }
+
+        return true;
+
+    } catch (error) {
+        console.error('Error validando stock:', error);
+        mostrarNotificacion('Error verificando disponibilidad de productos', 'error');
+        return false;
+    }
+}
+
+/**
+ * Desconectar Realtime al cerrar sesión
+ */
+function desconectarRealtime() {
+    if (realtimeChannel) {
+        supabaseClient.removeChannel(realtimeChannel);
+        realtimeChannel = null;
+        console.log('🔴 Realtime desconectado');
+    }
 }
 
 // ===================================
@@ -127,6 +345,13 @@ function handleLogin() {
     currentUser = username;
     currentUserRole = ROLES[username] || 'vendedor';
     
+    // Guardar en localStorage para sesión persistente
+    localStorage.setItem('sabrofood_user', JSON.stringify({
+        username: currentUser,
+        role: currentUserRole,
+        loginDate: new Date().toISOString()
+    }));
+    
     // Ocultar login y mostrar app
     document.getElementById('loginScreen').style.display = 'none';
     document.getElementById('mainApp').style.display = 'grid';
@@ -135,17 +360,28 @@ function handleLogin() {
     document.getElementById('sidebarUsername').textContent = username;
     document.getElementById('topUsername').textContent = username;
     
-    // Mostrar botón "Asignar Códigos" solo para encargados
+    // Mostrar botones según rol
     if (currentUserRole === 'encargado') {
         document.getElementById('btnAsignarCodigos').style.display = 'flex';
         document.getElementById('btnAsignarCodigosBottom').style.display = 'flex';
+        const btnAdminPrecios = document.getElementById('btnAdminPrecios');
+        if (btnAdminPrecios) {
+            btnAdminPrecios.style.display = 'inline-flex';
+        }
     } else {
         document.getElementById('btnAsignarCodigos').style.display = 'none';
         document.getElementById('btnAsignarCodigosBottom').style.display = 'none';
+        const btnAdminPrecios = document.getElementById('btnAdminPrecios');
+        if (btnAdminPrecios) {
+            btnAdminPrecios.style.display = 'none';
+        }
     }
     
     // Cargar datos
     cargarProductos();
+    
+    // ✅ INICIALIZAR REALTIME
+    inicializarRealtime();
     
     console.log('✅ Login exitoso:', username, '| Rol:', currentUserRole);
 }
@@ -157,7 +393,38 @@ function handleLogout() {
         }
     }
     
+    // Desconectar Realtime
+    desconectarRealtime();
+    
+    // Limpiar datos
     currentUser = '';
+    currentUserRole = '';
+    carrito = [];
+    productos = [];
+    
+    // Limpiar sesión guardada
+    localStorage.removeItem('sabrofood_user');
+    
+    // Recargar página para estado limpio
+    window.location.reload();
+}
+
+/**
+ * Cambiar de usuario sin cerrar sesión completamente
+ */
+function cambiarUsuario() {
+    if (carrito.length > 0) {
+        if (!confirm('Tienes productos en el carrito. ¿Deseas cambiar de usuario de todas formas? Se perderá el carrito.')) {
+            return;
+        }
+    }
+    
+    // Desconectar Realtime
+    desconectarRealtime();
+    
+    // Limpiar datos pero NO borrar sesión
+    currentUser = '';
+    currentUserRole = '';
     carrito = [];
     
     // Mostrar login
@@ -347,7 +614,10 @@ function renderProductos() {
         }
         
         return `
-            <div class="product-card" onclick="${stockCero ? '' : 'agregarAlCarrito(' + producto.id + ')'}" ${stockCero ? 'style="opacity: 0.6; cursor: not-allowed;"' : ''}>
+            <div class="product-card" 
+                 data-producto-id="${producto.id}"
+                 onclick="${stockCero ? '' : 'agregarAlCarrito(' + producto.id + ')'}" 
+                 ${stockCero ? 'style="opacity: 0.6; cursor: not-allowed;"' : ''}>
                 <div class="product-card-header">
                     <div class="product-name">${producto.nombre}</div>
                     <span class="product-stock ${stockClass}">${stockText}</span>
@@ -626,6 +896,12 @@ async function finalizarVenta() {
             return;
         }
     }
+
+    // ✅ VALIDACIÓN FINAL DE STOCK EN TIEMPO REAL
+    const stockDisponible = await validarStockAntesDeVenta();
+    if (!stockDisponible) {
+        return; // Detener venta si no hay stock
+    }
     
     try {
         // Si Supabase está disponible, guardar venta
@@ -648,9 +924,11 @@ async function finalizarVenta() {
             
             // Actualizar stock
             for (const item of carrito) {
+                const nuevoStock = item.stock - item.cantidad;
+                
                 const { error: stockError } = await supabaseClient
                     .from('productos')
-                    .update({ stock: item.stock - item.cantidad })
+                    .update({ stock: nuevoStock })
                     .eq('id', item.id);
                 
                 if (stockError) {
@@ -1710,4 +1988,109 @@ async function mostrarStockCritico() {
 
 function actualizarDashboard() {
     cargarDashboard();
+}
+
+// ===================================
+// GESTIÓN MASIVA DE PRECIOS
+// ===================================
+
+function abrirModalAdminPrecios() {
+    const tbody = document.getElementById('tablaAdminPrecios');
+    
+    tbody.innerHTML = productos.map(p => `
+        <tr data-producto-id="${p.id}">
+            <td style="padding: 12px; border-bottom: 1px solid hsl(var(--border));">
+                <strong>${p.nombre}</strong><br>
+                <small style="color: hsl(var(--muted-foreground));">${p.marca || '-'}</small>
+            </td>
+            <td style="padding: 12px; border-bottom: 1px solid hsl(var(--border));">
+                ${p.categoria || '-'}
+            </td>
+            <td style="padding: 12px; text-align: center; border-bottom: 1px solid hsl(var(--border));">
+                <strong>${Math.floor(p.stock)}</strong>
+            </td>
+            <td style="padding: 12px; text-align: center; border-bottom: 1px solid hsl(var(--border));">
+                <input 
+                    type="number" 
+                    class="input-precio-editable"
+                    data-producto-id="${p.id}"
+                    value="${p.precio}"
+                    min="0"
+                    step="100"
+                    style="width: 120px; padding: 8px 12px; border: 2px solid hsl(var(--border)); border-radius: 8px; text-align: right; font-weight: 600; font-size: 14px; transition: all 0.2s;"
+                    onfocus="this.style.borderColor='hsl(var(--primary))'; this.select();"
+                    onblur="this.style.borderColor='hsl(var(--border))';"
+                >
+            </td>
+        </tr>
+    `).join('');
+    
+    const modal = document.getElementById('modalAdminPrecios');
+    modal.style.display = 'flex';
+    modal.classList.add('show');
+}
+
+function cerrarModalAdminPrecios() {
+    const modal = document.getElementById('modalAdminPrecios');
+    modal.style.display = 'none';
+    modal.classList.remove('show');
+}
+
+async function guardarCambiosPrecios() {
+    const inputs = document.querySelectorAll('.input-precio-editable');
+    const cambios = [];
+    
+    inputs.forEach(input => {
+        const productoId = parseInt(input.dataset.productoId);
+        const nuevoPrecio = parseFloat(input.value);
+        const productoOriginal = productos.find(p => p.id === productoId);
+        
+        // Solo agregar si cambió el precio
+        if (productoOriginal && productoOriginal.precio !== nuevoPrecio) {
+            cambios.push({
+                id: productoId,
+                nombre: productoOriginal.nombre,
+                precioAnterior: productoOriginal.precio,
+                precioNuevo: nuevoPrecio
+            });
+        }
+    });
+    
+    if (cambios.length === 0) {
+        mostrarNotificacion('No hay cambios para guardar', 'info');
+        return;
+    }
+    
+    if (!confirm(`¿Confirmas actualizar ${cambios.length} precio(s)?`)) {
+        return;
+    }
+    
+    try {
+        // Actualizar precios en Supabase
+        const promesas = cambios.map(cambio => 
+            supabaseClient
+                .from('productos')
+                .update({ precio: cambio.precioNuevo })
+                .eq('id', cambio.id)
+        );
+        
+        const resultados = await Promise.all(promesas);
+        
+        // Verificar errores
+        const errores = resultados.filter(r => r.error);
+        if (errores.length > 0) {
+            throw new Error('Algunos precios no se actualizaron');
+        }
+        
+        mostrarNotificacion(`✅ ${cambios.length} precio(s) actualizado(s) exitosamente`, 'success');
+        
+        // Recargar productos
+        await cargarProductos();
+        
+        cerrarModalAdminPrecios();
+        
+    } catch (error) {
+        console.error('Error actualizando precios:', error);
+        mostrarNotificacion('Error al guardar cambios', 'error');
+    }
 }

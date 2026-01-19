@@ -1654,3 +1654,47 @@ body {
     width: 100%;
     text-align: center;
 }
+
+/* ===================================
+   ANIMACIONES REALTIME
+   =================================== */
+
+@keyframes pulse {
+  0%, 100% {
+    transform: scale(1);
+    box-shadow: 0 0 0 0 hsl(var(--primary) / 0.4);
+  }
+  50% {
+    transform: scale(1.02);
+    box-shadow: 0 0 0 10px hsl(var(--primary) / 0);
+  }
+}
+
+/* Tabla de precios editable */
+.tabla-precios thead th {
+  font-weight: 700;
+  font-size: 13px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: hsl(var(--muted-foreground));
+}
+
+.tabla-precios tbody tr:hover {
+  background: hsl(var(--muted) / 0.3);
+}
+
+.input-precio-editable:hover {
+  border-color: hsl(var(--primary)) !important;
+}
+
+/* Badge de usuario mejorado */
+.user-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.user-badge::before {
+  content: "👤";
+  font-size: 18px;
+}
