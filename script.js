@@ -648,6 +648,7 @@ async function cargarInventario() {
         } else if (stockBajo) {
             estadoBadge = 'badge-warning';
             estadoTexto = 'Stock Bajo';
+        }
         
         // Código de barras status
         let codigoBarrasHTML = '';
@@ -1269,15 +1270,3 @@ async function asignarCodigoAProducto(codigoBarra) {
         cerrarEscaner();
     }
 }
-
-style.textContent = `
-    @keyframes slideInRight {
-        from { transform: translateX(400px); opacity: 0; }
-        to { transform: translateX(0); opacity: 1; }
-    }
-    @keyframes slideOutRight {
-        from { transform: translateX(0); opacity: 1; }
-        to { transform: translateX(400px); opacity: 0; }
-    }
-`;
-document.head.appendChild(style);
