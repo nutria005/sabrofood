@@ -1698,3 +1698,67 @@ body {
   content: "👤";
   font-size: 18px;
 }
+
+/* ===================================
+   LOGOUT BUTTON (Header)
+   =================================== */
+
+.btn-logout-header {
+  width: 40px;
+  height: 40px;
+  border-radius: 10px;
+  border: none;
+  background: transparent;
+  color: #4b5563;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  padding: 8px;
+  margin-left: 12px;
+}
+
+.btn-logout-header:hover {
+  background: hsl(var(--destructive) / 0.1);
+  color: #ef4444;
+  transform: scale(1.05);
+}
+
+.btn-logout-header:active {
+  transform: scale(0.95);
+}
+
+.btn-logout-header svg {
+  width: 24px;
+  height: 24px;
+}
+
+/* Responsive: Aumentar área clicable en móvil */
+@media (max-width: 768px) {
+  .btn-logout-header {
+    width: 44px;
+    height: 44px;
+    padding: 10px;
+  }
+  
+  .btn-logout-header svg {
+    width: 24px;
+    height: 24px;
+  }
+}
+
+/* Animación suave al hover */
+@keyframes logout-pulse {
+  0%, 100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.7;
+  }
+}
+
+.btn-logout-header:hover svg {
+  animation: logout-pulse 1.5s ease-in-out infinite;
+}
+
