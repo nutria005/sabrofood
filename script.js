@@ -1072,7 +1072,7 @@ async function cargarVentas() {
     const periodo = parseInt(document.getElementById('periodoVentas')?.value, 10) || 30;
     
     try {
-        if (typeof supabaseClient === 'undefined') {
+        if (typeof supabaseClient === 'undefined' || !supabaseClient) {
             mostrarVentasMock();
             return;
         }
@@ -1143,6 +1143,12 @@ function calcularKPIs(ventas) {
 }
 
 function generarGraficoVentasDiarias(ventas, periodo) {
+    // Check if Chart.js is available
+    if (typeof Chart === 'undefined') {
+        console.warn('⚠️ Chart.js no disponible, omitiendo gráfico de ventas diarias');
+        return;
+    }
+    
     // Agrupar ventas por día
     const ventasPorDia = {};
     
@@ -1211,6 +1217,12 @@ function generarGraficoVentasDiarias(ventas, periodo) {
 }
 
 function generarGraficoMetodosPago(ventas) {
+    // Check if Chart.js is available
+    if (typeof Chart === 'undefined') {
+        console.warn('⚠️ Chart.js no disponible, omitiendo gráfico de métodos de pago');
+        return;
+    }
+    
     const metodos = {};
     
     ventas.forEach(v => {
@@ -1268,6 +1280,12 @@ function generarGraficoMetodosPago(ventas) {
 
 async function generarGraficoTopProductos(periodo) {
     try {
+        // If Supabase is not available, skip this chart
+        if (typeof supabaseClient === 'undefined' || !supabaseClient) {
+            console.log('⚠️ Supabase no disponible, omitiendo gráfico de top productos');
+            return;
+        }
+        
         const fechaInicio = new Date();
         fechaInicio.setDate(fechaInicio.getDate() - periodo);
         
@@ -1294,6 +1312,12 @@ async function generarGraficoTopProductos(periodo) {
         
         const labels = productosArray.map(p => p.nombre);
         const data = productosArray.map(p => p.cantidad);
+        
+        // Check if Chart.js is available
+        if (typeof Chart === 'undefined') {
+            console.warn('⚠️ Chart.js no disponible, omitiendo gráfico de top productos');
+            return;
+        }
         
         const ctx = document.getElementById('chartTopProductos');
         
