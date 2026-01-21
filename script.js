@@ -22,6 +22,11 @@ let html5QrCode = null;
 let productoEditando = null;
 let realtimeChannel = null; // Canal de sincronización en tiempo real
 
+// Chart instances
+let chartVentasDiarias = null;
+let chartMetodosPago = null;
+let chartTopProductos = null;
+
 // Roles de usuarios
 const ROLES = {
     'Jonathan R.': 'vendedor',
@@ -1059,18 +1064,28 @@ function editarProducto(id) {
 // VENTAS
 // ===================================
 
+// ===================================
+// VENTAS Y DASHBOARD INTEGRADO
+// ===================================
+
 async function cargarVentas() {
+    const periodo = parseInt(document.getElementById('periodoVentas')?.value, 10) || 30;
+    
     try {
         if (typeof supabaseClient === 'undefined') {
             mostrarVentasMock();
             return;
         }
         
-        const { data, error } = await supabaseClient
+        // Cargar ventas del período
+        const fechaInicio = new Date();
+        fechaInicio.setDate(fechaInicio.getDate() - periodo);
+        
+        const { data: ventas, error } = await supabaseClient
             .from('ventas')
             .select('*')
-            .order('fecha', { ascending: false })
-            .limit(50);
+            .gte('fecha', fechaInicio.toISOString())
+            .order('fecha', { ascending: true });
         
         if (error) {
             console.error('Error:', error);
@@ -1078,33 +1093,322 @@ async function cargarVentas() {
             return;
         }
         
-        renderVentas(data || []);
+        // Calcular KPIs
+        calcularKPIs(ventas);
+        
+        // Generar gráficos
+        generarGraficoVentasDiarias(ventas, periodo);
+        generarGraficoMetodosPago(ventas);
+        await generarGraficoTopProductos(periodo);
+        generarTablaVendedores(ventas);
+        
+        // Renderizar tabla de historial
+        renderTablaHistorial(ventas);
         
     } catch (error) {
-        console.error('Error:', error);
-        mostrarVentasMock();
+        console.error('Error cargando ventas:', error);
+        mostrarNotificacion('Error cargando ventas', 'error');
     }
 }
 
-function mostrarVentasMock() {
-    const ventas = [
-        { id: 1, fecha: new Date().toISOString(), vendedor: currentUser || 'Demo', productos: [{ nombre: 'Producto Demo', cantidad: 1 }], total: 10000, metodo_pago: 'Efectivo' }
-    ];
-    renderVentas(ventas);
+function actualizarVentas() {
+    cargarVentas();
 }
 
-function renderVentas(ventas) {
-    // Estadísticas
+function calcularKPIs(ventas) {
     const hoy = new Date().toDateString();
+    const inicioSemana = new Date();
+    inicioSemana.setDate(inicioSemana.getDate() - 7);
+    const inicioMes = new Date();
+    inicioMes.setMonth(inicioMes.getMonth() - 1);
+    
+    // Ventas hoy
     const ventasHoy = ventas.filter(v => new Date(v.fecha).toDateString() === hoy);
     const totalHoy = ventasHoy.reduce((sum, v) => sum + v.total, 0);
+    document.getElementById('kpiVentasHoy').textContent = '$' + formatoMoneda(totalHoy);
     
-    document.getElementById('ventasHoy').textContent = '$' + formatoMoneda(totalHoy);
-    document.getElementById('totalTransacciones').textContent = ventas.length;
+    // Ventas semana
+    const ventasSemana = ventas.filter(v => new Date(v.fecha) >= inicioSemana);
+    const totalSemana = ventasSemana.reduce((sum, v) => sum + v.total, 0);
+    document.getElementById('kpiVentasSemana').textContent = '$' + formatoMoneda(totalSemana);
     
-    // Tabla
+    // Ventas mes
+    const ventasMes = ventas.filter(v => new Date(v.fecha) >= inicioMes);
+    const totalMes = ventasMes.reduce((sum, v) => sum + v.total, 0);
+    document.getElementById('kpiVentasMes').textContent = '$' + formatoMoneda(totalMes);
+    
+    // Ticket promedio
+    const ticketPromedio = ventasMes.length > 0 ? totalMes / ventasMes.length : 0;
+    document.getElementById('kpiTicketPromedio').textContent = '$' + formatoMoneda(ticketPromedio);
+}
+
+function generarGraficoVentasDiarias(ventas, periodo) {
+    // Agrupar ventas por día
+    const ventasPorDia = {};
+    
+    for (let i = 0; i < periodo; i++) {
+        const fecha = new Date();
+        fecha.setDate(fecha.getDate() - (periodo - 1 - i));
+        const key = fecha.toLocaleDateString('es-CL', { month: 'short', day: 'numeric' });
+        ventasPorDia[key] = 0;
+    }
+    
+    ventas.forEach(v => {
+        const fecha = new Date(v.fecha);
+        const key = fecha.toLocaleDateString('es-CL', { month: 'short', day: 'numeric' });
+        if (ventasPorDia[key] !== undefined) {
+            ventasPorDia[key] += v.total;
+        }
+    });
+    
+    const labels = Object.keys(ventasPorDia);
+    const data = Object.values(ventasPorDia);
+    
+    const ctx = document.getElementById('chartVentasDiarias');
+    
+    // Destruir gráfico anterior si existe
+    if (chartVentasDiarias) {
+        chartVentasDiarias.destroy();
+    }
+    
+    chartVentasDiarias = new Chart(ctx, {
+        type: 'line',
+        data: {
+            labels: labels,
+            datasets: [{
+                label: 'Ventas ($)',
+                data: data,
+                borderColor: 'rgb(99, 102, 241)',
+                backgroundColor: 'rgba(99, 102, 241, 0.1)',
+                tension: 0.4,
+                fill: true,
+                borderWidth: 3
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+                legend: {
+                    display: false
+                },
+                tooltip: {
+                    callbacks: {
+                        label: (context) => '$' + formatoMoneda(context.parsed.y)
+                    }
+                }
+            },
+            scales: {
+                y: {
+                    beginAtZero: true,
+                    ticks: {
+                        callback: (value) => '$' + formatoMoneda(value)
+                    }
+                }
+            }
+        }
+    });
+}
+
+function generarGraficoMetodosPago(ventas) {
+    const metodos = {};
+    
+    ventas.forEach(v => {
+        const metodo = v.metodo_pago || 'No especificado';
+        metodos[metodo] = (metodos[metodo] || 0) + v.total;
+    });
+    
+    const labels = Object.keys(metodos);
+    const data = Object.values(metodos);
+    const colores = [
+        'rgba(34, 197, 94, 0.8)',
+        'rgba(59, 130, 246, 0.8)',
+        'rgba(251, 146, 60, 0.8)',
+        'rgba(168, 85, 247, 0.8)'
+    ];
+    
+    const ctx = document.getElementById('chartMetodosPago');
+    
+    if (chartMetodosPago) {
+        chartMetodosPago.destroy();
+    }
+    
+    chartMetodosPago = new Chart(ctx, {
+        type: 'doughnut',
+        data: {
+            labels: labels,
+            datasets: [{
+                data: data,
+                backgroundColor: colores,
+                borderWidth: 0
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+                legend: {
+                    position: 'bottom'
+                },
+                tooltip: {
+                    callbacks: {
+                        label: (context) => {
+                            const label = context.label || '';
+                            const value = '$' + formatoMoneda(context.parsed);
+                            const total = context.dataset.data.reduce((a, b) => a + b, 0);
+                            const percentage = ((context.parsed / total) * 100).toFixed(1);
+                            return `${label}: ${value} (${percentage}%)`;
+                        }
+                    }
+                }
+            }
+        }
+    });
+}
+
+async function generarGraficoTopProductos(periodo) {
+    try {
+        const fechaInicio = new Date();
+        fechaInicio.setDate(fechaInicio.getDate() - periodo);
+        
+        const { data: ventas } = await supabaseClient
+            .from('ventas')
+            .select('productos')
+            .gte('fecha', fechaInicio.toISOString());
+        
+        const productosMap = {};
+        
+        ventas.forEach(v => {
+            if (v.productos && Array.isArray(v.productos)) {
+                v.productos.forEach(p => {
+                    const nombre = p.nombre || 'Producto';
+                    productosMap[nombre] = (productosMap[nombre] || 0) + (p.cantidad || 1);
+                });
+            }
+        });
+        
+        const productosArray = Object.entries(productosMap)
+            .map(([nombre, cantidad]) => ({ nombre, cantidad }))
+            .sort((a, b) => b.cantidad - a.cantidad)
+            .slice(0, 10);
+        
+        const labels = productosArray.map(p => p.nombre);
+        const data = productosArray.map(p => p.cantidad);
+        
+        const ctx = document.getElementById('chartTopProductos');
+        
+        if (chartTopProductos) {
+            chartTopProductos.destroy();
+        }
+        
+        chartTopProductos = new Chart(ctx, {
+            type: 'bar',
+            data: {
+                labels: labels,
+                datasets: [{
+                    label: 'Unidades Vendidas',
+                    data: data,
+                    backgroundColor: 'rgba(99, 102, 241, 0.8)',
+                    borderRadius: 8
+                }]
+            },
+            options: {
+                indexAxis: 'y',
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: {
+                        display: false
+                    }
+                },
+                scales: {
+                    x: {
+                        beginAtZero: true
+                    }
+                }
+            }
+        });
+        
+    } catch (error) {
+        console.error('Error generando top productos:', error);
+    }
+}
+
+function generarTablaVendedores(ventas) {
+    const vendedoresMap = {};
+    
+    ventas.forEach(v => {
+        const vendedor = v.vendedor || 'Sin asignar';
+        if (!vendedoresMap[vendedor]) {
+            vendedoresMap[vendedor] = {
+                numVentas: 0,
+                total: 0
+            };
+        }
+        vendedoresMap[vendedor].numVentas++;
+        vendedoresMap[vendedor].total += v.total;
+    });
+    
+    const vendedoresArray = Object.entries(vendedoresMap)
+        .map(([nombre, datos]) => ({
+            nombre,
+            ...datos
+        }))
+        .sort((a, b) => b.total - a.total);
+    
+    const container = document.getElementById('tablaVendedores');
+    
+    if (vendedoresArray.length === 0) {
+        container.innerHTML = '<p style="text-align: center; color: hsl(var(--muted-foreground));">No hay datos de vendedores</p>';
+        return;
+    }
+    
+    container.innerHTML = `
+        <table style="width: 100%; border-collapse: collapse;">
+            <thead>
+                <tr style="border-bottom: 2px solid hsl(var(--border));">
+                    <th style="padding: 12px; text-align: left;">#</th>
+                    <th style="padding: 12px; text-align: left;">Vendedor</th>
+                    <th style="padding: 12px; text-align: center;">N° Ventas</th>
+                    <th style="padding: 12px; text-align: right;">Total Vendido</th>
+                </tr>
+            </thead>
+            <tbody>
+                ${vendedoresArray.map((v, index) => {
+                    let medalla = '';
+                    if (index === 0) medalla = '🥇';
+                    else if (index === 1) medalla = '🥈';
+                    else if (index === 2) medalla = '🥉';
+                    
+                    return `
+                        <tr style="border-bottom: 1px solid hsl(var(--border));">
+                            <td style="padding: 12px; font-size: 20px;">${medalla || (index + 1)}</td>
+                            <td style="padding: 12px; font-weight: 500;">${v.nombre}</td>
+                            <td style="padding: 12px; text-align: center;">${v.numVentas}</td>
+                            <td style="padding: 12px; text-align: right; font-weight: 600;">$${formatoMoneda(v.total)}</td>
+                        </tr>
+                    `;
+                }).join('')}
+            </tbody>
+        </table>
+    `;
+}
+
+function renderTablaHistorial(ventas) {
     const tbody = document.getElementById('salesTableBody');
-    tbody.innerHTML = ventas.map(v => `
+    
+    if (ventas.length === 0) {
+        tbody.innerHTML = `
+            <tr>
+                <td colspan="7" class="text-center">
+                    <p style="padding: 24px; color: hsl(var(--muted-foreground));">No hay ventas en este período</p>
+                </td>
+            </tr>
+        `;
+        return;
+    }
+    
+    tbody.innerHTML = ventas.slice(0, 50).map(v => `
         <tr>
             <td><strong>#${v.id}</strong></td>
             <td>${new Date(v.fecha).toLocaleString('es-CL')}</td>
@@ -1122,6 +1426,17 @@ function renderVentas(ventas) {
             </td>
         </tr>
     `).join('');
+}
+
+function mostrarVentasMock() {
+    const ventas = [
+        { id: 1, fecha: new Date().toISOString(), vendedor: currentUser || 'Demo', productos: [{ nombre: 'Producto Demo', cantidad: 1 }], total: 10000, metodo_pago: 'Efectivo' }
+    ];
+    calcularKPIs(ventas);
+    generarGraficoVentasDiarias(ventas, 30);
+    generarGraficoMetodosPago(ventas);
+    generarTablaVendedores(ventas);
+    renderTablaHistorial(ventas);
 }
 
 function verDetalleVenta(id) {
@@ -1653,366 +1968,7 @@ async function asignarCodigoAProducto(codigoBarra) {
 // ===================================
 // DASHBOARD Y GRÁFICOS
 // ===================================
-
-let chartVentasDiarias = null;
-let chartMetodosPago = null;
-let chartTopProductos = null;
-
-// DEPRECATED: Dashboard fusionado con POS
-// async function cargarDashboard() {
-//     const periodo = parseInt(document.getElementById('dashboardPeriodo')?.value, 10) || 7;
-//     
-//     try {
-//         // Cargar ventas del período
-//         const fechaInicio = new Date();
-//         fechaInicio.setDate(fechaInicio.getDate() - periodo);
-//         
-//         const { data: ventas, error } = await supabaseClient
-//             .from('ventas')
-//             .select('*, ventas_items(*), ventas_pagos(*)')
-//             .gte('created_at', fechaInicio.toISOString())
-//             .order('created_at', { ascending: true });
-//         
-//         if (error) throw error;
-//         
-//         // Calcular KPIs
-//         calcularKPIs(ventas);
-//         
-//         // Generar gráficos
-//         generarGraficoVentasDiarias(ventas);
-//         generarGraficoMetodosPago(ventas);
-//         await generarGraficoTopProductos(periodo);
-//         generarTablaVendedores(ventas);
-//         mostrarStockCritico();
-//         
-//     } catch (error) {
-//         console.error('Error cargando dashboard:', error);
-//         mostrarNotificacion('Error cargando dashboard', 'error');
-//     }
-// }
-
-// DEPRECATED: Dashboard fusionado con POS
-// function calcularKPIs(ventas) {
-//     const hoy = new Date().toDateString();
-//     const inicioSemana = new Date();
-//     inicioSemana.setDate(inicioSemana.getDate() - 7);
-//     const inicioMes = new Date();
-//     inicioMes.setMonth(inicioMes.getMonth() - 1);
-//     
-//     // Ventas hoy
-//     const ventasHoy = ventas.filter(v => new Date(v.created_at).toDateString() === hoy);
-//     const totalHoy = ventasHoy.reduce((sum, v) => sum + v.total, 0);
-//     document.getElementById('kpiVentasHoy').textContent = '$' + formatoMoneda(totalHoy);
-//     
-//     // Ventas semana
-//     const ventasSemana = ventas.filter(v => new Date(v.created_at) >= inicioSemana);
-//     const totalSemana = ventasSemana.reduce((sum, v) => sum + v.total, 0);
-//     document.getElementById('kpiVentasSemana').textContent = '$' + formatoMoneda(totalSemana);
-//     
-//     // Ventas mes
-//     const ventasMes = ventas.filter(v => new Date(v.created_at) >= inicioMes);
-//     const totalMes = ventasMes.reduce((sum, v) => sum + v.total, 0);
-//     document.getElementById('kpiVentasMes').textContent = '$' + formatoMoneda(totalMes);
-//     
-//     // Ticket promedio
-//     const ticketPromedio = ventasMes.length > 0 ? totalMes / ventasMes.length : 0;
-//     document.getElementById('kpiTicketPromedio').textContent = '$' + formatoMoneda(ticketPromedio);
-// }
-
-// DEPRECATED: Dashboard fusionado con POS
-// function generarGraficoVentasDiarias(ventas) {
-//     const periodo = parseInt(document.getElementById('dashboardPeriodo')?.value, 10) || 7;
-//     
-//     // Agrupar ventas por día
-//     const ventasPorDia = {};
-//     for (let i = 0; i < periodo; i++) {
-//         const fecha = new Date();
-//         fecha.setDate(fecha.setDate() - (periodo - 1 - i));
-//         const key = fecha.toLocaleDateString('es-CL', { month: 'short', day: 'numeric' });
-//         ventasPorDia[key] = 0;
-//     }
-//     
-//     ventas.forEach(v => {
-//         const fecha = new Date(v.created_at);
-//         const key = fecha.toLocaleDateString('es-CL', { month: 'short', day: 'numeric' });
-//         if (ventasPorDia[key] !== undefined) {
-//             ventasPorDia[key] += v.total;
-//         }
-//     });
-//     
-//     const labels = Object.keys(ventasPorDia);
-//     const data = Object.values(ventasPorDia);
-//     
-//     const ctx = document.getElementById('chartVentasDiarias');
-//     
-//     // Destruir gráfico anterior si existe
-//     if (chartVentasDiarias) {
-//         chartVentasDiarias.destroy();
-//     }
-//     
-//     chartVentasDiarias = new Chart(ctx, {
-//         type: 'line',
-//         data: {
-//             labels: labels,
-//             datasets: [{
-//                 label: 'Ventas ($)',
-//                 data: data,
-//                 borderColor: 'rgb(99, 102, 241)',
-//                 backgroundColor: 'rgba(99, 102, 241, 0.1)',
-//                 tension: 0.4,
-//                 fill: true,
-//                 borderWidth: 3
-//             }]
-//         },
-//         options: {
-//             responsive: true,
-//             maintainAspectRatio: false,
-//             plugins: {
-//                 legend: {
-//                     display: false
-//                 },
-//                 tooltip: {
-//                     callbacks: {
-//                         label: (context) => '$' + formatoMoneda(context.parsed.y)
-//                     }
-//                 }
-//             },
-//             scales: {
-//                 y: {
-//                     beginAtZero: true,
-//                     ticks: {
-//                         callback: (value) => '$' + formatoMoneda(value)
-//                     }
-//                 }
-//             }
-//         }
-//     });
-// }
-
-// DEPRECATED: Dashboard fusionado con POS
-// function generarGraficoMetodosPago(ventas) {
-//     const metodos = {
-//         'Efectivo': 0,
-//         'Tarjeta': 0,
-//         'Transferencia': 0
-//     };
-//     
-//     ventas.forEach(v => {
-//         if (v.ventas_pagos && v.ventas_pagos.length > 0) {
-//             v.ventas_pagos.forEach(p => {
-//                 if (metodos[p.metodo] !== undefined) {
-//                     metodos[p.metodo] += p.monto;
-//                 }
-//             });
-//         } else {
-//             // Fallback si no hay detalle de pagos
-//             metodos['Efectivo'] += v.total;
-//         }
-//     });
-//     
-//     const ctx = document.getElementById('chartMetodosPago');
-//     
-//     if (chartMetodosPago) {
-//         chartMetodosPago.destroy();
-//     }
-//     
-//     chartMetodosPago = new Chart(ctx, {
-//         type: 'doughnut',
-//         data: {
-//             labels: Object.keys(metodos),
-//             datasets: [{
-//                 data: Object.values(metodos),
-//                 backgroundColor: [
-//                     'rgb(34, 197, 94)',
-//                     'rgb(59, 130, 246)',
-//                     'rgb(168, 85, 247)'
-//                 ],
-//                 borderWidth: 0
-//             }]
-//         },
-//         options: {
-//             responsive: true,
-//             maintainAspectRatio: false,
-//             plugins: {
-//                 legend: {
-//                     position: 'bottom'
-//                 },
-//                 tooltip: {
-//                     callbacks: {
-//                         label: (context) => {
-//                             const label = context.label || '';
-//                             const value = '$' + formatoMoneda(context.parsed);
-//                             const total = context.dataset.data.reduce((a, b) => a + b, 0);
-//                             const percentage = ((context.parsed / total) * 100).toFixed(1);
-//                             return `${label}: ${value} (${percentage}%)`;
-//                         }
-//                     }
-//                 }
-//             }
-//         }
-//     });
-// }
-
-// DEPRECATED: Dashboard fusionado con POS
-// async function generarGraficoTopProductos(periodo) {
-//     try {
-//         const fechaInicio = new Date();
-//         fechaInicio.setDate(fechaInicio.getDate() - periodo);
-//         
-//         const { data: items, error } = await supabaseClient
-//             .from('ventas_items')
-//             .select('producto_nombre, cantidad, ventas!inner(created_at)')
-//             .gte('ventas.created_at', fechaInicio.toISOString());
-//         
-//         if (error) throw error;
-//         
-//         // Agrupar por producto
-//         const productosMap = {};
-//         items.forEach(item => {
-//             const nombre = item.producto_nombre;
-//             if (!productosMap[nombre]) {
-//                 productosMap[nombre] = 0;
-//             }
-//             productosMap[nombre] += item.cantidad;
-//         });
-//         
-//         // Ordenar y tomar top 10
-//         const topProductos = Object.entries(productosMap)
-//             .sort((a, b) => b[1] - a[1])
-//             .slice(0, 10);
-//         
-//         const labels = topProductos.map(p => p[0]);
-//         const data = topProductos.map(p => p[1]);
-//         
-//         const ctx = document.getElementById('chartTopProductos');
-//         
-//         if (chartTopProductos) {
-//             chartTopProductos.destroy();
-//         }
-//         
-//         chartTopProductos = new Chart(ctx, {
-//             type: 'bar',
-//             data: {
-//                 labels: labels,
-//                 datasets: [{
-//                     label: 'Unidades Vendidas',
-//                     data: data,
-//                     backgroundColor: 'rgba(99, 102, 241, 0.8)',
-//                     borderColor: 'rgb(99, 102, 241)',
-//                     borderWidth: 1
-//                 }]
-//             },
-//             options: {
-//                 responsive: true,
-//                 maintainAspectRatio: false,
-//                 indexAxis: 'y',
-//                 plugins: {
-//                     legend: {
-//                         display: false
-//                     }
-//                 },
-//                 scales: {
-//                     x: {
-//                         beginAtZero: true
-//                     }
-//                 }
-//             }
-//         });
-//         
-//     } catch (error) {
-//         console.error('Error generando top productos:', error);
-//     }
-// }
-
-// DEPRECATED: Dashboard fusionado con POS
-// function generarTablaVendedores(ventas) {
-//     const vendedoresMap = {};
-//     
-//     ventas.forEach(v => {
-//         const vendedor = v.vendedor_nombre || 'Sin asignar';
-//         if (!vendedoresMap[vendedor]) {
-//             vendedoresMap[vendedor] = {
-//                 numVentas: 0,
-//                 total: 0
-//             };
-//         }
-//         vendedoresMap[vendedor].numVentas++;
-//         vendedoresMap[vendedor].total += v.total;
-//     });
-//     
-//     const vendedoresArray = Object.entries(vendedoresMap)
-//         .map(([nombre, datos]) => ({
-//             nombre,
-//             ...datos
-//         }))
-//         .sort((a, b) => b.total - a.total);
-//     
-//     const tbody = document.getElementById('tablaVendedores');
-//     
-//     if (vendedoresArray.length === 0) {
-//         tbody.innerHTML = '<tr><td colspan="3" class="text-center">No hay datos</td></tr>';
-//         return;
-//     }
-//     
-//     tbody.innerHTML = vendedoresArray.map((v, index) => {
-//         const medalla = index === 0 ? '🥇' : index === 1 ? '🥈' : index === 2 ? '🥉' : '';
-//         return `
-//             <tr>
-//                 <td><strong>${medalla} ${v.nombre}</strong></td>
-//                 <td>${v.numVentas}</td>
-//                 <td><strong>$${formatoMoneda(v.total)}</strong></td>
-//             </tr>
-//         `;
-//     }).join('');
-// }
-
-// DEPRECATED: Dashboard fusionado con POS
-// async function mostrarStockCritico() {
-//     // Cargar productos actualizados si el array está vacío
-//     if (productos.length === 0) {
-//         try {
-//             const { data, error } = await supabaseClient
-//                 .from('productos')
-//                 .select('*')
-//                 .order('nombre', { ascending: true });
-//             
-//             if (!error && data) {
-//                 productos = data;
-//             }
-//         } catch (error) {
-//             console.error('Error cargando productos:', error);
-//         }
-//     }
-//     
-//     const productosCriticos = productos.filter(p => p.stock <= (p.stock_minimo || 5));
-//     
-//     const container = document.getElementById('stockCritico');
-//     
-//     if (productosCriticos.length === 0) {
-//         container.innerHTML = '<p style="color: hsl(142 76% 36%);">✅ Todos los productos tienen stock suficiente</p>';
-//         return;
-//     }
-//     
-//     container.innerHTML = productosCriticos.map(p => {
-//         const critico = p.stock === 0;
-//         return `
-//             <div class="stock-alert-item ${critico ? 'critico' : 'bajo'}">
-//                 <div>
-//                     <strong>${p.nombre}</strong>
-//                     <p>${p.marca} - ${p.categoria}</p>
-//                 </div>
-//                 <div class="stock-badge ${critico ? 'badge-danger' : 'badge-warning'}">
-//                     ${critico ? '🔴 Sin stock' : '🟡 Stock bajo: ' + Math.floor(p.stock)}
-//                 </div>
-//             </div>
-//         `;
-//     }).join('');
-// }
-
-// DEPRECATED: Dashboard fusionado con POS
-// function actualizarDashboard() {
-//     cargarDashboard();
-// }
+// Chart variables are now declared globally near the top of the file
 
 // ===================================
 // GESTIÓN MASIVA DE PRECIOS

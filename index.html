@@ -348,10 +348,15 @@
             <div id="salesView" class="view-container" style="display: none;">
                 <div class="view-header">
                     <div class="view-title">
-                        <h2>Historial de Ventas</h2>
-                        <p class="view-subtitle">Registro de transacciones</p>
+                        <h2>📊 Análisis de Ventas</h2>
+                        <p class="view-subtitle">Dashboard y registro de transacciones</p>
                     </div>
                     <div class="view-actions">
+                        <select id="periodoVentas" class="form-select" onchange="actualizarVentas()" style="min-width: 160px;">
+                            <option value="7">Últimos 7 días</option>
+                            <option value="30" selected>Últimos 30 días</option>
+                            <option value="90">Últimos 90 días</option>
+                        </select>
                         <button class="btn-logout-header" onclick="handleLogout()" title="Cerrar sesión">
                             <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                                 <path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4"/>
@@ -363,55 +368,110 @@
                 </div>
 
                 <div class="sales-content">
-                    <div class="sales-stats">
-                        <div class="stat-card-large">
-                            <div class="stat-icon bg-green">
-                                <svg width="28" height="28" viewBox="0 0 20 20" fill="none">
-                                    <path d="M12 2v6h6M3 10a7 7 0 019-6.71M3 10h6m-6 0a7 7 0 009 6.71" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-                                </svg>
-                            </div>
-                            <div class="stat-content">
-                                <p class="stat-label">Ventas del Día</p>
-                                <p class="stat-value-large" id="ventasHoy">$0</p>
+                    <!-- SECCIÓN 1: KPIs Expandidos -->
+                    <div class="kpi-grid" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 16px; margin-bottom: 24px;">
+                        <div class="kpi-card" style="background: hsl(var(--card)); border: 1px solid hsl(var(--border)); border-radius: 12px; padding: 20px;">
+                            <div style="display: flex; align-items: center; gap: 12px;">
+                                <div class="kpi-icon bg-green" style="width: 48px; height: 48px; border-radius: 12px; background: rgba(34, 197, 94, 0.1); display: flex; align-items: center; justify-content: center; font-size: 24px;">💰</div>
+                                <div class="kpi-content">
+                                    <p class="kpi-label" style="font-size: 13px; color: hsl(var(--muted-foreground)); margin: 0 0 4px 0;">Ventas Hoy</p>
+                                    <p class="kpi-value" id="kpiVentasHoy" style="font-size: 24px; font-weight: 700; margin: 0;">$0</p>
+                                </div>
                             </div>
                         </div>
-                        <div class="stat-card-large">
-                            <div class="stat-icon bg-blue">
-                                <svg width="28" height="28" viewBox="0 0 20 20" fill="none">
-                                    <path d="M3 3v14a2 2 0 002 2h14M7 13l4-4 3 3 5-5" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-                                </svg>
+
+                        <div class="kpi-card" style="background: hsl(var(--card)); border: 1px solid hsl(var(--border)); border-radius: 12px; padding: 20px;">
+                            <div style="display: flex; align-items: center; gap: 12px;">
+                                <div class="kpi-icon bg-blue" style="width: 48px; height: 48px; border-radius: 12px; background: rgba(59, 130, 246, 0.1); display: flex; align-items: center; justify-content: center; font-size: 24px;">📅</div>
+                                <div class="kpi-content">
+                                    <p class="kpi-label" style="font-size: 13px; color: hsl(var(--muted-foreground)); margin: 0 0 4px 0;">Ventas Semana</p>
+                                    <p class="kpi-value" id="kpiVentasSemana" style="font-size: 24px; font-weight: 700; margin: 0;">$0</p>
+                                </div>
                             </div>
-                            <div class="stat-content">
-                                <p class="stat-label">Total Transacciones</p>
-                                <p class="stat-value-large" id="totalTransacciones">0</p>
+                        </div>
+
+                        <div class="kpi-card" style="background: hsl(var(--card)); border: 1px solid hsl(var(--border)); border-radius: 12px; padding: 20px;">
+                            <div style="display: flex; align-items: center; gap: 12px;">
+                                <div class="kpi-icon bg-purple" style="width: 48px; height: 48px; border-radius: 12px; background: rgba(168, 85, 247, 0.1); display: flex; align-items: center; justify-content: center; font-size: 24px;">📆</div>
+                                <div class="kpi-content">
+                                    <p class="kpi-label" style="font-size: 13px; color: hsl(var(--muted-foreground)); margin: 0 0 4px 0;">Ventas Mes</p>
+                                    <p class="kpi-value" id="kpiVentasMes" style="font-size: 24px; font-weight: 700; margin: 0;">$0</p>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="kpi-card" style="background: hsl(var(--card)); border: 1px solid hsl(var(--border)); border-radius: 12px; padding: 20px;">
+                            <div style="display: flex; align-items: center; gap: 12px;">
+                                <div class="kpi-icon bg-orange" style="width: 48px; height: 48px; border-radius: 12px; background: rgba(251, 146, 60, 0.1); display: flex; align-items: center; justify-content: center; font-size: 24px;">🛒</div>
+                                <div class="kpi-content">
+                                    <p class="kpi-label" style="font-size: 13px; color: hsl(var(--muted-foreground)); margin: 0 0 4px 0;">Ticket Promedio</p>
+                                    <p class="kpi-value" id="kpiTicketPromedio" style="font-size: 24px; font-weight: 700; margin: 0;">$0</p>
+                                </div>
                             </div>
                         </div>
                     </div>
 
-                    <div class="sales-table-container">
-                        <table class="sales-table" id="salesTable">
-                            <thead>
-                                <tr>
-                                    <th>ID</th>
-                                    <th>Fecha/Hora</th>
-                                    <th>Vendedor</th>
-                                    <th>Productos</th>
-                                    <th>Total</th>
-                                    <th>Método Pago</th>
-                                    <th>Acciones</th>
-                                </tr>
-                            </thead>
-                            <tbody id="salesTableBody">
-                                <tr>
-                                    <td colspan="7" class="text-center">
-                                        <div class="loading-state">
-                                            <div class="spinner"></div>
-                                            <p>Cargando ventas...</p>
-                                        </div>
-                                    </td>
-                                </tr>
-                            </tbody>
-                        </table>
+                    <!-- SECCIÓN 2: Gráficos -->
+                    <div class="charts-grid" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(400px, 1fr)); gap: 20px; margin-bottom: 24px;">
+                        <!-- Gráfico Ventas Diarias -->
+                        <div class="chart-card" style="background: hsl(var(--card)); border: 1px solid hsl(var(--border)); border-radius: 12px; padding: 20px;">
+                            <h3 style="font-size: 16px; font-weight: 600; margin: 0 0 16px 0;">📈 Tendencia de Ventas</h3>
+                            <div style="height: 300px; position: relative;">
+                                <canvas id="chartVentasDiarias"></canvas>
+                            </div>
+                        </div>
+
+                        <!-- Gráfico Métodos de Pago -->
+                        <div class="chart-card" style="background: hsl(var(--card)); border: 1px solid hsl(var(--border)); border-radius: 12px; padding: 20px;">
+                            <h3 style="font-size: 16px; font-weight: 600; margin: 0 0 16px 0;">💳 Métodos de Pago</h3>
+                            <div style="height: 300px; position: relative;">
+                                <canvas id="chartMetodosPago"></canvas>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Gráfico Top Productos (ancho completo) -->
+                    <div class="chart-card" style="background: hsl(var(--card)); border: 1px solid hsl(var(--border)); border-radius: 12px; padding: 20px; margin-bottom: 24px;">
+                        <h3 style="font-size: 16px; font-weight: 600; margin: 0 0 16px 0;">🏆 Top 10 Productos Más Vendidos</h3>
+                        <div style="height: 350px; position: relative;">
+                            <canvas id="chartTopProductos"></canvas>
+                        </div>
+                    </div>
+
+                    <!-- SECCIÓN 3: Tabla de Vendedores -->
+                    <div class="vendedores-card" style="background: hsl(var(--card)); border: 1px solid hsl(var(--border)); border-radius: 12px; padding: 20px; margin-bottom: 24px;">
+                        <h3 style="font-size: 16px; font-weight: 600; margin: 0 0 16px 0;">👥 Ranking de Vendedores</h3>
+                        <div id="tablaVendedores"></div>
+                    </div>
+
+                    <!-- SECCIÓN 4: Tabla de Historial (la actual, mantenerla) -->
+                    <div class="sales-history-card" style="background: hsl(var(--card)); border: 1px solid hsl(var(--border)); border-radius: 12px; padding: 20px;">
+                        <h3 style="font-size: 16px; font-weight: 600; margin: 0 0 16px 0;">📋 Historial de Transacciones</h3>
+                        <div class="sales-table-container">
+                            <table class="sales-table" id="salesTable">
+                                <thead>
+                                    <tr>
+                                        <th>ID</th>
+                                        <th>Fecha/Hora</th>
+                                        <th>Vendedor</th>
+                                        <th>Productos</th>
+                                        <th>Total</th>
+                                        <th>Método Pago</th>
+                                        <th>Acciones</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="salesTableBody">
+                                    <tr>
+                                        <td colspan="7" class="text-center">
+                                            <div class="loading-state">
+                                                <div class="spinner"></div>
+                                                <p>Cargando ventas...</p>
+                                            </div>
+                                        </td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -757,7 +817,7 @@
     <!-- SCRIPTS -->
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
     <script src="supabase-config.js?v=20260119-fix"></script>
     <script src="script.js?v=20260119-fix"></script>
 </body>
