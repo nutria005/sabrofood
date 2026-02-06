@@ -1,0 +1,12 @@
+__pycache__/
+*.pyc
+.DS_Store
+node_modules/
+supabase-config.js
+
+# Archivos SQL con información sensible (excepto migrations)
+!database/migration.sql
+estructura_base_datos.sql
+productos_parte_1_economicos.sql
+productos_parte_2_premium.sql
+productos_parte_3_final.sql
