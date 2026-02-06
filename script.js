@@ -568,6 +568,14 @@ function cambiarVista(vista) {
         cargarInventario();
     } else if (vista === 'sales') {
         cargarVentas();
+    } else if (vista === 'pos') {
+        // Auto-focus en el campo de escáner
+        setTimeout(() => {
+            const inputCodigo = document.getElementById('inputCodigoBarras');
+            if (inputCodigo) {
+                inputCodigo.focus();
+            }
+        }, 100);
     } else if (vista === 'asignar') {
         cargarProductosSinCodigo();
     } else if (vista === 'asistencia') {
@@ -725,8 +733,7 @@ function renderProductos() {
         return `
             <div class="product-card" 
                  data-producto-id="${producto.id}"
-                 onclick="${stockCero ? '' : 'agregarAlCarrito(' + producto.id + ')'}" 
-                 ${stockCero ? 'style="opacity: 0.6; cursor: not-allowed;"' : ''}>
+                 ${stockCero ? 'style="opacity: 0.6; cursor: not-allowed;" data-sin-stock="true"' : 'data-sin-stock="false"'}>
                 <div class="product-card-header">
                     <div class="product-name">${producto.nombre}</div>
                     <span class="product-stock ${stockClass}">${stockText}</span>
@@ -736,6 +743,24 @@ function renderProductos() {
             </div>
         `;
     }).join('');
+    
+    // Agregar event listeners para soporte touch y click
+    setTimeout(() => {
+        document.querySelectorAll('.product-card').forEach(card => {
+            const productoId = parseInt(card.dataset.productoId);
+            const sinStock = card.dataset.sinStock === 'true';
+            
+            if (!sinStock) {
+                // Soportar tanto click como touch
+                card.addEventListener('click', () => agregarAlCarrito(productoId));
+                card.addEventListener('touchend', (e) => {
+                    e.preventDefault();
+                    agregarAlCarrito(productoId);
+                });
+                card.style.cursor = 'pointer';
+            }
+        });
+    }, 100);
 }
 
 function agregarAlCarrito(productoId) {
@@ -881,17 +906,39 @@ document.addEventListener('DOMContentLoaded', () => {
     // Event listener para búsqueda por código de barras
     const inputCodigoBarras = document.getElementById('inputCodigoBarras');
     if (inputCodigoBarras) {
+        // Auto-focus al cargar
+        inputCodigoBarras.focus();
+        
+        // Mostrar/ocultar botón de limpiar
+        inputCodigoBarras.addEventListener('input', (e) => {
+            const btnClear = document.querySelector('.btn-clear-search');
+            if (btnClear) {
+                btnClear.style.display = e.target.value ? 'block' : 'none';
+            }
+        });
+        
         inputCodigoBarras.addEventListener('keypress', async (e) => {
             if (e.key === 'Enter') {
+                e.preventDefault();
                 const codigo = e.target.value.trim();
                 if (codigo) {
                     const producto = await buscarPorCodigoBarras(codigo);
                     if (producto) {
                         agregarAlCarrito(producto.id);
-                        mostrarNotificacion(`✅ ${producto.nombre} agregado al carrito`, 'success');
+                        mostrarNotificacion(`✅ ${producto.nombre} agregado`, 'success');
                         e.target.value = '';
+                        e.target.focus(); // Mantener focus para siguiente escaneo
+                        
+                        // Ocultar botón limpiar
+                        const btnClear = document.querySelector('.btn-clear-search');
+                        if (btnClear) btnClear.style.display = 'none';
                     } else {
-                        mostrarNotificacion('❌ Código de barras no encontrado', 'error');
+                        mostrarNotificacion('❌ Código no encontrado. Intenta buscar por nombre', 'warning');
+                        // Opcional: mover focus al campo de búsqueda manual
+                        setTimeout(() => {
+                            const searchInput = document.getElementById('searchInput');
+                            if (searchInput) searchInput.focus();
+                        }, 1500);
                     }
                 }
             }
@@ -2287,6 +2334,21 @@ async function buscarPorCodigoBarras(codigoBarra) {
     } catch (error) {
         console.error('Error buscando producto:', error);
         return null;
+    }
+}
+
+// Limpiar campo de búsqueda por código de barras
+function limpiarBusquedaCodigo() {
+    const inputCodigo = document.getElementById('inputCodigoBarras');
+    const btnClear = document.querySelector('.btn-clear-search');
+    
+    if (inputCodigo) {
+        inputCodigo.value = '';
+        inputCodigo.focus(); // Mantener focus para siguiente escaneo
+    }
+    
+    if (btnClear) {
+        btnClear.style.display = 'none';
     }
 }
 
