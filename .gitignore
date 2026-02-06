@@ -2,7 +2,7 @@ __pycache__/
 *.pyc
 .DS_Store
 node_modules/
-supabase-config.js
+# supabase-config.js (temporalmente permitido)
 
 # Archivos SQL con información sensible (excepto migrations)
 !database/migration.sql
