@@ -4,6 +4,10 @@ __pycache__/
 node_modules/
 # supabase-config.js (temporalmente permitido)
 
+# Manuales con información sensible (uso interno)
+GUIA_RAPIDA_INTERNA.md
+MANUAL_DE_USO.md
+
 # Archivos SQL con información sensible (excepto migrations)
 !database/migration.sql
 estructura_base_datos.sql
