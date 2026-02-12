@@ -1,19 +1,19 @@
 // Sabrofood PWA Service Worker
-// Versión: 1.0.1
+// Versión: 1.0.2
 // Fecha: 12-02-2026
 
-const CACHE_VERSION = 'sabrofood-v1.0.1-20260212';
+const CACHE_VERSION = 'sabrofood-v1.0.2-20260212';
 const CACHE_NAME = `${CACHE_VERSION}-static`;
 const DATA_CACHE = `${CACHE_VERSION}-data`;
 
 // Archivos a cachear para funcionamiento offline
 const STATIC_ASSETS = [
-  './',
-  './index.html',
-  './style.css',
-  './script.js',
-  './bodega-module.js',
-  './manifest.json',
+  '/sabrofood/',
+  '/sabrofood/index.html',
+  '/sabrofood/style.css',
+  '/sabrofood/script.js',
+  '/sabrofood/bodega-module.js',
+  '/sabrofood/manifest.json',
   // Fuentes de Google
   'https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap',
   // CDN externas (QR y Charts)

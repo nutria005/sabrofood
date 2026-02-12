@@ -2,8 +2,8 @@
   "name": "Sabrofood - Sistema POS",
   "short_name": "Sabrofood",
   "description": "Sistema de Punto de Venta y Gestión de Pedidos",
-  "start_url": "./",
-  "scope": "./",
+  "start_url": "/sabrofood/",
+  "scope": "/sabrofood/",
   "display": "standalone",
   "background_color": "#42B4E6",
   "theme_color": "#42B4E6",
@@ -65,14 +65,14 @@
       "name": "POS",
       "short_name": "POS",
       "description": "Abrir punto de venta",
-      "url": "/index.html?view=pos",
+      "url": "/sabrofood/?view=pos",
       "icons": [{ "src": "icons/icon-192.png", "sizes": "192x192" }]
     },
     {
       "name": "Pedidos",
       "short_name": "Pedidos",
       "description": "Ver pedidos",
-      "url": "/index.html?view=pedidos",
+      "url": "/sabrofood/?view=pedidos",
       "icons": [{ "src": "icons/icon-192.png", "sizes": "192x192" }]
     }
   ]
