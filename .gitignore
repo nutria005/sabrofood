@@ -2,7 +2,10 @@ __pycache__/
 *.pyc
 .DS_Store
 node_modules/
-# supabase-config.js (temporalmente permitido)
+
+# IMPORTANTE: Para GitHub Pages, supabase-config.js DEBE subirse
+# El ANON_KEY es público por diseño - La seguridad está en RLS de Supabase
+# supabase-config.js
 
 # Manuales con información sensible (uso interno)
 GUIA_RAPIDA_INTERNA.md

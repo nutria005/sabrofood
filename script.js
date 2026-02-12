@@ -35,10 +35,10 @@ function forzarActualizacion() {
     if (confirm('Esto borrará el caché y recargará la aplicación. ¿Continuar?')) {
         // Borrar localStorage
         localStorage.clear();
-        
+
         // Borrar sessionStorage
         sessionStorage.clear();
-        
+
         // Desregistrar Service Workers si existen
         if ('serviceWorker' in navigator) {
             navigator.serviceWorker.getRegistrations().then(function(registrations) {
@@ -47,7 +47,7 @@ function forzarActualizacion() {
                 }
             });
         }
-        
+
         // Borrar cache API si existe
         if ('caches' in window) {
             caches.keys().then(function(names) {
@@ -56,7 +56,7 @@ function forzarActualizacion() {
                 }
             });
         }
-        
+
         // Recargar con timestamp único para evitar caché
         const timestamp = new Date().getTime();
         window.location.href = window.location.origin + window.location.pathname + '?nocache=' + timestamp;
@@ -78,16 +78,16 @@ window.addEventListener('pageshow', function(event) {
 // Verificar si hay nueva versión disponible
 function verificarVersion() {
     const versionGuardada = localStorage.getItem('app_version');
-    
+
     if (versionGuardada && versionGuardada !== APP_VERSION) {
         console.log(`🔄 Nueva versión detectada: ${versionGuardada} → ${APP_VERSION}`);
-        
+
         // Mostrar notificación de actualización
         if (confirm('¡Hay una nueva versión disponible! ¿Deseas actualizar ahora?')) {
             forzarActualizacion();
         }
     }
-    
+
     localStorage.setItem('app_version', APP_VERSION);
 }
 
@@ -101,15 +101,15 @@ document.addEventListener('DOMContentLoaded', () => {
 async function initApp() {
     // Verificar si hay sesión guardada (nuevo sistema con validación de BD)
     const sesionRestaurada = await verificarSesionGuardada();
-    
+
     if (sesionRestaurada) {
         console.log('✅ Sesión restaurada automáticamente');
         return;
     }
-    
+
     // Limpiar sesión antigua si existe
     localStorage.removeItem('sabrofood_user');
-    
+
     // Mostrar pantalla de login
     document.getElementById('loginScreen').style.display = 'flex';
     document.getElementById('mainApp').style.display = 'none';
@@ -168,7 +168,7 @@ function actualizarProductoEnTiempoReal(productoActualizado) {
     if (productCard) {
         const stockElement = productCard.querySelector('.product-stock');
         const stock = productoActualizado.stock || 0;
-        
+
         // Actualizar número de stock
         if (stock === 0) {
             stockElement.textContent = 'Sin stock';
@@ -200,10 +200,10 @@ function actualizarProductoEnTiempoReal(productoActualizado) {
  */
 function actualizarStockEnCarrito(productoActualizado) {
     const itemEnCarrito = carrito.find(item => item.id === productoActualizado.id);
-    
+
     if (itemEnCarrito) {
         itemEnCarrito.stock = productoActualizado.stock;
-        
+
         // Si la cantidad en carrito supera el stock disponible
         if (itemEnCarrito.cantidad > productoActualizado.stock) {
             mostrarNotificacion(
@@ -211,7 +211,7 @@ function actualizarStockEnCarrito(productoActualizado) {
                 'warning'
             );
         }
-        
+
         renderCarrito();
     }
 }
@@ -237,7 +237,7 @@ async function validarStockAntesDeVenta() {
         // Verificar cada producto
         for (const item of carrito) {
             const productoActual = productosActuales.find(p => p.id === item.id);
-            
+
             if (!productoActual) {
                 mostrarNotificacion(`❌ Producto "${item.nombre}" no encontrado`, 'error');
                 return false;
@@ -250,14 +250,14 @@ async function validarStockAntesDeVenta() {
                     `Alguien más acaba de comprar este producto.`,
                     'error'
                 );
-                
+
                 // Actualizar carrito con stock real
                 item.stock = productoActual.stock;
                 if (item.cantidad > productoActual.stock) {
                     item.cantidad = productoActual.stock;
                 }
                 renderCarrito();
-                
+
                 return false;
             }
         }
@@ -290,31 +290,31 @@ async function handleLogin() {
     const username = document.getElementById('loginUsername').value;
     const password = document.getElementById('loginPassword').value;
     const rememberDevice = document.getElementById('rememberDevice').checked;
-    
+
     if (!username) {
         mostrarNotificacion('Por favor selecciona un vendedor', 'error');
         return;
     }
-    
+
     if (!password) {
         mostrarNotificacion('Por favor ingresa tu contraseña', 'error');
         return;
     }
-    
+
     // Deshabilitar botón durante validación
     const loginBtn = document.getElementById('loginBtn');
     loginBtn.disabled = true;
     loginBtn.innerHTML = '<span>Validando...</span>';
-    
+
     try {
         // Validar credenciales con Supabase
         const { data, error } = await supabaseClient.rpc('validar_login', {
             p_username: username,
             p_password: password
         });
-        
+
         if (error) throw error;
-        
+
         // Si no hay datos, credenciales inválidas
         if (!data || data.length === 0) {
             mostrarNotificacion('Usuario o contraseña incorrectos', 'error');
@@ -327,9 +327,9 @@ async function handleLogin() {
             `;
             return;
         }
-        
+
         const userData = data[0];
-        
+
         // Verificar si usuario está activo
         if (!userData.activo) {
             mostrarNotificacion('Usuario inactivo. Contacta al administrador', 'error');
@@ -342,11 +342,11 @@ async function handleLogin() {
             `;
             return;
         }
-        
+
         // Login exitoso
         currentUser = userData.username;
         currentUserRole = userData.role;
-        
+
         // Guardar en localStorage si marcó "recordar"
         if (rememberDevice) {
             const token = btoa(JSON.stringify({
@@ -356,14 +356,14 @@ async function handleLogin() {
             }));
             localStorage.setItem('sabrofood_session', token);
         }
-        
+
         // Aplicar permisos por rol
         aplicarPermisosRol();
-        
+
         // Ocultar login y mostrar app
         document.getElementById('loginScreen').style.display = 'none';
         document.getElementById('mainApp').style.display = 'grid';
-        
+
         // Actualizar nombre de usuario en la UI
         document.getElementById('sidebarUsername').textContent = currentUser;
         document.getElementById('topUsername').textContent = currentUser;
@@ -373,20 +373,20 @@ async function handleLogin() {
         if (document.getElementById('topUsernameAsistencia')) {
             document.getElementById('topUsernameAsistencia').textContent = currentUser;
         }
-        
+
         // Ir al POS
         cambiarVista('pos');
-        
+
         // Cargar datos
         cargarProductos();
         inicializarRealtime();
-        
+
         // Auto-marcar entrada al iniciar sesión
         marcarEntradaAutomatica();
-        
+
         console.log('✅ Login exitoso:', currentUser, '| Rol:', currentUserRole);
         mostrarNotificacion(`Bienvenido, ${currentUser}`, 'success');
-        
+
     } catch (error) {
         console.error('❌ Error en login:', error);
         mostrarNotificacion('Error al validar credenciales', 'error');
@@ -403,28 +403,28 @@ async function handleLogin() {
 // Función auxiliar para aplicar permisos según rol
 function aplicarPermisosRol() {
     const esAdmin = currentUserRole === 'encargado';
-    
+
     // Botón Asignar Códigos
     document.getElementById('btnAsignarCodigos').style.display = esAdmin ? 'flex' : 'none';
     document.getElementById('btnAsignarCodigosBottom').style.display = esAdmin ? 'flex' : 'none';
-    
+
     // Botón Caja y Gastos
     document.getElementById('btnCajaGastos').style.display = esAdmin ? 'flex' : 'none';
     const btnCajaBottom = document.getElementById('btnCajaGastosBottom');
     if (btnCajaBottom) btnCajaBottom.style.display = esAdmin ? 'flex' : 'none';
-    
+
     // Botón Admin Precios en Inventario
     const btnPreciosInventario = document.getElementById('btnAdminPreciosInventario');
     if (btnPreciosInventario) btnPreciosInventario.style.display = esAdmin ? 'inline-flex' : 'none';
-    
+
     // Ranking de vendedores
     const rankingVendedores = document.getElementById('rankingVendedores');
     if (rankingVendedores) rankingVendedores.style.display = esAdmin ? 'block' : 'none';
-    
+
     // Filtros de asistencia (solo admin)
     const filtrosAsistencia = document.getElementById('filtrosAsistencia');
     if (filtrosAsistencia) filtrosAsistencia.style.display = esAdmin ? 'block' : 'none';
-    
+
     // Columna de acciones en tabla de asistencia (solo admin)
     const thAcciones = document.getElementById('thAcciones');
     if (thAcciones) thAcciones.style.display = esAdmin ? 'table-cell' : 'none';
@@ -436,7 +436,7 @@ async function handleLogout() {
             return;
         }
     }
-    
+
     // Verificar si olvidó marcar salida
     const debeMarcarSalida = await verificarSalidaPendiente();
     if (debeMarcarSalida) {
@@ -445,21 +445,21 @@ async function handleLogout() {
         // Dar tiempo para que se vea la notificación
         await new Promise(resolve => setTimeout(resolve, 1500));
     }
-    
+
     // Desconectar Realtime
     desconectarRealtime();
-    
+
     // Limpiar datos
     currentUser = '';
     currentUserRole = '';
     carrito = [];
     productos = [];
-    
+
     // Limpiar sesión guardada (nuevo sistema)
     localStorage.removeItem('sabrofood_session');
     // Limpiar sesión antigua (por compatibilidad)
     localStorage.removeItem('sabrofood_user');
-    
+
     // Recargar página para estado limpio
     window.location.reload();
 }
@@ -467,60 +467,60 @@ async function handleLogout() {
 // Verificar sesión guardada al cargar
 async function verificarSesionGuardada() {
     const sessionToken = localStorage.getItem('sabrofood_session');
-    
+
     if (!sessionToken) return false;
-    
+
     try {
         // Decodificar token
         const sessionData = JSON.parse(atob(sessionToken));
-        
+
         // Verificar que no sea muy antigua (30 días máximo)
         const thirtyDays = 30 * 24 * 60 * 60 * 1000;
         if (Date.now() - sessionData.timestamp > thirtyDays) {
             localStorage.removeItem('sabrofood_session');
             return false;
         }
-        
+
         // Verificar que el usuario aún existe y está activo
         const { data, error } = await supabaseClient
             .from('usuarios')
             .select('username, role, activo')
             .eq('username', sessionData.username)
             .single();
-        
+
         if (error || !data || !data.activo) {
             localStorage.removeItem('sabrofood_session');
             return false;
         }
-        
+
         // Restaurar sesión
         currentUser = data.username;
         currentUserRole = data.role;
-        
+
         // Aplicar permisos
         aplicarPermisosRol();
-        
+
         // Mostrar app
         document.getElementById('loginScreen').style.display = 'none';
         document.getElementById('mainApp').style.display = 'grid';
-        
+
         // Actualizar UI
         document.getElementById('sidebarUsername').textContent = currentUser;
         document.getElementById('topUsername').textContent = currentUser;
         if (document.getElementById('topUsernameAsistencia')) {
             document.getElementById('topUsernameAsistencia').textContent = currentUser;
         }
-        
+
         // Ir al POS
         cambiarVista('pos');
-        
+
         // Cargar datos
         cargarProductos();
         inicializarRealtime();
-        
+
         console.log('✅ Sesión restaurada:', currentUser);
         return true;
-        
+
     } catch (error) {
         console.error('❌ Error al verificar sesión:', error);
         localStorage.removeItem('sabrofood_session');
@@ -534,12 +534,12 @@ async function verificarSesionGuardada() {
 
 function cambiarVista(vista) {
     currentView = vista;
-    
+
     // Ocultar todas las vistas
     document.querySelectorAll('.view-container').forEach(v => {
         v.style.display = 'none';
     });
-    
+
     // Mostrar vista seleccionada
     const viewMap = {
         'pos': 'posView',
@@ -547,14 +547,15 @@ function cambiarVista(vista) {
         'sales': 'salesView',
         'asignar': 'asignarView',
         'asistencia': 'asistenciaView',
-        'caja': 'cajaView'
+        'caja': 'cajaView',
+        'bodega': 'bodegaView'
     };
-    
+
     const viewId = viewMap[vista];
     if (viewId) {
         document.getElementById(viewId).style.display = 'block';
     }
-    
+
     // Actualizar nav items (sidebar y bottom nav)
     document.querySelectorAll('.nav-item, .bottom-nav-item').forEach(item => {
         item.classList.remove('active');
@@ -562,9 +563,16 @@ function cambiarVista(vista) {
             item.classList.add('active');
         }
     });
-    
+
     // Cargar datos según la vista
     if (vista === 'inventory') {
+        // Marcar filtro "todos" como activo por defecto
+        setTimeout(() => {
+            document.querySelectorAll('.stat-card-clickable').forEach(card => {
+                card.classList.remove('stat-card-active');
+            });
+            document.querySelector('[data-filtro="todos"]')?.classList.add('stat-card-active');
+        }, 100);
         cargarInventario();
     } else if (vista === 'sales') {
         cargarVentas();
@@ -592,7 +600,24 @@ function cambiarVista(vista) {
         }
     } else if (vista === 'caja') {
         cargarDatosCaja();
+    } else if (vista === 'bodega') {
+        // Inicializar módulo de bodega
+        if (typeof cargarSolicitudesReposicion === 'function') {
+            cargarSolicitudesReposicion();
+        }
+        if (typeof cargarStockBodega === 'function') {
+            cargarStockBodega();
+        }
+        if (typeof cargarHistorialSacos === 'function') {
+            cargarHistorialSacos();
+        }
+        if (typeof inicializarRealtimeBodega === 'function') {
+            inicializarRealtimeBodega();
+        }
     }
+
+    // Mostrar/ocultar botón flotante del carrito en móvil
+    mostrarBotonCarritoMobile();
 }
 
 // ===================================
@@ -605,7 +630,7 @@ async function cargarProductos() {
         console.log('🔍 Cliente Supabase:', supabaseClient ? '✅ Conectado' : '❌ No conectado');
         console.log('🌐 URL:', window.location.href);
         console.log('📱 App Version:', APP_VERSION);
-        
+
         if (typeof supabaseClient === 'undefined' || !supabaseClient) {
             console.error('❌ Supabase no está configurado');
             mostrarNotificacion('Error: Supabase no conectado', 'error');
@@ -613,19 +638,19 @@ async function cargarProductos() {
             mostrarProductosMock();
             return;
         }
-        
+
         console.log('🔍 Consultando tabla productos...');
         console.log('📡 Supabase URL:', SUPABASE_CONFIG?.url);
-        
+
         const { data, error } = await supabaseClient
             .from('productos')
             .select('*')
             .order('nombre', { ascending: true });
-        
+
         console.log('📊 Respuesta de Supabase:');
         console.log('  - Productos encontrados:', data ? data.length : 0);
         console.log('  - Error:', error);
-        
+
         if (error) {
             console.error('❌ Error Supabase:', error);
             console.error('   Código:', error.code);
@@ -635,7 +660,7 @@ async function cargarProductos() {
             mostrarProductosMock();
             return;
         }
-        
+
         if (!data || data.length === 0) {
             console.warn('⚠️ No hay productos activos en la base de datos');
             mostrarNotificacion('No hay productos activos', 'warning');
@@ -643,13 +668,13 @@ async function cargarProductos() {
             renderProductos();
             return;
         }
-        
+
         productos = data;
         console.log(`✅ ${productos.length} productos cargados correctamente`);
         console.log('📋 Primeros 3 productos:', productos.slice(0, 3));
         mostrarNotificacion(`${productos.length} productos cargados de Supabase`, 'success');
         renderProductos();
-        
+
     } catch (error) {
         console.error('❌ Error crítico:', error);
         console.error('   Stack:', error.stack);
@@ -679,16 +704,16 @@ function mostrarProductosMock() {
 function renderProductos() {
     const grid = document.getElementById('productosGrid');
     if (!grid) return;
-    
+
     let productosFiltrados = productos;
-    
+
     // Filtrar por categoría
     if (categoriaActual !== 'Todos') {
-        productosFiltrados = productosFiltrados.filter(p => 
+        productosFiltrados = productosFiltrados.filter(p =>
             p.categoria && p.categoria.toLowerCase().includes(categoriaActual.toLowerCase())
         );
     }
-    
+
     // Filtrar por búsqueda
     const searchInput = document.getElementById('searchInput');
     if (searchInput && searchInput.value) {
@@ -699,7 +724,7 @@ function renderProductos() {
             (p.categoria && p.categoria.toLowerCase().includes(search))
         );
     }
-    
+
     if (productosFiltrados.length === 0) {
         grid.innerHTML = `
             <div class="loading-state" style="grid-column: 1/-1;">
@@ -711,69 +736,53 @@ function renderProductos() {
         `;
         return;
     }
-    
+
     console.log(`📊 Mostrando ${productosFiltrados.length} productos`);
-    
+
     grid.innerHTML = productosFiltrados.map(producto => {
         const stock = producto.stock || 0;
         const stockMinimo = producto.stock_minimo || 5;
         const stockBajo = stock <= stockMinimo && stock > 0;
         const stockCero = stock === 0;
-        
+
         let stockClass = 'stock-ok';
         let stockText = Math.floor(stock);
-        
+
         if (stockCero) {
             stockClass = 'stock-out';
             stockText = 'Sin stock';
         } else if (stockBajo) {
             stockClass = 'stock-low';
         }
-        
+
         return `
-            <div class="product-card" 
-                 data-producto-id="${producto.id}"
-                 ${stockCero ? 'style="opacity: 0.6; cursor: not-allowed;" data-sin-stock="true"' : 'data-sin-stock="false"'}>
+            <div class="product-card" data-producto-id="${producto.id}">
                 <div class="product-card-header">
                     <div class="product-name">${producto.nombre}</div>
                     <span class="product-stock ${stockClass}">${stockText}</span>
                 </div>
                 <div class="product-category">${producto.marca || producto.categoria || 'General'}</div>
                 <div class="product-price">$${formatoMoneda(producto.precio || 0)}</div>
+                ${stockCero ?
+                    '<button class="btn-add-product" disabled style="opacity: 0.5; cursor: not-allowed;">Sin stock</button>' :
+                    `<button class="btn-add-product" onclick="agregarAlCarrito(${producto.id})">+ Agregar</button>`
+                }
             </div>
         `;
     }).join('');
-    
-    // Agregar event listeners para soporte touch y click
-    setTimeout(() => {
-        document.querySelectorAll('.product-card').forEach(card => {
-            const productoId = parseInt(card.dataset.productoId);
-            const sinStock = card.dataset.sinStock === 'true';
-            
-            if (!sinStock) {
-                // Soportar tanto click como touch
-                card.addEventListener('click', () => agregarAlCarrito(productoId));
-                card.addEventListener('touchend', (e) => {
-                    e.preventDefault();
-                    agregarAlCarrito(productoId);
-                });
-                card.style.cursor = 'pointer';
-            }
-        });
-    }, 100);
 }
 
 function agregarAlCarrito(productoId) {
     const producto = productos.find(p => p.id === productoId);
     if (!producto) return;
-    
+
     if (producto.stock <= 0) {
         mostrarNotificacion('Producto sin stock', 'error');
         return;
     }
-    
+
     const itemExistente = carrito.find(item => item.id === producto.id);
-    
+
     if (itemExistente) {
         if (itemExistente.cantidad >= producto.stock) {
             mostrarNotificacion('Stock insuficiente', 'warning');
@@ -789,7 +798,7 @@ function agregarAlCarrito(productoId) {
             stock: producto.stock
         });
     }
-    
+
     renderCarrito();
     console.log('🛒 Producto agregado:', producto.nombre);
 }
@@ -798,7 +807,7 @@ function renderCarrito() {
     const carritoItems = document.getElementById('carritoItems');
     const totalEl = document.getElementById('totalAmount');
     const btnCobrar = document.getElementById('btnCobrar');
-    
+
     if (carrito.length === 0) {
         carritoItems.innerHTML = `
             <div class="cart-empty">
@@ -815,11 +824,14 @@ function renderCarrito() {
         totalEl.textContent = '$0';
         btnCobrar.disabled = true;
         totalVenta = 0;
+
+        // Actualizar badge móvil
+        actualizarBadgeCarritoMobile();
         return;
     }
-    
+
     totalVenta = carrito.reduce((sum, item) => sum + (item.precio * item.cantidad), 0);
-    
+
     carritoItems.innerHTML = carrito.map((item, index) => `
         <div class="cart-item">
             <div class="cart-item-header">
@@ -840,25 +852,28 @@ function renderCarrito() {
             </div>
         </div>
     `).join('');
-    
+
     totalEl.textContent = '$' + formatoMoneda(totalVenta);
     btnCobrar.disabled = false;
+
+    // Actualizar badge móvil
+    actualizarBadgeCarritoMobile();
 }
 
 function cambiarCantidad(index, delta) {
     const item = carrito[index];
     const newQty = item.cantidad + delta;
-    
+
     if (newQty <= 0) {
         removerDelCarrito(index);
         return;
     }
-    
+
     if (newQty > item.stock) {
         mostrarNotificacion('Stock insuficiente', 'warning');
         return;
     }
-    
+
     item.cantidad = newQty;
     renderCarrito();
 }
@@ -870,10 +885,67 @@ function removerDelCarrito(index) {
 
 function limpiarCarrito() {
     if (carrito.length === 0) return;
-    
+
     if (confirm('¿Deseas limpiar el carrito?')) {
         carrito = [];
         renderCarrito();
+    }
+}
+
+// ===================================
+// CARRITO MÓVIL
+// ===================================
+
+function toggleCarritoMobile() {
+    const posCart = document.querySelector('.pos-cart');
+    const overlay = document.getElementById('overlayCarritoMobile');
+
+    const isActive = posCart.classList.contains('active');
+
+    if (isActive) {
+        cerrarCarritoMobile();
+    } else {
+        abrirCarritoMobile();
+    }
+}
+
+function abrirCarritoMobile() {
+    const posCart = document.querySelector('.pos-cart');
+    const overlay = document.getElementById('overlayCarritoMobile');
+
+    posCart.classList.add('active');
+    overlay.classList.add('active');
+    document.body.style.overflow = 'hidden';
+}
+
+function cerrarCarritoMobile() {
+    const posCart = document.querySelector('.pos-cart');
+    const overlay = document.getElementById('overlayCarritoMobile');
+
+    posCart.classList.remove('active');
+    overlay.classList.remove('active');
+    document.body.style.overflow = '';
+}
+
+function actualizarBadgeCarritoMobile() {
+    const badge = document.getElementById('badgeCarritoMobile');
+    const totalItems = carrito.reduce((sum, item) => sum + item.cantidad, 0);
+
+    if (totalItems > 0) {
+        badge.textContent = totalItems;
+        badge.style.display = 'flex';
+    } else {
+        badge.style.display = 'none';
+    }
+}
+
+function mostrarBotonCarritoMobile() {
+    const btnCarritoMobile = document.getElementById('btnCarritoMobile');
+    if (currentView === 'pos') {
+        btnCarritoMobile.classList.add('show');
+    } else {
+        btnCarritoMobile.classList.remove('show');
+        cerrarCarritoMobile();
     }
 }
 
@@ -883,14 +955,14 @@ function limpiarCarrito() {
 
 function filtrarCategoria(categoria) {
     categoriaActual = categoria;
-    
+
     document.querySelectorAll('.category-chip').forEach(chip => {
         chip.classList.remove('active');
         if (chip.dataset.categoria === categoria) {
             chip.classList.add('active');
         }
     });
-    
+
     renderProductos();
 }
 
@@ -902,13 +974,13 @@ document.addEventListener('DOMContentLoaded', () => {
             renderProductos();
         }, 300));
     }
-    
+
     // Event listener para búsqueda por código de barras
     const inputCodigoBarras = document.getElementById('inputCodigoBarras');
     if (inputCodigoBarras) {
         // Auto-focus al cargar
         inputCodigoBarras.focus();
-        
+
         // Mostrar/ocultar botón de limpiar
         inputCodigoBarras.addEventListener('input', (e) => {
             const btnClear = document.querySelector('.btn-clear-search');
@@ -916,7 +988,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 btnClear.style.display = e.target.value ? 'block' : 'none';
             }
         });
-        
+
         inputCodigoBarras.addEventListener('keypress', async (e) => {
             if (e.key === 'Enter') {
                 e.preventDefault();
@@ -928,7 +1000,7 @@ document.addEventListener('DOMContentLoaded', () => {
                         mostrarNotificacion(`✅ ${producto.nombre} agregado`, 'success');
                         e.target.value = '';
                         e.target.focus(); // Mantener focus para siguiente escaneo
-                        
+
                         // Ocultar botón limpiar
                         const btnClear = document.querySelector('.btn-clear-search');
                         if (btnClear) btnClear.style.display = 'none';
@@ -965,26 +1037,26 @@ function debounce(func, wait) {
 
 function abrirModalCobro() {
     if (carrito.length === 0) return;
-    
+
     // Limpiar pagos registrados
     pagosRegistrados = [];
     metodoPagoSeleccionado = 'Efectivo';
-    
+
     document.getElementById('pagoTotal').textContent = '$' + formatoMoneda(totalVenta);
     document.getElementById('montoEntregado').value = '';
     document.getElementById('montoTarjeta').value = '';
     document.getElementById('montoTransferencia').value = '';
     document.getElementById('vueltoAmount').textContent = '$0';
-    
+
     // Limpiar display de pagos
     document.getElementById('pagosRegistrados').innerHTML = '';
     document.getElementById('pagosRegistrados').style.display = 'none';
     document.getElementById('montoPendiente').style.display = 'none';
     document.getElementById('progresoMixto').style.display = 'none';
-    
+
     // Resetear texto del botón
     document.getElementById('btnPagoParcialText').textContent = 'Registrar Pago';
-    
+
     // Resetear botón finalizar
     document.getElementById('btnFinalizarVenta').innerHTML = `
         <span>Finalizar Venta</span>
@@ -992,25 +1064,25 @@ function abrirModalCobro() {
             <path d="M5 10l3 3 7-7" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
         </svg>
     `;
-    
+
     // Activar método efectivo
     document.querySelectorAll('.payment-method').forEach(btn => {
         btn.classList.remove('active');
     });
     document.querySelector('[data-metodo="Efectivo"]').classList.add('active');
-    
+
     // Mostrar solo el área de efectivo
     const areaEfectivo = document.getElementById('areaEfectivo');
     const areaTarjeta = document.getElementById('areaTarjeta');
     const areaTransferencia = document.getElementById('areaTransferencia');
-    
+
     if (areaEfectivo) {
         areaEfectivo.style.display = 'block';
         areaEfectivo.classList.add('visible');
     }
     if (areaTarjeta) areaTarjeta.style.display = 'none';
     if (areaTransferencia) areaTransferencia.style.display = 'none';
-    
+
     const modal = document.getElementById('modalCobro');
     modal.style.display = 'flex';
     modal.classList.add('show');
@@ -1024,36 +1096,36 @@ function cerrarModalCobro() {
 
 function seleccionarMetodo(metodo) {
     metodoPagoSeleccionado = metodo;
-    
+
     document.querySelectorAll('.payment-method').forEach(btn => {
         btn.classList.remove('active');
         if (btn.dataset.metodo === metodo) {
             btn.classList.add('active');
         }
     });
-    
+
     const areaEfectivo = document.getElementById('areaEfectivo');
     const areaTarjeta = document.getElementById('areaTarjeta');
     const areaTransferencia = document.getElementById('areaTransferencia');
-    
+
     // Ocultar todas las áreas
     areaEfectivo.classList.remove('visible');
     areaEfectivo.style.display = 'none';
     areaTarjeta.style.display = 'none';
     areaTransferencia.style.display = 'none';
-    
+
     // Mostrar el área correspondiente
     if (metodo === 'Efectivo') {
         areaEfectivo.style.display = 'block';
         areaEfectivo.classList.add('visible');
     } else if (metodo === 'Tarjeta') {
         areaTarjeta.style.display = 'block';
-        
+
         // Actualizar helper con info de pago mixto
         const helperTarjeta = document.getElementById('helperTarjeta');
         const montoPagado = pagosRegistrados.reduce((sum, p) => sum + p.monto, 0);
         const montoPendiente = totalVenta - montoPagado;
-        
+
         if (montoPagado > 0) {
             helperTarjeta.textContent = `Pendiente: $${formatoMoneda(montoPendiente)} de $${formatoMoneda(totalVenta)}`;
         } else {
@@ -1061,12 +1133,12 @@ function seleccionarMetodo(metodo) {
         }
     } else if (metodo === 'Transferencia') {
         areaTransferencia.style.display = 'block';
-        
+
         // Actualizar helper con info de pago mixto
         const helperTransferencia = document.getElementById('helperTransferencia');
         const montoPagado = pagosRegistrados.reduce((sum, p) => sum + p.monto, 0);
         const montoPendiente = totalVenta - montoPagado;
-        
+
         if (montoPagado > 0) {
             helperTransferencia.textContent = `Pendiente: $${formatoMoneda(montoPendiente)} de $${formatoMoneda(totalVenta)}`;
         } else {
@@ -1085,7 +1157,7 @@ function agregarBillete(monto) {
 function calcularVuelto() {
     const montoEntregado = parseFloat(document.getElementById('montoEntregado').value) || 0;
     const vuelto = montoEntregado - totalVenta;
-    
+
     const vueltoEl = document.getElementById('vueltoAmount');
     if (vuelto >= 0) {
         vueltoEl.textContent = '$' + formatoMoneda(vuelto);
@@ -1100,27 +1172,27 @@ function agregarPagoParcial() {
         mostrarNotificacion('⚠️ Selecciona un método de pago primero', 'error');
         return;
     }
-    
+
     // Calcular monto ya pagado
     const montoPagado = pagosRegistrados.reduce((sum, p) => sum + p.monto, 0);
     const montoPendiente = totalVenta - montoPagado;
-    
+
     if (montoPendiente <= 0) {
         mostrarNotificacion('✅ Ya se completó el pago total. Haz clic en "Finalizar Venta"', 'info');
         return;
     }
-    
+
     let montoPago = 0;
-    
+
     // Obtener monto según método
     if (metodoPagoSeleccionado === 'Efectivo') {
         montoPago = parseFloat(document.getElementById('montoEntregado').value) || 0;
-        
+
         if (montoPago <= 0) {
             mostrarNotificacion('💵 Ingresa el monto en efectivo', 'error');
             return;
         }
-        
+
         // Si paga más de lo pendiente, ajustar al pendiente
         if (montoPago > montoPendiente) {
             mostrarNotificacion(`✅ Se ajustó el monto al pendiente: $${formatoMoneda(montoPendiente)}`, 'info');
@@ -1128,57 +1200,57 @@ function agregarPagoParcial() {
         }
     } else if (metodoPagoSeleccionado === 'Tarjeta') {
         montoPago = parseFloat(document.getElementById('montoTarjeta').value) || 0;
-        
+
         if (montoPago <= 0) {
             mostrarNotificacion('💳 Ingresa el monto con tarjeta', 'error');
             return;
         }
-        
+
         if (montoPago > montoPendiente) {
             mostrarNotificacion(`El monto no puede ser mayor al pendiente ($${formatoMoneda(montoPendiente)})`, 'error');
             return;
         }
     } else if (metodoPagoSeleccionado === 'Transferencia') {
         montoPago = parseFloat(document.getElementById('montoTransferencia').value) || 0;
-        
+
         if (montoPago <= 0) {
             mostrarNotificacion('📱 Ingresa el monto con transferencia', 'error');
             return;
         }
-        
+
         if (montoPago > montoPendiente) {
             mostrarNotificacion(`El monto no puede ser mayor al pendiente ($${formatoMoneda(montoPendiente)})`, 'error');
             return;
         }
     }
-    
+
     // Registrar el pago
     pagosRegistrados.push({
         metodo: metodoPagoSeleccionado,
         monto: montoPago
     });
-    
+
     mostrarNotificacion(`✅ Pago de $${formatoMoneda(montoPago)} registrado`, 'success');
-    
+
     // Actualizar display
     renderPagosRegistrados();
-    
+
     // Limpiar para el siguiente pago
     document.getElementById('montoEntregado').value = '';
     document.getElementById('montoTarjeta').value = '';
     document.getElementById('montoTransferencia').value = '';
     document.getElementById('vueltoAmount').textContent = '$0';
-    
+
     // Resetear selección
     document.querySelectorAll('.payment-method').forEach(btn => {
         btn.classList.remove('active');
     });
     metodoPagoSeleccionado = '';
-    
+
     const areaEfectivo = document.getElementById('areaEfectivo');
     const areaTarjeta = document.getElementById('areaTarjeta');
     const areaTransferencia = document.getElementById('areaTransferencia');
-    
+
     if (areaEfectivo) {
         areaEfectivo.classList.remove('visible');
         areaEfectivo.style.display = 'none';
@@ -1191,7 +1263,7 @@ function renderPagosRegistrados() {
     const container = document.getElementById('pagosRegistrados');
     const pendienteContainer = document.getElementById('montoPendiente');
     const progresoMixto = document.getElementById('progresoMixto');
-    
+
     if (pagosRegistrados.length === 0) {
         container.innerHTML = '';
         container.style.display = 'none';
@@ -1199,18 +1271,18 @@ function renderPagosRegistrados() {
         progresoMixto.style.display = 'none';
         return;
     }
-    
+
     const montoPagado = pagosRegistrados.reduce((sum, p) => sum + p.monto, 0);
     const montoPendiente = totalVenta - montoPagado;
     const porcentajePagado = (montoPagado / totalVenta) * 100;
-    
+
     // Mostrar barra de progreso
     progresoMixto.style.display = 'block';
     document.getElementById('barraProgreso').style.width = porcentajePagado + '%';
     document.getElementById('textoPagado').textContent = `Pagado: $${formatoMoneda(montoPagado)}`;
     document.getElementById('textoFalta').textContent = `Falta: $${formatoMoneda(montoPendiente)}`;
     document.getElementById('contadorMetodos').textContent = `${pagosRegistrados.length} método${pagosRegistrados.length > 1 ? 's' : ''}`;
-    
+
     // Renderizar pagos
     const pagosHTML = pagosRegistrados.map((pago, index) => `
         <div class="pago-registrado">
@@ -1228,7 +1300,7 @@ function renderPagosRegistrados() {
             </button>
         </div>
     `).join('');
-    
+
     container.innerHTML = `
         <div class="pagos-header">
             <h4>📋 Pagos Registrados</h4>
@@ -1243,12 +1315,12 @@ function renderPagosRegistrados() {
         </div>
     `;
     container.style.display = 'block';
-    
+
     // Mostrar pendiente solo si falta
     if (montoPendiente > 0) {
         document.getElementById('pendienteAmount').textContent = '$' + formatoMoneda(montoPendiente);
         pendienteContainer.style.display = 'none'; // Ocultamos esta sección, la info está arriba
-        
+
         // Cambiar texto del botón
         document.getElementById('btnPagoParcialText').textContent = 'Agregar Otro Pago';
     } else {
@@ -1261,7 +1333,7 @@ function renderPagosRegistrados() {
             </svg>
         `;
         document.getElementById('btnPagoParcialText').textContent = 'Registrar Pago';
-        
+
         // Resaltar barra de progreso completa
         document.getElementById('barraProgreso').style.background = 'linear-gradient(90deg, hsl(142 76% 36%), hsl(142 76% 46%))';
     }
@@ -1278,22 +1350,22 @@ async function finalizarVenta() {
         mostrarNotificacion('Error: No hay vendedor seleccionado', 'error');
         return;
     }
-    
+
     if (carrito.length === 0) return;
-    
+
     let metodoPagoFinal;
     let montoPagadoTotal = 0;
-    
+
     // Si hay pagos parciales registrados
     if (pagosRegistrados.length > 0) {
         montoPagadoTotal = pagosRegistrados.reduce((sum, p) => sum + p.monto, 0);
-        
+
         // Verificar si falta completar el pago
         if (montoPagadoTotal < totalVenta) {
             mostrarNotificacion(`Falta completar el pago. Pendiente: $${formatoMoneda(totalVenta - montoPagadoTotal)}`, 'error');
             return;
         }
-        
+
         // Si hay múltiples métodos, el método es "Mixto"
         if (pagosRegistrados.length > 1) {
             metodoPagoFinal = 'Mixto (' + pagosRegistrados.map(p => p.metodo).join(' + ') + ')';
@@ -1306,7 +1378,7 @@ async function finalizarVenta() {
             mostrarNotificacion('Selecciona un método de pago', 'error');
             return;
         }
-        
+
         // Validar pago según método
         if (metodoPagoSeleccionado === 'Efectivo') {
             const montoEntregado = parseFloat(document.getElementById('montoEntregado').value) || 0;
@@ -1315,7 +1387,7 @@ async function finalizarVenta() {
                 return;
             }
         }
-        
+
         metodoPagoFinal = metodoPagoSeleccionado;
     }
 
@@ -1324,7 +1396,7 @@ async function finalizarVenta() {
     if (!stockDisponible) {
         return; // Detener venta si no hay stock
     }
-    
+
     try {
         // Si Supabase está disponible, guardar venta
         if (typeof supabaseClient !== 'undefined') {
@@ -1335,30 +1407,30 @@ async function finalizarVenta() {
                 metodo_pago: metodoPagoFinal,
                 fecha: ahora.toISOString().split('T')[0] // Solo fecha YYYY-MM-DD
             };
-            
+
             // Si es pago mixto, guardar detalle de pagos
             if (pagosRegistrados.length > 0) {
                 venta.pagos_detalle = JSON.stringify(pagosRegistrados);
             }
-            
+
             console.log('💾 Guardando venta:', venta);
-            
+
             const { data: ventaGuardada, error } = await supabaseClient
                 .from('ventas')
                 .insert([venta])
                 .select();
-            
+
             if (error) {
                 console.error('❌ Error guardando venta:', error);
                 mostrarNotificacion('Error al guardar la venta: ' + error.message, 'error');
                 return;
             }
-            
+
             console.log('✅ Venta guardada:', ventaGuardada);
-            
+
             const ventaId = ventaGuardada[0].id;
             console.log('📦 Guardando items de la venta #' + ventaId);
-            
+
             // Guardar items en ventas_items
             const items = carrito.map(item => ({
                 venta_id: ventaId,
@@ -1368,44 +1440,44 @@ async function finalizarVenta() {
                 subtotal: item.precio * item.cantidad,
                 producto_nombre: item.nombre
             }));
-            
+
             const { error: itemsError } = await supabaseClient
                 .from('ventas_items')
                 .insert(items);
-            
+
             if (itemsError) {
                 console.error('❌ Error guardando items:', itemsError);
                 mostrarNotificacion('Advertencia: Items no guardados - ' + itemsError.message, 'warning');
             } else {
                 console.log('✅ Items guardados:', items.length);
             }
-            
+
             // Actualizar stock
             for (const item of carrito) {
                 const nuevoStock = item.stock - item.cantidad;
-                
+
                 const { error: stockError } = await supabaseClient
                     .from('productos')
                     .update({ stock: nuevoStock })
                     .eq('id', item.id);
-                
+
                 if (stockError) {
                     console.error('❌ Error actualizando stock:', stockError);
                 }
             }
         }
-        
+
         mostrarNotificacion('¡Venta completada exitosamente!', 'success');
-        
+
         // Limpiar carrito y cerrar modal
         carrito = [];
         pagosRegistrados = [];
         renderCarrito();
         cerrarModalCobro();
-        
+
         // Recargar productos
         await cargarProductos();
-        
+
     } catch (error) {
         console.error('Error:', error);
         mostrarNotificacion('Error al procesar la venta', 'error');
@@ -1433,28 +1505,96 @@ function confirmarAbrirSaco() {
 // INVENTARIO
 // ===================================
 
+let filtroInventarioActivo = 'todos'; // Variable global para mantener el filtro activo
+
+/**
+ * Filtrar y ordenar inventario por estado
+ */
+function filtrarInventario(filtro) {
+    filtroInventarioActivo = filtro;
+
+    // Actualizar indicador visual
+    document.querySelectorAll('.stat-card-clickable').forEach(card => {
+        card.classList.remove('stat-card-active');
+    });
+    document.querySelector(`[data-filtro="${filtro}"]`)?.classList.add('stat-card-active');
+
+    // Recargar inventario con filtro
+    cargarInventario();
+}
+
 async function cargarInventario() {
     if (productos.length === 0) {
         await cargarProductos();
     }
-    
+
     // Estadísticas
     const totalProductos = productos.length;
     const enStock = productos.filter(p => p.stock > (p.stock_minimo || 5)).length;
     const stockBajo = productos.filter(p => p.stock > 0 && p.stock <= (p.stock_minimo || 5)).length;
     const sinStock = productos.filter(p => p.stock === 0).length;
-    
+
     document.getElementById('totalProductos').textContent = totalProductos;
     document.getElementById('enStock').textContent = enStock;
     document.getElementById('stockBajo').textContent = stockBajo;
     document.getElementById('sinStock').textContent = sinStock;
-    
+
+    // Filtrar y ordenar productos según filtro activo
+    let productosFiltrados = [...productos];
+
+    switch(filtroInventarioActivo) {
+        case 'sinstock':
+            productosFiltrados = productos.filter(p => p.stock === 0);
+            // Ordenar por nombre
+            productosFiltrados.sort((a, b) => a.nombre.localeCompare(b.nombre));
+            break;
+        case 'stockbajo':
+            productosFiltrados = productos.filter(p => p.stock > 0 && p.stock <= (p.stock_minimo || 5));
+            // Ordenar de menor a mayor stock
+            productosFiltrados.sort((a, b) => a.stock - b.stock);
+            break;
+        case 'enstock':
+            productosFiltrados = productos.filter(p => p.stock > (p.stock_minimo || 5));
+            // Ordenar de mayor a menor stock
+            productosFiltrados.sort((a, b) => b.stock - a.stock);
+            break;
+        case 'todos':
+        default:
+            // Sin filtro, ordenar por categoría y nombre
+            productosFiltrados.sort((a, b) => {
+                const categoriaCompare = (a.categoria || '').localeCompare(b.categoria || '');
+                return categoriaCompare !== 0 ? categoriaCompare : a.nombre.localeCompare(b.nombre);
+            });
+            break;
+    }
+
     // Tabla
     const tbody = document.getElementById('inventoryTableBody');
-    tbody.innerHTML = productos.map(p => {
+
+    // Si no hay productos con el filtro activo
+    if (productosFiltrados.length === 0) {
+        let mensajeFiltro = 'No hay productos';
+        switch(filtroInventarioActivo) {
+            case 'sinstock': mensajeFiltro = 'No hay productos sin stock'; break;
+            case 'stockbajo': mensajeFiltro = 'No hay productos con stock bajo'; break;
+            case 'enstock': mensajeFiltro = 'No hay productos en stock'; break;
+        }
+
+        tbody.innerHTML = `
+            <tr>
+                <td colspan="7" style="text-align: center; padding: 40px; color: #6b7280;">
+                    <div style="font-size: 48px; margin-bottom: 12px;">📦</div>
+                    <div style="font-size: 16px; font-weight: 600;">${mensajeFiltro}</div>
+                </td>
+            </tr>
+        `;
+        return;
+    }
+
+    tbody.innerHTML = productosFiltrados.map(p => {
         const stockBajo = p.stock <= (p.stock_minimo || 5);
         const stockCero = p.stock === 0;
-        
+
         let estadoBadge = 'badge-success';
         let estadoTexto = 'En Stock';
         if (stockCero) {
@@ -1464,7 +1604,7 @@ async function cargarInventario() {
             estadoBadge = 'badge-warning';
             estadoTexto = 'Stock Bajo';
         }
-        
+
         // Código de barras status
         let codigoBarrasHTML = '';
         if (p.codigo_barras && p.codigo_barras.trim() !== '') {
@@ -1473,7 +1613,7 @@ async function cargarInventario() {
         } else {
             codigoBarrasHTML = `<span class="sin-codigo">⚠️ Sin código</span>`;
         }
-        
+
         // Botón de eliminar solo para encargado
         const btnEliminar = currentUserRole === 'encargado' ? `
             <button class="btn-icon btn-icon-delete" onclick="eliminarProductoDirecto(${p.id})" title="Eliminar">
@@ -1482,7 +1622,7 @@ async function cargarInventario() {
                 </svg>
             </button>
         ` : '';
-        
+
         return `
             <tr>
                 <td><strong>${p.nombre}</strong></td>
@@ -1523,38 +1663,38 @@ function editarProducto(id) {
 
 async function cargarVentas() {
     const periodo = parseInt(document.getElementById('periodoVentas')?.value, 10) || 30;
-    
+
     try {
         if (typeof supabaseClient === 'undefined' || !supabaseClient) {
             mostrarVentasMock();
             return;
         }
-        
+
         // Cargar ventas del período
         const fechaInicio = new Date();
         fechaInicio.setDate(fechaInicio.getDate() - periodo);
         const fechaInicioStr = fechaInicio.toISOString().split('T')[0]; // Solo YYYY-MM-DD
-        
+
         // Filtrar por vendedor si no es admin
         const esAdmin = currentUserRole === 'encargado';
         let query = supabaseClient
             .from('ventas')
             .select('*')
             .gte('fecha', fechaInicioStr);
-        
+
         // Si no es admin, solo mostrar sus ventas
         if (!esAdmin && currentUser) {
             query = query.eq('vendedor_nombre', currentUser);
         }
-        
+
         const { data: ventas, error } = await query.order('created_at', { ascending: false });
-        
+
         if (error) {
             console.error('Error:', error);
             mostrarVentasMock();
             return;
         }
-        
+
         // Cargar items con nombres de productos por venta
         if (ventas.length > 0) {
             const ventasIds = ventas.map(v => v.id);
@@ -1562,7 +1702,7 @@ async function cargarVentas() {
                 .from('ventas_items')
                 .select('venta_id, cantidad, producto_nombre')
                 .in('venta_id', ventasIds);
-            
+
             if (!itemsError && items) {
                 // Crear mapa de items agrupados por venta
                 const itemsPorVenta = {};
@@ -1575,26 +1715,26 @@ async function cargarVentas() {
                         cantidad: item.cantidad
                     });
                 });
-                
+
                 // Agregar items y conteo a cada venta
                 ventas.forEach(venta => {
                     const items = itemsPorVenta[venta.id] || [];
                     venta.productos = items;
                     venta.total_items = items.reduce((sum, item) => sum + item.cantidad, 0);
                 });
-                
+
                 console.log('📦 Items por venta cargados');
             }
         }
-        
+
         // Calcular KPIs
         calcularKPIs(ventas);
-        
+
         // Generar gráficos
         generarGraficoVentasDiarias(ventas, periodo);
         generarGraficoMetodosPago(ventas);
         await generarGraficoTopProductos(periodo);
-        
+
         // Ranking de vendedores solo para admin
         if (esAdmin) {
             generarTablaVendedores(ventas);
@@ -1604,10 +1744,10 @@ async function cargarVentas() {
             const ranking = document.getElementById('rankingVendedores');
             if (ranking) ranking.style.display = 'none';
         }
-        
+
         // Renderizar tabla de historial
         renderTablaHistorial(ventas);
-        
+
     } catch (error) {
         console.error('Error cargando ventas:', error);
         mostrarNotificacion('Error cargando ventas', 'error');
@@ -1625,7 +1765,7 @@ function calcularKPIs(ventas) {
     inicioSemana.setDate(inicioSemana.getDate() - 7);
     const inicioMes = new Date();
     inicioMes.setMonth(inicioMes.getMonth() - 1);
-    
+
     // Ventas hoy (comparar por fecha exacta)
     const ventasHoy = ventas.filter(v => {
         const ventaFecha = v.fecha.split('T')[0]; // Extraer solo YYYY-MM-DD
@@ -1633,24 +1773,24 @@ function calcularKPIs(ventas) {
     });
     const totalHoy = ventasHoy.reduce((sum, v) => sum + v.total, 0);
     document.getElementById('kpiVentasHoy').textContent = '$' + formatoMoneda(totalHoy);
-    
+
     console.log('📊 KPI Ventas Hoy:', {
         fechaHoy,
         ventasEncontradas: ventasHoy.length,
         total: totalHoy,
         ventas: ventasHoy
     });
-    
+
     // Ventas semana
     const ventasSemana = ventas.filter(v => new Date(v.created_at || v.fecha) >= inicioSemana);
     const totalSemana = ventasSemana.reduce((sum, v) => sum + v.total, 0);
     document.getElementById('kpiVentasSemana').textContent = '$' + formatoMoneda(totalSemana);
-    
+
     // Ventas mes
     const ventasMes = ventas.filter(v => new Date(v.created_at || v.fecha) >= inicioMes);
     const totalMes = ventasMes.reduce((sum, v) => sum + v.total, 0);
     document.getElementById('kpiVentasMes').textContent = '$' + formatoMoneda(totalMes);
-    
+
     // Ticket promedio
     const ticketPromedio = ventasMes.length > 0 ? totalMes / ventasMes.length : 0;
     document.getElementById('kpiTicketPromedio').textContent = '$' + formatoMoneda(ticketPromedio);
@@ -1662,17 +1802,17 @@ function generarGraficoVentasDiarias(ventas, periodo) {
         console.warn('⚠️ Chart.js no disponible, omitiendo gráfico de ventas diarias');
         return;
     }
-    
+
     // Agrupar ventas por día
     const ventasPorDia = {};
-    
+
     for (let i = 0; i < periodo; i++) {
         const fecha = new Date();
         fecha.setDate(fecha.getDate() - (periodo - 1 - i));
         const key = fecha.toLocaleDateString('es-CL', { month: 'short', day: 'numeric' });
         ventasPorDia[key] = 0;
     }
-    
+
     ventas.forEach(v => {
         // Usar created_at para fecha/hora precisa, o fecha como fallback
         const fechaVenta = new Date(v.created_at || v.fecha);
@@ -1681,17 +1821,17 @@ function generarGraficoVentasDiarias(ventas, periodo) {
             ventasPorDia[key] += v.total;
         }
     });
-    
+
     const labels = Object.keys(ventasPorDia);
     const data = Object.values(ventasPorDia);
-    
+
     const ctx = document.getElementById('chartVentasDiarias');
-    
+
     // Destruir gráfico anterior si existe
     if (chartVentasDiarias) {
         chartVentasDiarias.destroy();
     }
-    
+
     chartVentasDiarias = new Chart(ctx, {
         type: 'line',
         data: {
@@ -1737,14 +1877,14 @@ function generarGraficoMetodosPago(ventas) {
         console.warn('⚠️ Chart.js no disponible, omitiendo gráfico de métodos de pago');
         return;
     }
-    
+
     const metodos = {};
-    
+
     ventas.forEach(v => {
         const metodo = v.metodo_pago || 'No especificado';
         metodos[metodo] = (metodos[metodo] || 0) + v.total;
     });
-    
+
     const labels = Object.keys(metodos);
     const data = Object.values(metodos);
     const colores = [
@@ -1753,13 +1893,13 @@ function generarGraficoMetodosPago(ventas) {
         'rgba(251, 146, 60, 0.8)',
         'rgba(168, 85, 247, 0.8)'
     ];
-    
+
     const ctx = document.getElementById('chartMetodosPago');
-    
+
     if (chartMetodosPago) {
         chartMetodosPago.destroy();
     }
-    
+
     chartMetodosPago = new Chart(ctx, {
         type: 'doughnut',
         data: {
@@ -1800,62 +1940,62 @@ async function generarGraficoTopProductos(periodo) {
             console.log('⚠️ Supabase no disponible, omitiendo gráfico de top productos');
             return;
         }
-        
+
         const fechaInicio = new Date();
         fechaInicio.setDate(fechaInicio.getDate() - periodo);
         const fechaInicioStr = fechaInicio.toISOString().split('T')[0]; // YYYY-MM-DD
-        
+
         // Obtener ventas del período
         const { data: ventas } = await supabaseClient
             .from('ventas')
             .select('id')
             .gte('fecha', fechaInicioStr);
-        
+
         if (!ventas || ventas.length === 0) {
             console.log('ℹ️ No hay ventas en el período para productos');
             return;
         }
-        
+
         const ventasIds = ventas.map(v => v.id);
-        
+
         // Obtener items vendidos
         const { data: items, error: itemsError } = await supabaseClient
             .from('ventas_items')
             .select('producto_nombre, cantidad')
             .in('venta_id', ventasIds);
-        
+
         if (itemsError || !items || items.length === 0) {
             console.warn('⚠️ No hay items de ventas en el período');
             return;
         }
-        
+
         // Agrupar por producto
         const productosMap = {};
         items.forEach(item => {
             const nombre = item.producto_nombre || 'Producto';
             productosMap[nombre] = (productosMap[nombre] || 0) + (item.cantidad || 1);
         });
-        
+
         const productosArray = Object.entries(productosMap)
             .map(([nombre, cantidad]) => ({ nombre, cantidad }))
             .sort((a, b) => b.cantidad - a.cantidad)
             .slice(0, 10);
-        
+
         const labels = productosArray.map(p => p.nombre);
         const data = productosArray.map(p => p.cantidad);
-        
+
         // Check if Chart.js is available
         if (typeof Chart === 'undefined') {
             console.warn('⚠️ Chart.js no disponible, omitiendo gráfico de top productos');
             return;
         }
-        
+
         const ctx = document.getElementById('chartTopProductos');
-        
+
         if (chartTopProductos) {
             chartTopProductos.destroy();
         }
-        
+
         chartTopProductos = new Chart(ctx, {
             type: 'bar',
             data: {
@@ -1883,7 +2023,7 @@ async function generarGraficoTopProductos(periodo) {
                 }
             }
         });
-        
+
     } catch (error) {
         console.error('Error generando top productos:', error);
     }
@@ -1891,7 +2031,7 @@ async function generarGraficoTopProductos(periodo) {
 
 function generarTablaVendedores(ventas) {
     const vendedoresMap = {};
-    
+
     ventas.forEach(v => {
         const vendedor = v.vendedor_nombre || v.vendedor || 'Sin asignar';
         if (!vendedoresMap[vendedor]) {
@@ -1903,21 +2043,21 @@ function generarTablaVendedores(ventas) {
         vendedoresMap[vendedor].numVentas++;
         vendedoresMap[vendedor].total += v.total;
     });
-    
+
     const vendedoresArray = Object.entries(vendedoresMap)
         .map(([nombre, datos]) => ({
             nombre,
             ...datos
         }))
         .sort((a, b) => b.total - a.total);
-    
+
     const container = document.getElementById('tablaVendedores');
-    
+
     if (vendedoresArray.length === 0) {
         container.innerHTML = '<p style="text-align: center; color: hsl(var(--muted-foreground));">No hay datos de vendedores</p>';
         return;
     }
-    
+
     container.innerHTML = `
         <table style="width: 100%; border-collapse: collapse;">
             <thead>
@@ -1934,7 +2074,7 @@ function generarTablaVendedores(ventas) {
                     if (index === 0) medalla = '🥇';
                     else if (index === 1) medalla = '🥈';
                     else if (index === 2) medalla = '🥉';
-                    
+
                     return `
                         <tr style="border-bottom: 1px solid hsl(var(--border));">
                             <td style="padding: 12px; font-size: 20px;">${medalla || (index + 1)}</td>
@@ -1951,7 +2091,7 @@ function generarTablaVendedores(ventas) {
 
 function renderTablaHistorial(ventas) {
     const tbody = document.getElementById('salesTableBody');
-    
+
     if (ventas.length === 0) {
         tbody.innerHTML = `
             <tr>
@@ -1962,7 +2102,7 @@ function renderTablaHistorial(ventas) {
         `;
         return;
     }
-    
+
     tbody.innerHTML = ventas.slice(0, 50).map(v => {
         // Formatear lista de productos
         let productosTexto = '';
@@ -1979,7 +2119,7 @@ function renderTablaHistorial(ventas) {
         } else {
             productosTexto = `<span style="color: hsl(var(--muted-foreground));">Sin items</span>`;
         }
-        
+
         return `
             <tr>
                 <td><strong>#${v.id}</strong></td>
@@ -2018,7 +2158,7 @@ function mostrarVentasMock() {
 async function verDetalleVenta(id) {
     const modal = document.getElementById('modalDetalleVenta');
     const content = document.getElementById('detalleVentaContent');
-    
+
     // Mostrar modal con loading
     modal.style.display = 'flex';
     modal.classList.add('show');
@@ -2028,7 +2168,7 @@ async function verDetalleVenta(id) {
             <p>Cargando detalle...</p>
         </div>
     `;
-    
+
     try {
         // Consultar venta
         const { data: venta, error: ventaError } = await supabaseClient
@@ -2036,31 +2176,31 @@ async function verDetalleVenta(id) {
             .select('*')
             .eq('id', id)
             .single();
-        
+
         if (ventaError) throw ventaError;
-        
+
         // Consultar items de la venta
         const { data: items, error: itemsError } = await supabaseClient
             .from('ventas_items')
             .select('*')
             .eq('venta_id', id);
-        
+
         if (itemsError) {
             console.warn('No se pudieron cargar los items:', itemsError);
         }
-        
+
         // Parsear detalle de pagos si existe
         let detallesPagos = [];
         if (venta.pagos_detalle) {
             try {
-                detallesPagos = typeof venta.pagos_detalle === 'string' 
-                    ? JSON.parse(venta.pagos_detalle) 
+                detallesPagos = typeof venta.pagos_detalle === 'string'
+                    ? JSON.parse(venta.pagos_detalle)
                     : venta.pagos_detalle;
             } catch (e) {
                 console.warn('No se pudo parsear pagos_detalle');
             }
         }
-        
+
         // Renderizar contenido
         content.innerHTML = `
             <div style="display: grid; gap: 20px;">
@@ -2085,7 +2225,7 @@ async function verDetalleVenta(id) {
                         </div>
                     </div>
                 </div>
-                
+
                 <!-- Método de Pago -->
                 <div>
                     <h4 style="font-size: 14px; font-weight: 600; margin: 0 0 12px;">💳 Método de Pago</h4>
@@ -2104,7 +2244,7 @@ async function verDetalleVenta(id) {
                         </div>
                     `}
                 </div>
-                
+
                 <!-- Productos Vendidos -->
                 <div>
                     <h4 style="font-size: 14px; font-weight: 600; margin: 0 0 12px;">📦 Productos (${items && items.length > 0 ? items.length : 0} items)</h4>
@@ -2140,7 +2280,7 @@ async function verDetalleVenta(id) {
                 </div>
             </div>
         `;
-        
+
     } catch (error) {
         console.error('Error cargando detalle de venta:', error);
         content.innerHTML = `
@@ -2179,7 +2319,7 @@ function escapeHtml(text) {
 
 function mostrarNotificacion(mensaje, tipo = 'info') {
     console.log(`[${tipo.toUpperCase()}] ${mensaje}`);
-    
+
     // Crear notificación temporal
     const notif = document.createElement('div');
     notif.className = `notificacion notif-${tipo}`;
@@ -2196,14 +2336,14 @@ function mostrarNotificacion(mensaje, tipo = 'info') {
         font-weight: 600;
         animation: slideInRight 0.3s ease-out;
     `;
-    
+
     if (tipo === 'success') notif.style.borderLeft = '4px solid hsl(142 76% 36%)';
     if (tipo === 'error') notif.style.borderLeft = '4px solid hsl(0 84% 60%)';
     if (tipo === 'warning') notif.style.borderLeft = '4px solid hsl(38 92% 50%)';
     if (tipo === 'info') notif.style.borderLeft = '4px solid hsl(199 89% 48%)';
-    
+
     document.body.appendChild(notif);
-    
+
     setTimeout(() => {
         notif.style.animation = 'slideOutRight 0.3s ease-out';
         setTimeout(() => notif.remove(), 300);
@@ -2239,17 +2379,17 @@ document.head.appendChild(style);
 function abrirEscaner() {
     const modal = document.getElementById('modalEscaner');
     const rolMensaje = document.getElementById('rolMensaje');
-    
+
     // Actualizar mensaje según rol
     if (currentUserRole === 'encargado') {
         rolMensaje.innerHTML = '<strong>Modo Encargado:</strong> Escanea para editar o registrar productos';
     } else {
         rolMensaje.innerHTML = '<strong>Modo Vendedor:</strong> Escanea para agregar al carrito';
     }
-    
+
     modal.style.display = 'flex';
     modal.classList.add('show');
-    
+
     // Iniciar escáner con configuración optimizada
     iniciarEscaner();
 }
@@ -2263,9 +2403,9 @@ function iniciarEscaner() {
             facingMode: "environment" // Cámara trasera
         }
     };
-    
+
     html5QrCode = new Html5Qrcode("reader");
-    
+
     html5QrCode.start(
         { facingMode: "environment" },
         config,
@@ -2286,13 +2426,13 @@ function iniciarEscaner() {
 async function procesarCodigoEscaneado(codigoBarra) {
     // Detener escáner
     await detenerEscaner();
-    
+
     // Beep de éxito
     reproducirBeep();
-    
+
     // Buscar producto por código de barras
     const producto = await buscarPorCodigoBarras(codigoBarra);
-    
+
     if (producto) {
         // Producto encontrado
         if (currentUserRole === 'vendedor') {
@@ -2324,12 +2464,12 @@ async function buscarPorCodigoBarras(codigoBarra) {
             .select('*')
             .eq('codigo_barras', codigoBarra)
             .single();
-        
+
         if (error) {
             console.log('Producto no encontrado con código:', codigoBarra);
             return null;
         }
-        
+
         return data;
     } catch (error) {
         console.error('Error buscando producto:', error);
@@ -2341,12 +2481,12 @@ async function buscarPorCodigoBarras(codigoBarra) {
 function limpiarBusquedaCodigo() {
     const inputCodigo = document.getElementById('inputCodigoBarras');
     const btnClear = document.querySelector('.btn-clear-search');
-    
+
     if (inputCodigo) {
         inputCodigo.value = '';
         inputCodigo.focus(); // Mantener focus para siguiente escaneo
     }
-    
+
     if (btnClear) {
         btnClear.style.display = 'none';
     }
@@ -2375,16 +2515,16 @@ function reproducirBeep() {
     const audioContext = new (window.AudioContext || window.webkitAudioContext)();
     const oscillator = audioContext.createOscillator();
     const gainNode = audioContext.createGain();
-    
+
     oscillator.connect(gainNode);
     gainNode.connect(audioContext.destination);
-    
+
     oscillator.frequency.value = 800; // Hz
     oscillator.type = 'sine';
-    
+
     gainNode.gain.setValueAtTime(0.3, audioContext.currentTime);
     gainNode.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.1);
-    
+
     oscillator.start(audioContext.currentTime);
     oscillator.stop(audioContext.currentTime + 0.1);
 }
@@ -2396,22 +2536,32 @@ function reproducirBeep() {
 function abrirModalEditar(producto) {
     productoEditando = producto;
     cerrarEscaner();
-    
+
     const esEncargado = currentUserRole === 'encargado';
-    
+
     document.getElementById('editNombre').value = producto.nombre;
     document.getElementById('editCategoria').value = producto.categoria || '';
     document.getElementById('editPrecio').value = producto.precio;
     document.getElementById('editStock').value = producto.stock;
     document.getElementById('editCodigoBarras').value = producto.codigo_barras || '';
-    
+
+    // Campo de stock mínimo (solo para encargado)
+    const stockMinimoGroup = document.getElementById('editStockMinimoGroup');
+    const stockMinimoInput = document.getElementById('editStockMinimo');
+    if (esEncargado) {
+        stockMinimoGroup.style.display = 'block';
+        stockMinimoInput.value = producto.stock_minimo_sacos || '';
+    } else {
+        stockMinimoGroup.style.display = 'none';
+    }
+
     // Si es vendedor, solo puede editar el stock
     if (!esEncargado) {
         document.getElementById('editNombre').setAttribute('readonly', 'readonly');
         document.getElementById('editCategoria').setAttribute('disabled', 'disabled');
         document.getElementById('editPrecio').setAttribute('readonly', 'readonly');
         document.getElementById('editCodigoBarras').setAttribute('readonly', 'readonly');
-        
+
         // Ocultar botón de eliminar
         const btnEliminar = document.querySelector('#modalEditarProducto .btn-danger');
         if (btnEliminar) btnEliminar.style.display = 'none';
@@ -2420,12 +2570,12 @@ function abrirModalEditar(producto) {
         document.getElementById('editCategoria').removeAttribute('disabled');
         document.getElementById('editPrecio').removeAttribute('readonly');
         document.getElementById('editCodigoBarras').removeAttribute('readonly');
-        
+
         // Mostrar botón de eliminar
         const btnEliminar = document.querySelector('#modalEditarProducto .btn-danger');
         if (btnEliminar) btnEliminar.style.display = 'inline-flex';
     }
-    
+
     const modal = document.getElementById('modalEditarProducto');
     modal.style.display = 'flex';
     modal.classList.add('show');
@@ -2440,45 +2590,46 @@ function cerrarModalEditar() {
 
 async function guardarEdicion() {
     if (!productoEditando) return;
-    
+
     const esEncargado = currentUserRole === 'encargado';
     const nuevoStock = parseFloat(document.getElementById('editStock').value);
-    
+
     if (isNaN(nuevoStock)) {
         mostrarNotificacion('Valor de stock inválido', 'error');
         return;
     }
-    
+
     if (nuevoStock < 0) {
         mostrarNotificacion('El stock no puede ser negativo', 'error');
         return;
     }
-    
+
     try {
         let updateData = { stock: nuevoStock };
-        
+
         // Si es encargado, puede actualizar todos los campos
         if (esEncargado) {
             const nuevoNombre = document.getElementById('editNombre').value.trim();
             const nuevaCategoria = document.getElementById('editCategoria').value;
             const nuevoPrecio = parseFloat(document.getElementById('editPrecio').value);
             const nuevoCodigoBarras = document.getElementById('editCodigoBarras').value.trim();
-            
+            const nuevoStockMinimo = document.getElementById('editStockMinimo').value;
+
             if (!nuevoNombre) {
                 mostrarNotificacion('El nombre del producto es requerido', 'error');
                 return;
             }
-            
+
             if (isNaN(nuevoPrecio)) {
                 mostrarNotificacion('Valor de precio inválido', 'error');
                 return;
             }
-            
+
             if (nuevoPrecio < 0) {
                 mostrarNotificacion('El precio no puede ser negativo', 'error');
                 return;
             }
-            
+
             updateData = {
                 nombre: nuevoNombre,
                 categoria: nuevaCategoria,
@@ -2486,24 +2637,29 @@ async function guardarEdicion() {
                 stock: nuevoStock,
                 codigo_barras: nuevoCodigoBarras
             };
+
+            // Agregar stock mínimo solo si tiene valor
+            if (nuevoStockMinimo !== '' && !isNaN(nuevoStockMinimo)) {
+                updateData.stock_minimo_sacos = parseInt(nuevoStockMinimo);
+            }
         }
-        
+
         const { error } = await supabaseClient
             .from('productos')
             .update(updateData)
             .eq('id', productoEditando.id);
-        
+
         if (error) throw error;
-        
+
         mostrarNotificacion('✅ Producto actualizado exitosamente', 'success');
         cerrarModalEditar();
         await cargarProductos();
-        
+
         // Si estamos en la vista de inventario, recargarla
         if (currentView === 'inventario') {
             await cargarInventario();
         }
-        
+
     } catch (error) {
         console.error('Error actualizando:', error);
         mostrarNotificacion('Error al guardar cambios', 'error');
@@ -2512,31 +2668,31 @@ async function guardarEdicion() {
 
 async function eliminarProducto() {
     if (!productoEditando) return;
-    
+
     const nombreProducto = productoEditando.nombre;
-    
+
     // Confirmar eliminación
     const confirmar = confirm(`¿Estás seguro de que deseas eliminar el producto "${nombreProducto}"?\n\nEsta acción no se puede deshacer.`);
-    
+
     if (!confirmar) return;
-    
+
     try {
         const { error } = await supabaseClient
             .from('productos')
             .delete()
             .eq('id', productoEditando.id);
-        
+
         if (error) throw error;
-        
+
         mostrarNotificacion(`✅ Producto "${nombreProducto}" eliminado exitosamente`, 'success');
         cerrarModalEditar();
         await cargarProductos();
-        
+
         // Si estamos en la vista de inventario, recargarla
         if (currentView === 'inventario') {
             await cargarInventario();
         }
-        
+
     } catch (error) {
         console.error('Error eliminando producto:', error);
         mostrarNotificacion('Error al eliminar el producto', 'error');
@@ -2545,35 +2701,35 @@ async function eliminarProducto() {
 
 async function eliminarProductoDirecto(id) {
     const producto = productos.find(p => p.id === id);
-    
+
     if (!producto) {
         mostrarNotificacion('Producto no encontrado', 'error');
         return;
     }
-    
+
     const nombreProducto = producto.nombre;
-    
+
     // Confirmar eliminación
     const confirmar = confirm(`¿Estás seguro de que deseas eliminar el producto "${nombreProducto}"?\n\nEsta acción no se puede deshacer.`);
-    
+
     if (!confirmar) return;
-    
+
     try {
         const { error } = await supabaseClient
             .from('productos')
             .delete()
             .eq('id', id);
-        
+
         if (error) throw error;
-        
+
         mostrarNotificacion(`✅ Producto "${nombreProducto}" eliminado exitosamente`, 'success');
         await cargarProductos();
-        
+
         // Si estamos en la vista de inventario, recargarla
         if (currentView === 'inventario') {
             await cargarInventario();
         }
-        
+
     } catch (error) {
         console.error('Error eliminando producto:', error);
         mostrarNotificacion('Error al eliminar el producto', 'error');
@@ -2599,26 +2755,26 @@ let ventasDelDia = {
  */
 async function cargarDatosCaja() {
     console.log('📊 Cargando datos de caja...');
-    
+
     // Actualizar fecha en el panel
     const hoy = new Date();
-    const fechaFormateada = hoy.toLocaleDateString('es-CL', { 
-        weekday: 'long', 
-        year: 'numeric', 
-        month: 'long', 
-        day: 'numeric' 
+    const fechaFormateada = hoy.toLocaleDateString('es-CL', {
+        weekday: 'long',
+        year: 'numeric',
+        month: 'long',
+        day: 'numeric'
     });
     document.getElementById('cajaFechaHoy').textContent = fechaFormateada;
-    
+
     // Cargar ventas del día
     await cargarVentasDelDia();
-    
+
     // Cargar gastos del día
     await cargarGastosDelDia();
-    
+
     // Cargar pagos al personal del día
     await cargarPagosPersonalDelDia();
-    
+
     // Actualizar totales
     actualizarTotalesCaja();
 }
@@ -2629,31 +2785,31 @@ async function cargarDatosCaja() {
 async function cargarVentasDelDia() {
     try {
         console.log('🔍 Iniciando carga de ventas del día...');
-        
+
         // Validar que supabaseClient existe
         if (typeof supabaseClient === 'undefined' || !supabaseClient) {
             console.error('❌ Supabase no está configurado');
             mostrarNotificacion('Error: Supabase no está configurado', 'error');
             return;
         }
-        
+
         const hoy = new Date();
         const fechaHoy = hoy.toISOString().split('T')[0]; // Solo YYYY-MM-DD
-        
+
         console.log('📅 Buscando ventas del día:', fechaHoy);
-        
+
         const { data, error } = await supabaseClient
             .from('ventas')
             .select('*')
             .eq('fecha', fechaHoy);
-        
+
         if (error) {
             console.error('❌ Error en la consulta:', error);
             throw error;
         }
-        
+
         console.log('📊 Ventas encontradas:', data);
-        
+
         // Calcular totales por método de pago
         ventasDelDia = {
             efectivo: 0,
@@ -2661,20 +2817,20 @@ async function cargarVentasDelDia() {
             transferencia: 0,
             total: 0
         };
-        
+
         if (!data || data.length === 0) {
             console.log('ℹ️ No hay ventas registradas hoy');
         } else {
             data.forEach(venta => {
                 // Verificar ambos nombres de campo (pagos_detalle y detalle_pagos)
                 let detallePagos = venta.pagos_detalle || venta.detalle_pagos || venta.metodo_pago;
-                
+
                 console.log('💳 Procesando venta:', {
                     total: venta.total,
                     metodo: venta.metodo_pago,
                     detallePagos: detallePagos
                 });
-                
+
                 // Si es string JSON, parsearlo
                 if (typeof detallePagos === 'string' && detallePagos.startsWith('[')) {
                     try {
@@ -2683,7 +2839,7 @@ async function cargarVentasDelDia() {
                         console.warn('⚠️ No se pudo parsear JSON:', e);
                     }
                 }
-                
+
                 if (typeof detallePagos === 'string') {
                     // Formato antiguo: string simple
                     if (detallePagos === 'Efectivo') {
@@ -2705,19 +2861,19 @@ async function cargarVentasDelDia() {
                         }
                     });
                 }
-                
+
                 ventasDelDia.total += venta.total;
             });
         }
-        
+
         // Actualizar UI
         document.getElementById('ventasEfectivo').textContent = '$' + formatoMoneda(ventasDelDia.efectivo);
         document.getElementById('ventasTransbank').textContent = '$' + formatoMoneda(ventasDelDia.transbank);
         document.getElementById('ventasTransferencia').textContent = '$' + formatoMoneda(ventasDelDia.transferencia);
         document.getElementById('ventasTotal').textContent = '$' + formatoMoneda(ventasDelDia.total);
-        
+
         console.log('✅ Ventas del día cargadas:', ventasDelDia);
-        
+
     } catch (error) {
         console.error('❌ ERROR COMPLETO:', error);
         mostrarNotificacion('Error al cargar ventas del día: ' + error.message, 'error');
@@ -2735,29 +2891,29 @@ async function cargarGastosDelDia() {
             renderGastosDelDia();
             return;
         }
-        
+
         const hoy = new Date();
         hoy.setHours(0, 0, 0, 0);
         const manana = new Date(hoy);
         manana.setDate(manana.getDate() + 1);
-        
+
         const { data, error } = await supabaseClient
             .from('gastos')
             .select('*')
             .gte('fecha', hoy.toISOString())
             .lt('fecha', manana.toISOString())
             .order('fecha', { ascending: false });
-        
+
         if (error) {
             console.error('❌ Error consultando gastos:', error);
             throw error;
         }
-        
+
         gastosDelDia = data || [];
         renderGastosDelDia();
-        
+
         console.log(`✅ ${gastosDelDia.length} gastos del día cargados`);
-        
+
     } catch (error) {
         console.error('❌ ERROR COMPLETO:', error);
         gastosDelDia = [];
@@ -2771,7 +2927,7 @@ async function cargarGastosDelDia() {
  */
 function renderGastosDelDia() {
     const container = document.getElementById('gastosLista');
-    
+
     if (gastosDelDia.length === 0) {
         container.innerHTML = `
             <div class="empty-state">
@@ -2784,11 +2940,11 @@ function renderGastosDelDia() {
         `;
         return;
     }
-    
+
     container.innerHTML = gastosDelDia.map(gasto => {
         const fecha = new Date(gasto.fecha);
         const hora = fecha.toLocaleTimeString('es-CL', { hour: '2-digit', minute: '2-digit' });
-        
+
         return `
             <div class="gasto-item">
                 <div class="gasto-info">
@@ -2828,21 +2984,21 @@ function renderGastosDelDia() {
  */
 async function registrarGasto(event) {
     event.preventDefault();
-    
+
     const monto = parseFloat(document.getElementById('gastoMonto').value);
     const descripcion = document.getElementById('gastoDescripcion').value.trim();
     const asignado = document.getElementById('gastoAsignado').value;
-    
+
     if (!monto || !descripcion || !asignado) {
         mostrarNotificacion('Completa todos los campos', 'warning');
         return;
     }
-    
+
     if (monto <= 0) {
         mostrarNotificacion('El monto debe ser mayor a 0', 'warning');
         return;
     }
-    
+
     try {
         const { data, error } = await supabaseClient
             .from('gastos')
@@ -2854,18 +3010,18 @@ async function registrarGasto(event) {
                 fecha: new Date().toISOString()
             }])
             .select();
-        
+
         if (error) throw error;
-        
+
         mostrarNotificacion('✅ Gasto registrado exitosamente', 'success');
-        
+
         // Limpiar formulario
         document.getElementById('formGasto').reset();
-        
+
         // Recargar gastos
         await cargarGastosDelDia();
         actualizarTotalesCaja();
-        
+
     } catch (error) {
         console.error('Error registrando gasto:', error);
         mostrarNotificacion('Error al registrar gasto', 'error');
@@ -2877,21 +3033,21 @@ async function registrarGasto(event) {
  */
 async function eliminarGasto(gastoId) {
     if (!confirm('¿Eliminar este gasto?')) return;
-    
+
     try {
         const { error } = await supabaseClient
             .from('gastos')
             .delete()
             .eq('id', gastoId);
-        
+
         if (error) throw error;
-        
+
         mostrarNotificacion('Gasto eliminado', 'success');
-        
+
         // Recargar gastos
         await cargarGastosDelDia();
         actualizarTotalesCaja();
-        
+
     } catch (error) {
         console.error('Error eliminando gasto:', error);
         mostrarNotificacion('Error al eliminar gasto', 'error');
@@ -2905,14 +3061,14 @@ function actualizarTotalesCaja() {
     // Calcular total de gastos operacionales
     const totalGastos = gastosDelDia.reduce((sum, gasto) => sum + parseFloat(gasto.monto), 0);
     document.getElementById('gastosTotal').textContent = '$' + formatoMoneda(totalGastos);
-    
+
     // Calcular total de pagos al personal
     const totalPagosPersonal = pagosPersonalDelDia.reduce((sum, pago) => sum + parseFloat(pago.total_pago), 0);
-    
+
     // Calcular efectivo esperado (ventas en efectivo - gastos - pagos personal)
     const efectivoEsperado = ventasDelDia.efectivo - totalGastos - totalPagosPersonal;
     document.getElementById('efectivoEsperado').textContent = '$' + formatoMoneda(efectivoEsperado);
-    
+
     // Recalcular diferencia si hay efectivo real ingresado
     calcularDiferenciaCaja();
 }
@@ -2923,25 +3079,25 @@ function actualizarTotalesCaja() {
 function calcularDiferenciaCaja() {
     const efectivoRealInput = document.getElementById('efectivoReal');
     const efectivoReal = parseFloat(efectivoRealInput.value) || 0;
-    
+
     if (efectivoReal === 0) {
         document.getElementById('diferenciaContainer').style.display = 'none';
         return;
     }
-    
+
     const totalGastos = gastosDelDia.reduce((sum, gasto) => sum + parseFloat(gasto.monto), 0);
     const totalPagosPersonal = pagosPersonalDelDia.reduce((sum, pago) => sum + parseFloat(pago.total_pago), 0);
     const efectivoEsperado = ventasDelDia.efectivo - totalGastos - totalPagosPersonal;
     const diferencia = efectivoReal - efectivoEsperado;
-    
+
     // Mostrar container
     const container = document.getElementById('diferenciaContainer');
     container.style.display = 'flex';
-    
+
     // Actualizar valores
     const label = document.getElementById('diferenciaLabel');
     const monto = document.getElementById('diferenciaMonto');
-    
+
     if (diferencia > 0) {
         // Sobrante
         container.classList.remove('faltante');
@@ -2967,18 +3123,18 @@ function calcularDiferenciaCaja() {
  */
 async function cerrarCajaDiaria() {
     const efectivoReal = parseFloat(document.getElementById('efectivoReal').value);
-    
+
     if (!efectivoReal && efectivoReal !== 0) {
         mostrarNotificacion('Ingresa el efectivo real en caja', 'warning');
         document.getElementById('efectivoReal').focus();
         return;
     }
-    
+
     const totalGastos = gastosDelDia.reduce((sum, gasto) => sum + parseFloat(gasto.monto), 0);
     const totalPagosPersonal = pagosPersonalDelDia.reduce((sum, pago) => sum + parseFloat(pago.total_pago), 0);
     const efectivoEsperado = ventasDelDia.efectivo - totalGastos - totalPagosPersonal;
     const diferencia = efectivoReal - efectivoEsperado;
-    
+
     // Confirmación
     const confirmMsg = `¿Confirmar cierre de caja?
 
@@ -2989,12 +3145,12 @@ async function cerrarCajaDiaria() {
 • Efectivo Esperado: $${formatoMoneda(efectivoEsperado)}
 • Efectivo Real: $${formatoMoneda(efectivoReal)}
 • Diferencia: $${formatoMoneda(Math.abs(diferencia))} ${diferencia >= 0 ? '(Sobrante)' : '(Faltante)'}`;
-    
+
     if (!confirm(confirmMsg)) return;
-    
+
     try {
         const hoy = new Date().toISOString().split('T')[0]; // YYYY-MM-DD
-        
+
         // Preparar detalle de gastos operacionales
         const detalleGastos = gastosDelDia.map(g => ({
             id: g.id,
@@ -3003,7 +3159,7 @@ async function cerrarCajaDiaria() {
             asignado_a: g.asignado_a,
             hora: new Date(g.fecha).toLocaleTimeString('es-CL', { hour: '2-digit', minute: '2-digit' })
         }));
-        
+
         // Preparar detalle de pagos al personal
         const detallePagosPersonal = pagosPersonalDelDia.map(p => ({
             id: p.id,
@@ -3014,7 +3170,7 @@ async function cerrarCajaDiaria() {
             pago_almuerzo: p.pago_almuerzo,
             total: p.total_pago
         }));
-        
+
         // Insertar o actualizar cierre diario
         const { data, error } = await supabaseClient
             .from('cierres_diarios')
@@ -3040,17 +3196,17 @@ async function cerrarCajaDiaria() {
                 onConflict: 'fecha'
             })
             .select();
-        
+
         if (error) throw error;
-        
+
         mostrarNotificacion('✅ Caja cerrada exitosamente', 'success');
-        
+
         // Limpiar campo de efectivo real
         document.getElementById('efectivoReal').value = '';
         document.getElementById('diferenciaContainer').style.display = 'none';
-        
+
         console.log('✅ Cierre guardado:', data);
-        
+
     } catch (error) {
         console.error('Error cerrando caja:', error);
         mostrarNotificacion('Error al cerrar caja', 'error');
@@ -3080,7 +3236,7 @@ function abrirModalPagoPersonal() {
     // Limpiar formulario
     document.getElementById('formPagoPersonal').reset();
     document.getElementById('totalPagoDisplay').textContent = '$0';
-    
+
     // Abrir modal
     const modal = document.getElementById('modalPagoPersonal');
     modal.style.display = 'flex';
@@ -3103,7 +3259,7 @@ function calcularTotalPago() {
     const jornada = parseFloat(document.getElementById('pagoJornada').value) || 0;
     const almuerzo = parseFloat(document.getElementById('pagoAlmuerzo').value) || 0;
     const total = jornada + almuerzo;
-    
+
     document.getElementById('totalPagoDisplay').textContent = '$' + formatoMoneda(total);
 }
 
@@ -3112,7 +3268,7 @@ function calcularTotalPago() {
  */
 async function registrarPagoPersonal(event) {
     event.preventDefault();
-    
+
     const empleado = document.getElementById('pagoEmpleado').value;
     const puesto = document.getElementById('pagoPuesto').value;
     const turno = document.getElementById('pagoTurno').value || 'completo';
@@ -3120,25 +3276,25 @@ async function registrarPagoPersonal(event) {
     const pagoAlmuerzo = parseFloat(document.getElementById('pagoAlmuerzo').value);
     const diasSemana = parseInt(document.getElementById('pagoDiasSemana').value) || 1;
     const notas = document.getElementById('pagoNotas').value.trim();
-    
+
     // Validaciones
     if (!empleado || !puesto || isNaN(pagoJornada) || isNaN(pagoAlmuerzo)) {
         mostrarNotificacion('Completa todos los campos obligatorios', 'warning');
         return;
     }
-    
+
     if (pagoJornada < 0 || pagoAlmuerzo < 0) {
         mostrarNotificacion('Los montos no pueden ser negativos', 'warning');
         return;
     }
-    
+
     const totalPago = pagoJornada + pagoAlmuerzo;
-    
+
     if (totalPago === 0) {
         mostrarNotificacion('El total a pagar debe ser mayor a 0', 'warning');
         return;
     }
-    
+
     // Confirmar pago
     const confirmar = confirm(
         `¿Registrar pago al personal?\n\n` +
@@ -3149,12 +3305,12 @@ async function registrarPagoPersonal(event) {
         `🍽️ Pago Almuerzo: $${formatoMoneda(pagoAlmuerzo)}\n` +
         `💰 Total: $${formatoMoneda(totalPago)}`
     );
-    
+
     if (!confirmar) return;
-    
+
     try {
         const lunesSemana = obtenerLunesSemana();
-        
+
         const { data, error } = await supabaseClient
             .from('pagos_personal')
             .insert([{
@@ -3171,18 +3327,18 @@ async function registrarPagoPersonal(event) {
                 notas: notas || null
             }])
             .select();
-        
+
         if (error) throw error;
-        
+
         mostrarNotificacion(`✅ Pago registrado exitosamente para ${empleado}`, 'success');
-        
+
         // Cerrar modal
         cerrarModalPagoPersonal();
-        
+
         // Recargar pagos del día
         await cargarPagosPersonalDelDia();
         actualizarTotalesCaja();
-        
+
     } catch (error) {
         console.error('Error registrando pago:', error);
         mostrarNotificacion('Error al registrar el pago', 'error');
@@ -3200,28 +3356,28 @@ async function cargarPagosPersonalDelDia() {
             actualizarResumenPagosPersonal();
             return;
         }
-        
+
         const hoy = new Date();
         hoy.setHours(0, 0, 0, 0);
         const hoySinHora = hoy.toISOString().split('T')[0]; // YYYY-MM-DD
-        
+
         const { data, error } = await supabaseClient
             .from('pagos_personal')
             .select('*')
             .eq('fecha', hoySinHora)
             .order('created_at', { ascending: false });
-        
+
         if (error) {
             console.error('❌ Error consultando pagos personal:', error);
             throw error;
         }
-        
+
         pagosPersonalDelDia = data || [];
         console.log(`✅ ${pagosPersonalDelDia.length} pagos al personal hoy`);
-        
+
         // Actualizar el panel de resumen
         actualizarResumenPagosPersonal();
-        
+
     } catch (error) {
         console.error('❌ ERROR COMPLETO:', error);
         pagosPersonalDelDia = [];
@@ -3237,7 +3393,7 @@ function actualizarResumenPagosPersonal() {
     const totalJornadas = pagosPersonalDelDia.reduce((sum, p) => sum + parseFloat(p.pago_jornada), 0);
     const totalAlmuerzos = pagosPersonalDelDia.reduce((sum, p) => sum + parseFloat(p.pago_almuerzo), 0);
     const totalPagado = pagosPersonalDelDia.reduce((sum, p) => sum + parseFloat(p.total_pago), 0);
-    
+
     document.getElementById('cantidadEmpleadosPagados').textContent = cantidadEmpleados;
     document.getElementById('totalJornadas').textContent = '$' + formatoMoneda(totalJornadas);
     document.getElementById('totalAlmuerzos').textContent = '$' + formatoMoneda(totalAlmuerzos);
@@ -3250,13 +3406,13 @@ function actualizarResumenPagosPersonal() {
 
 function abrirModalNuevo(codigoBarra) {
     cerrarEscaner();
-    
+
     document.getElementById('nuevoCodigoBarra').value = codigoBarra;
     document.getElementById('nuevoNombre').value = '';
     document.getElementById('nuevoMarca').value = '';
     document.getElementById('nuevoPrecio').value = '';
     document.getElementById('nuevoStock').value = '';
-    
+
     const modal = document.getElementById('modalNuevoProducto');
     modal.style.display = 'flex';
     modal.classList.add('show');
@@ -3276,12 +3432,12 @@ async function guardarNuevoProducto() {
     const precio = parseFloat(document.getElementById('nuevoPrecio').value);
     const stock = parseFloat(document.getElementById('nuevoStock').value);
     const stockMin = parseFloat(document.getElementById('nuevoStockMin').value);
-    
+
     if (!nombre || !marca || isNaN(precio) || isNaN(stock)) {
         mostrarNotificacion('Completa todos los campos obligatorios', 'error');
         return;
     }
-    
+
     try {
         const { data, error } = await supabaseClient
             .from('productos')
@@ -3296,13 +3452,13 @@ async function guardarNuevoProducto() {
                 tipo: 'unidad'
             }])
             .select();
-        
+
         if (error) throw error;
-        
+
         mostrarNotificacion('✅ Producto registrado exitosamente', 'success');
         cerrarModalNuevo();
         await cargarProductos();
-        
+
     } catch (error) {
         console.error('Error registrando producto:', error);
         if (error.code === '23505') {
@@ -3323,20 +3479,20 @@ let productosSinCodigo = [];
 async function cargarProductosSinCodigo() {
     try {
         console.log('📦 Cargando productos sin código de barras...');
-        
+
         const { data, error } = await supabaseClient
             .from('productos')
             .select('*')
             .or('codigo_barras.is.null,codigo_barras.eq.')
             .order('nombre');
-        
+
         if (error) throw error;
-        
+
         productosSinCodigo = data;
         console.log(`✅ Encontrados ${productosSinCodigo.length} productos sin código`);
-        
+
         renderProductosSinCodigo(productosSinCodigo);
-        
+
     } catch (error) {
         console.error('❌ Error cargando productos:', error);
         mostrarNotificacion('Error cargando productos', 'error');
@@ -3345,7 +3501,7 @@ async function cargarProductosSinCodigo() {
 
 function renderProductosSinCodigo(productos) {
     const container = document.getElementById('listaProductosAsignar');
-    
+
     if (productos.length === 0) {
         container.innerHTML = `
             <div class="alert-info" style="padding: 24px; text-align: center;">
@@ -3359,7 +3515,7 @@ function renderProductosSinCodigo(productos) {
         `;
         return;
     }
-    
+
     container.innerHTML = productos.map(p => `
         <div class="product-row" style="display: flex; align-items: center; gap: 16px; padding: 16px; background: hsl(var(--card)); border: 1px solid hsl(var(--border)); border-radius: 12px; cursor: pointer; transition: all 0.2s;" onclick="seleccionarProductoParaCodigo(${p.id})">
             <div style="flex: 1;">
@@ -3381,26 +3537,26 @@ function renderProductosSinCodigo(productos) {
 
 function filtrarProductosAsignar() {
     const query = document.getElementById('buscarAsignar').value.toLowerCase();
-    
-    const filtrados = productosSinCodigo.filter(p => 
+
+    const filtrados = productosSinCodigo.filter(p =>
         p.nombre.toLowerCase().includes(query) ||
         p.marca.toLowerCase().includes(query) ||
         p.categoria.toLowerCase().includes(query)
     );
-    
+
     renderProductosSinCodigo(filtrados);
 }
 
 function seleccionarProductoParaCodigo(productoId) {
     productoSeleccionado = productosSinCodigo.find(p => p.id === productoId);
-    
+
     if (!productoSeleccionado) {
         mostrarNotificacion('Error seleccionando producto', 'error');
         return;
     }
-    
+
     console.log('📱 Producto seleccionado:', productoSeleccionado.nombre);
-    
+
     // Abrir escáner en modo asignación
     abrirEscanerAsignacion();
 }
@@ -3408,16 +3564,16 @@ function seleccionarProductoParaCodigo(productoId) {
 function abrirEscanerAsignacion() {
     const modal = document.getElementById('modalEscaner');
     const rolMensaje = document.getElementById('rolMensaje');
-    
+
     rolMensaje.innerHTML = `
         <strong>🎯 Asignando código a:</strong><br>
         <span style="font-size: 16px; color: hsl(var(--primary));">${productoSeleccionado.nombre}</span><br>
         <small style="opacity: 0.7;">Escanea el código de barras del producto físico</small>
     `;
-    
+
     modal.style.display = 'flex';
     modal.classList.add('show');
-    
+
     // Iniciar escáner en modo asignación
     iniciarEscanerAsignacion();
 }
@@ -3431,9 +3587,9 @@ function iniciarEscanerAsignacion() {
             facingMode: "environment"
         }
     };
-    
+
     html5QrCode = new Html5Qrcode("reader");
-    
+
     html5QrCode.start(
         { facingMode: "environment" },
         config,
@@ -3454,13 +3610,13 @@ async function asignarCodigoAProducto(codigoBarra) {
     // Detener escáner
     await detenerEscaner();
     reproducirBeep();
-    
+
     if (!productoSeleccionado) {
         mostrarNotificacion('Error: No hay producto seleccionado', 'error');
         cerrarEscaner();
         return;
     }
-    
+
     try {
         // Verificar si el código ya existe
         const { data: existente } = await supabaseClient
@@ -3468,30 +3624,30 @@ async function asignarCodigoAProducto(codigoBarra) {
             .select('nombre')
             .eq('codigo_barras', codigoBarra)
             .single();
-        
+
         if (existente) {
             mostrarNotificacion(`⚠️ Este código ya está asignado a: ${existente.nombre}`, 'error');
             cerrarEscaner();
             return;
         }
-        
+
         // Asignar código al producto
         const { error } = await supabaseClient
             .from('productos')
             .update({ codigo_barras: codigoBarra })
             .eq('id', productoSeleccionado.id);
-        
+
         if (error) throw error;
-        
+
         mostrarNotificacion(`✅ Código asignado a ${productoSeleccionado.nombre}`, 'success');
-        
+
         cerrarEscaner();
-        
+
         // Recargar lista
         await cargarProductosSinCodigo();
-        
+
         productoSeleccionado = null;
-        
+
     } catch (error) {
         console.error('Error asignando código:', error);
         mostrarNotificacion('Error al asignar código', 'error');
@@ -3510,7 +3666,7 @@ async function asignarCodigoAProducto(codigoBarra) {
 
 function abrirModalAdminPrecios() {
     const tbody = document.getElementById('tablaAdminPrecios');
-    
+
     tbody.innerHTML = productos.map(p => `
         <tr data-producto-id="${p.id}">
             <td style="padding: 12px; border-bottom: 1px solid hsl(var(--border));">
@@ -3524,8 +3680,8 @@ function abrirModalAdminPrecios() {
                 <strong>${Math.floor(p.stock)}</strong>
             </td>
             <td style="padding: 12px; text-align: center; border-bottom: 1px solid hsl(var(--border));">
-                <input 
-                    type="number" 
+                <input
+                    type="number"
                     class="input-precio-editable"
                     data-producto-id="${p.id}"
                     value="${p.precio}"
@@ -3538,7 +3694,7 @@ function abrirModalAdminPrecios() {
             </td>
         </tr>
     `).join('');
-    
+
     const modal = document.getElementById('modalAdminPrecios');
     modal.style.display = 'flex';
     modal.classList.add('show');
@@ -3553,12 +3709,12 @@ function cerrarModalAdminPrecios() {
 async function guardarCambiosPrecios() {
     const inputs = document.querySelectorAll('.input-precio-editable');
     const cambios = [];
-    
+
     inputs.forEach(input => {
         const productoId = parseInt(input.dataset.productoId);
         const nuevoPrecio = parseFloat(input.value);
         const productoOriginal = productos.find(p => p.id === productoId);
-        
+
         // Solo agregar si cambió el precio
         if (productoOriginal && productoOriginal.precio !== nuevoPrecio) {
             cambios.push({
@@ -3569,40 +3725,40 @@ async function guardarCambiosPrecios() {
             });
         }
     });
-    
+
     if (cambios.length === 0) {
         mostrarNotificacion('No hay cambios para guardar', 'info');
         return;
     }
-    
+
     if (!confirm(`¿Confirmas actualizar ${cambios.length} precio(s)?`)) {
         return;
     }
-    
+
     try {
         // Actualizar precios en Supabase
-        const promesas = cambios.map(cambio => 
+        const promesas = cambios.map(cambio =>
             supabaseClient
                 .from('productos')
                 .update({ precio: cambio.precioNuevo })
                 .eq('id', cambio.id)
         );
-        
+
         const resultados = await Promise.all(promesas);
-        
+
         // Verificar errores
         const errores = resultados.filter(r => r.error);
         if (errores.length > 0) {
             throw new Error('Algunos precios no se actualizaron');
         }
-        
+
         mostrarNotificacion(`✅ ${cambios.length} precio(s) actualizado(s) exitosamente`, 'success');
-        
+
         // Recargar productos
         await cargarProductos();
-        
+
         cerrarModalAdminPrecios();
-        
+
     } catch (error) {
         console.error('Error actualizando precios:', error);
         mostrarNotificacion('Error al guardar cambios', 'error');
@@ -3617,7 +3773,7 @@ async function guardarCambiosPrecios() {
 async function cargarEstadoActual() {
     try {
         const hoy = new Date().toISOString().split('T')[0];
-        
+
         const { data, error } = await supabaseClient
             .from('asistencias')
             .select('*')
@@ -3626,7 +3782,7 @@ async function cargarEstadoActual() {
             .single();
 
         const estadoContent = document.getElementById('estadoContent');
-        
+
         if (error && error.code !== 'PGRST116') { // PGRST116 es "no rows returned"
             throw error;
         }
@@ -3646,20 +3802,20 @@ async function cargarEstadoActual() {
         // Formatear horas
         const formatHora = (timestamp) => {
             if (!timestamp) return '-';
-            return new Date(timestamp).toLocaleTimeString('es-CL', { 
-                hour: '2-digit', 
+            return new Date(timestamp).toLocaleTimeString('es-CL', {
+                hour: '2-digit',
                 minute: '2-digit',
                 timeZone: 'America/Santiago'
             });
         };
 
-        const horasTrabajadas = data.horas_trabajadas ? 
-            `${Math.floor(data.horas_trabajadas)}h ${Math.round((data.horas_trabajadas % 1) * 60)}m` : 
+        const horasTrabajadas = data.horas_trabajadas ?
+            `${Math.floor(data.horas_trabajadas)}h ${Math.round((data.horas_trabajadas % 1) * 60)}m` :
             'Calculando...';
 
         let estadoTexto = '';
         let estadoColor = '';
-        
+
         if (data.estado === 'Completo') {
             estadoTexto = '✅ Jornada Completa';
             estadoColor = 'hsl(var(--success))';
@@ -3772,7 +3928,7 @@ async function marcarEvento(tipo) {
                 mostrarNotificacion('Ya marcaste entrada hoy', 'warning');
                 return;
             }
-            
+
             // Obtener usuario_id
             const { data: userData } = await supabaseClient
                 .from('usuarios')
@@ -3899,8 +4055,8 @@ async function cargarAsistencias() {
 
         const formatHora = (timestamp) => {
             if (!timestamp) return '<span style="color: hsl(var(--muted-foreground));">-</span>';
-            return new Date(timestamp).toLocaleTimeString('es-CL', { 
-                hour: '2-digit', 
+            return new Date(timestamp).toLocaleTimeString('es-CL', {
+                hour: '2-digit',
                 minute: '2-digit',
                 timeZone: 'America/Santiago'
             });
@@ -3915,8 +4071,8 @@ async function cargarAsistencias() {
         };
 
         tbody.innerHTML = data.map(registro => {
-            const horasTrabajadas = registro.horas_trabajadas ? 
-                `${Math.floor(registro.horas_trabajadas)}h ${Math.round((registro.horas_trabajadas % 1) * 60)}m` : 
+            const horasTrabajadas = registro.horas_trabajadas ?
+                `${Math.floor(registro.horas_trabajadas)}h ${Math.round((registro.horas_trabajadas % 1) * 60)}m` :
                 '-';
 
             let estadoBadge = '';
@@ -3930,12 +4086,12 @@ async function cargarAsistencias() {
                 estadoBadge = '<span class="status-badge status-canceled">Incompleto</span>';
             }
 
-            const btnEditar = currentUserRole === 'encargado' ? 
+            const btnEditar = currentUserRole === 'encargado' ?
                 `<button class="btn-icon" onclick="abrirModalEditarAsistencia(${registro.id})" title="Editar">
                     <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
                         <path d="M11.3333 2L14 4.66667L4.66667 14H2V11.3333L11.3333 2Z" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
                     </svg>
-                </button>` : 
+                </button>` :
                 '-';
 
             return `
@@ -3980,8 +4136,8 @@ async function abrirModalEditarAsistencia(id) {
             if (!timestamp) return '';
             // Convertir a hora local en formato HH:MM
             const date = new Date(timestamp);
-            return date.toLocaleTimeString('en-GB', { 
-                hour: '2-digit', 
+            return date.toLocaleTimeString('en-GB', {
+                hour: '2-digit',
                 minute: '2-digit',
                 timeZone: 'America/Santiago'
             });
@@ -4077,7 +4233,7 @@ async function guardarEdicionAsistencia(id, fecha) {
         mostrarNotificacion('Asistencia actualizada correctamente', 'success');
         cerrarModalEditarAsistencia();
         cargarAsistencias();
-        
+
         // Si estamos editando el día actual del usuario logueado, actualizar estado
         const hoy = new Date().toISOString().split('T')[0];
         if (fecha === hoy) {
@@ -4094,7 +4250,7 @@ async function guardarEdicionAsistencia(id, fecha) {
 async function verificarSalidaPendiente() {
     try {
         const hoy = new Date().toISOString().split('T')[0];
-        
+
         const { data, error } = await supabaseClient
             .from('asistencias')
             .select('hora_salida')
@@ -4123,7 +4279,7 @@ async function verificarSalidaPendiente() {
 async function marcarEntradaAutomatica() {
     try {
         const hoy = new Date().toISOString().split('T')[0];
-        
+
         // Verificar si ya marcó entrada hoy
         const { data: registroExistente, error: errorCheck } = await supabaseClient
             .from('asistencias')

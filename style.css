@@ -126,10 +126,13 @@ body {
 }
 
 .login-icon {
-  font-size: 64px;
   margin-bottom: 16px;
   display: inline-block;
   animation: bounce 2s infinite;
+}
+
+.login-icon svg {
+  filter: drop-shadow(0 4px 8px rgba(0, 0, 0, 0.1));
 }
 
 @keyframes bounce {
@@ -493,7 +496,6 @@ body {
   border: 2px solid hsl(var(--border));
   border-radius: 12px;
   padding: 16px;
-  cursor: pointer;
   transition: all 0.2s;
   display: flex;
   flex-direction: column;
@@ -501,9 +503,8 @@ body {
 }
 
 .product-card:hover {
-  border-color: hsl(var(--primary));
-  box-shadow: var(--shadow-md);
-  transform: translateY(-2px);
+  border-color: hsl(var(--primary) / 0.3);
+  box-shadow: var(--shadow-sm);
 }
 
 .product-card-header {
@@ -560,6 +561,37 @@ body {
   margin-top: auto;
 }
 
+.btn-add-product {
+  width: 100%;
+  padding: 10px 16px;
+  background: hsl(var(--primary));
+  color: white;
+  border: none;
+  border-radius: 8px;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s;
+  margin-top: 4px;
+}
+
+.btn-add-product:hover {
+  background: hsl(var(--primary) / 0.9);
+  transform: translateY(-1px);
+  box-shadow: 0 2px 8px hsl(var(--primary) / 0.3);
+}
+
+.btn-add-product:active {
+  transform: translateY(0);
+}
+
+.btn-add-product:disabled {
+  background: hsl(var(--muted));
+  color: hsl(var(--muted-foreground));
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
 /* Cart Section */
 .pos-cart {
   background: hsl(var(--card));
@@ -573,7 +605,21 @@ body {
 
 @media (max-width: 1024px) {
   .pos-cart {
-    display: none;
+    position: fixed;
+    top: 0;
+    right: 0;
+    width: 100%;
+    max-width: 400px;
+    height: 100vh;
+    z-index: 1000;
+    border-radius: 0;
+    transform: translateX(100%);
+    transition: transform 0.3s ease;
+    box-shadow: -4px 0 20px rgba(0, 0, 0, 0.3);
+  }
+
+  .pos-cart.active {
+    transform: translateX(0);
   }
 }
 
@@ -929,8 +975,8 @@ body {
 .modal-overlay {
   position: fixed;
   inset: 0;
-  background: rgba(0, 0, 0, 0.5);
-  backdrop-filter: blur(4px);
+  background: rgba(0, 0, 0, 0.75);
+  z-index: 1;
   animation: fadeIn 0.2s ease-out;
 }
 
@@ -940,7 +986,7 @@ body {
 }
 
 .modal-content {
-  background: hsl(var(--card));
+  background: #ffffff;
   border-radius: 16px;
   box-shadow: var(--shadow-xl);
   width: 100%;
@@ -1922,7 +1968,7 @@ body {
     .charts-grid {
         grid-template-columns: 1fr;
     }
-    
+
     .chart-card-wide,
     .chart-card-small {
         grid-column: span 1;
@@ -2047,7 +2093,7 @@ body {
     height: 44px;
     padding: 10px;
   }
-  
+
   .btn-logout-header svg {
     width: 24px;
     height: 24px;
@@ -2401,29 +2447,29 @@ body {
   .caja-content {
     padding: 16px;
   }
-  
+
   .caja-panel {
     padding: 16px;
   }
-  
+
   .panel-header h3 {
     font-size: 16px;
   }
-  
+
   .stat-value {
     font-size: 16px;
   }
-  
+
   .gasto-item {
     flex-direction: column;
     align-items: flex-start;
     gap: 12px;
   }
-  
+
   .gasto-monto {
     font-size: 20px;
   }
-  
+
   .gasto-actions {
     align-self: flex-end;
   }
@@ -2485,10 +2531,10 @@ body {
 }
 
 /* ===================================
-   MEJORAS M�VIL - ESC�NER PRINCIPAL
+   MEJORAS M�VIL - ESC�NER PRINCIPAL
    =================================== */
 
-/* Campo de esc�ner principal */
+/* Campo de esc�ner principal */
 .barcode-search-main {
   background: linear-gradient(135deg, hsl(var(--primary)) 0%, hsl(var(--primary) / 0.8) 100%);
   border: 2px solid hsl(var(--primary));
@@ -2580,13 +2626,755 @@ body {
   .barcode-search-main {
     padding: 14px 16px;
   }
-  
+
   .barcode-search-main .barcode-input {
     font-size: 16px;
   }
-  
+
   .search-secondary .search-input {
     font-size: 16px;
   }
 }
 
+/* ===============================================
+   MÓDULO DE BODEGA VIRTUAL Y REPOSICIÓN
+   =============================================== */
+
+.bodega-layout {
+  display: grid;
+  grid-template-columns: 2.5fr 1fr;
+  gap: 24px;
+  height: calc(100vh - 180px);
+}
+
+.bodega-panel {
+  background: hsl(var(--card));
+  border-radius: 12px;
+  border: 1px solid hsl(var(--border));
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.bodega-panel-main {
+  display: flex;
+  flex-direction: column;
+}
+
+.bodega-panel-historial {
+  max-height: 100%;
+  overflow-y: auto;
+}
+
+.bodega-panel .panel-header {
+  padding: 20px;
+  border-bottom: 1px solid hsl(var(--border));
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  background: hsl(var(--muted) / 0.3);
+}
+
+.bodega-panel .panel-header h3 {
+  font-size: 18px;
+  font-weight: 600;
+  margin: 0;
+}
+
+/* Lista de Solicitudes */
+.solicitudes-list {
+  flex: 1;
+  overflow-y: auto;
+  padding: 16px;
+}
+
+.solicitud-card {
+  background: hsl(var(--card));
+  border: 2px solid hsl(var(--border));
+  border-radius: 12px;
+  padding: 16px;
+  margin-bottom: 12px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  transition: all 0.2s;
+}
+
+.solicitud-card:hover {
+  box-shadow: var(--shadow-md);
+  transform: translateY(-2px);
+}
+
+.solicitud-disponible {
+  border-left: 4px solid hsl(var(--success));
+}
+
+.solicitud-agotado {
+  border-left: 4px solid hsl(var(--danger));
+  opacity: 0.8;
+}
+
+.solicitud-advertencia {
+  border-left: 4px solid hsl(47, 100%, 50%);
+}
+
+.solicitud-critico {
+  border-left: 4px solid hsl(var(--danger));
+  background: hsl(var(--danger) / 0.05);
+}
+
+.solicitud-info {
+  flex: 1;
+}
+
+.solicitud-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 8px;
+}
+
+.solicitud-header h4 {
+  font-size: 16px;
+  font-weight: 600;
+  margin: 0;
+  color: hsl(var(--foreground));
+}
+
+.solicitud-meta {
+  display: flex;
+  gap: 16px;
+  font-size: 13px;
+  color: hsl(var(--muted-foreground));
+}
+
+.meta-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.meta-item svg {
+  stroke: hsl(var(--muted-foreground));
+}
+
+/* Indicador de Stock (Semáforo) */
+.solicitud-stock {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.stock-indicator {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 16px;
+  border-radius: 8px;
+  border: 2px solid;
+}
+
+.stock-indicator.stock-disponible {
+  background: hsl(var(--success) / 0.1);
+  border-color: hsl(var(--success));
+}
+
+.stock-indicator.stock-agotado {
+  background: hsl(var(--danger) / 0.1);
+  border-color: hsl(var(--danger));
+}
+
+.stock-indicator.stock-advertencia {
+  background: hsl(47, 100%, 50% / 0.1);
+  border-color: hsl(47, 100%, 50%);
+}
+
+.stock-indicator.stock-critico {
+  background: hsl(var(--danger) / 0.15);
+  border-color: hsl(var(--danger));
+}
+
+.stock-icon {
+  font-size: 24px;
+  line-height: 1;
+}
+
+/* Acciones de solicitud */
+.solicitud-actions {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+
+.solicitud-actions .btn {
+  white-space: nowrap;
+}
+
+.solicitud-actions .btn-danger {
+  padding: 6px 10px;
+  min-width: auto;
+  font-size: 0.875rem;
+}
+
+.stock-indicator div {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+}
+
+.stock-indicator strong {
+  font-size: 20px;
+  font-weight: 700;
+  line-height: 1;
+}
+
+.stock-indicator span {
+  font-size: 11px;
+  text-transform: uppercase;
+  color: hsl(var(--muted-foreground));
+  font-weight: 500;
+}
+
+/* Historial de Sacos */
+.historial-list {
+  padding: 12px;
+}
+
+.historial-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px;
+  background: hsl(var(--muted) / 0.3);
+  border-radius: 8px;
+  margin-bottom: 8px;
+  transition: background 0.2s;
+}
+
+.historial-item:hover {
+  background: hsl(var(--muted) / 0.5);
+}
+
+.historial-icon {
+  font-size: 24px;
+  line-height: 1;
+}
+
+.historial-info {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.historial-meta {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 2px;
+}
+
+.historial-info {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.historial-info strong {
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.historial-info span {
+  font-size: 12px;
+  color: hsl(var(--muted-foreground));
+}
+
+.historial-meta {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 4px;
+  font-size: 12px;
+}
+
+.meta-user {
+  font-weight: 500;
+  color: hsl(var(--foreground));
+}
+
+.meta-time {
+  color: hsl(var(--muted-foreground));
+}
+
+/* Panel de Gestión de Stock */
+.panel-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.6);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  z-index: 9999;
+  padding: 20px;
+}
+
+.panel-content {
+  background: hsl(var(--background));
+  border-radius: 16px;
+  max-height: 90vh;
+  overflow-y: auto;
+  box-shadow: var(--shadow-xl);
+  animation: slideUp 0.3s ease-out;
+}
+
+.panel-large {
+  width: 95%;
+  max-width: 1200px;
+}
+
+.panel-header-sticky {
+  position: sticky;
+  top: 0;
+  background: hsl(var(--card));
+  padding: 20px 24px;
+  border-bottom: 1px solid hsl(var(--border));
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  z-index: 10;
+}
+
+.panel-header-sticky h3 {
+  font-size: 20px;
+  font-weight: 600;
+  margin: 0;
+}
+
+.panel-body {
+  padding: 24px;
+}
+
+/* Tabla de Stock */
+.stock-bodega-table-container {
+  overflow-x: auto;
+  margin-top: 20px;
+}
+
+.table-striped {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 14px;
+}
+
+.table-striped thead {
+  background: hsl(var(--muted) / 0.5);
+}
+
+.table-striped th {
+  padding: 12px 16px;
+  text-align: left;
+  font-weight: 600;
+  color: hsl(var(--foreground));
+  border-bottom: 2px solid hsl(var(--border));
+}
+
+.table-striped td {
+  padding: 12px 16px;
+  border-bottom: 1px solid hsl(var(--border));
+  vertical-align: middle;
+}
+
+.table-striped tbody tr:hover {
+  background: hsl(var(--muted) / 0.3);
+}
+
+/* Búsqueda de Productos para Reposición */
+.productos-busqueda-list {
+  max-height: 400px;
+  overflow-y: auto;
+  border: 1px solid hsl(var(--border));
+  border-radius: 8px;
+  background: hsl(var(--card));
+}
+
+.producto-busqueda-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 12px 16px;
+  border-bottom: 1px solid hsl(var(--border));
+  transition: background 0.2s;
+}
+
+.producto-busqueda-item:last-child {
+  border-bottom: none;
+}
+
+.producto-busqueda-item:hover {
+  background: hsl(var(--muted) / 0.3);
+}
+
+.producto-info-mini {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.producto-info-mini strong {
+  font-size: 14px;
+  font-weight: 600;
+}
+
+/* Información de Producto en Modal */
+.producto-info-card {
+  background: hsl(var(--muted) / 0.3);
+  border-radius: 10px;
+  padding: 16px;
+  margin-bottom: 20px;
+}
+
+.producto-detail-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 8px 0;
+  border-bottom: 1px solid hsl(var(--border));
+}
+
+.producto-detail-row:last-child {
+  border-bottom: none;
+}
+
+.producto-detail-row strong {
+  font-size: 14px;
+  color: hsl(var(--muted-foreground));
+}
+
+.producto-detail-row span {
+  font-size: 14px;
+  font-weight: 500;
+  color: hsl(var(--foreground));
+}
+
+.stock-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 4px 12px;
+  border-radius: 6px;
+  font-size: 13px;
+  font-weight: 600;
+  background: hsl(var(--muted));
+}
+
+.stock-badge.stock-disponible {
+  background: hsl(var(--success) / 0.15);
+  color: hsl(var(--success));
+}
+
+/* Info Cards */
+.info-card {
+  display: flex;
+  gap: 12px;
+  padding: 16px;
+  border-radius: 10px;
+  border: 1px solid;
+}
+
+.info-card svg {
+  flex-shrink: 0;
+  margin-top: 2px;
+}
+
+.info-card div {
+  flex: 1;
+}
+
+.info-card strong {
+  display: block;
+  font-size: 15px;
+  margin-bottom: 4px;
+}
+
+.info-card p {
+  margin: 0;
+  font-size: 13px;
+  color: hsl(var(--muted-foreground));
+}
+
+.info-warning {
+  background: hsl(var(--warning) / 0.1);
+  border-color: hsl(var(--warning));
+  color: hsl(var(--warning));
+}
+
+.info-warning svg {
+  stroke: hsl(var(--warning));
+}
+
+/* Estados Visuales */
+.empty-state-small {
+  padding: 40px 20px;
+  text-align: center;
+  color: hsl(var(--muted-foreground));
+}
+
+.empty-state-small p {
+  font-size: 14px;
+  margin: 0;
+}
+
+/* Badges adicionales */
+.badge-adulto { background: #3b82f6; color: white; }
+.badge-cachorro { background: #f59e0b; color: white; }
+.badge-senior { background: #8b5cf6; color: white; }
+.badge-gato { background: #ec4899; color: white; }
+.badge-gatito { background: #f97316; color: white; }
+.badge-arena { background: #64748b; color: white; }
+
+/* Animaciones */
+@keyframes slideUp {
+  from {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* Responsive para Bodega */
+@media (max-width: 1024px) {
+  .bodega-layout {
+    grid-template-columns: 1fr;
+    height: auto;
+  }
+
+  .bodega-panel-historial {
+    max-height: 400px;
+  }
+
+  .solicitud-card {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 16px;
+  }
+
+  .solicitud-stock {
+    width: 100%;
+    justify-content: space-between;
+  }
+}
+
+@media (max-width: 768px) {
+  .panel-large {
+    width: 100%;
+    max-width: 100%;
+    max-height: 95vh;
+  }
+
+  .panel-body {
+    padding: 16px;
+  }
+
+  .stock-bodega-table-container {
+    overflow-x: scroll;
+  }
+
+  .table-striped {
+    min-width: 600px;
+  }
+}
+
+/* ===================================
+   FILTROS DE INVENTARIO CLICKEABLES
+   ================================ */
+
+.stat-card-clickable {
+  cursor: pointer;
+  transition: all 0.3s ease;
+  position: relative;
+}
+
+.stat-card-clickable:hover {
+  transform: translateY(-4px);
+  box-shadow: 0 8px 16px rgba(0, 0, 0, 0.1);
+}
+
+.stat-card-clickable:active {
+  transform: translateY(-2px);
+}
+
+.stat-card-active {
+  border: 2px solid hsl(var(--primary)) !important;
+  box-shadow: 0 4px 12px hsl(var(--primary) / 0.2);
+  background: linear-gradient(135deg, hsl(var(--card)) 0%, hsl(var(--primary) / 0.05) 100%);
+}
+
+.stat-card-active::after {
+  content: '✓';
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  background: hsl(var(--primary));
+  color: white;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+  font-weight: bold;
+}
+
+/* ===================================
+   CARRITO MÓVIL
+   ================================ */
+
+/* Botón Flotante del Carrito */
+.btn-cart-float {
+  position: fixed;
+  bottom: 90px;
+  right: 20px;
+  width: 64px;
+  height: 64px;
+  border-radius: 50%;
+  background: hsl(var(--primary));
+  color: white;
+  border: none;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.2);
+  cursor: pointer;
+  z-index: 999;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.3s ease;
+}
+
+.cart-icon {
+  display: block;
+}
+
+.btn-cart-float:hover {
+  transform: scale(1.1);
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.25);
+}
+
+.btn-cart-float:active {
+  transform: scale(0.95);
+}
+
+/* Clase para activar el botón solo cuando está en vista POS */
+.btn-cart-float.show {
+  display: none;
+}
+
+@media (max-width: 1024px) {
+  .btn-cart-float.show {
+    display: flex !important;
+  }
+}
+
+/* Badge del Carrito */
+.cart-badge {
+  position: absolute;
+  top: -4px;
+  right: -4px;
+  background: hsl(var(--destructive));
+  color: white;
+  font-size: 12px;
+  font-weight: 700;
+  min-width: 24px;
+  height: 24px;
+  border-radius: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 6px;
+  border: 2px solid white;
+}
+
+/* Overlay del Carrito Móvil */
+.cart-mobile-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100vh;
+  background: rgba(0, 0, 0, 0.5);
+  z-index: 999;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.3s ease;
+}
+
+.cart-mobile-overlay.active {
+  opacity: 1;
+  pointer-events: all;
+}
+
+/* Botón cerrar en header del carrito móvil */
+@media (max-width: 1024px) {
+  .cart-header {
+    background: hsl(var(--primary));
+    color: white;
+  }
+
+  .cart-header h3 {
+    color: white;
+  }
+
+  .cart-header .btn-icon {
+    background: rgba(255, 255, 255, 0.2);
+    color: white;
+  }
+
+  .cart-header .btn-icon:hover {
+    background: rgba(255, 255, 255, 0.3);
+  }
+}
+
+/* Modal Overlay - Estilos para modales dinámicos */
+.modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: rgba(0, 0, 0, 0.75);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  z-index: 10000;
+}
+
+.modal-content {
+  background: #ffffff;
+  border-radius: 12px;
+  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.5);
+  padding: 24px;
+  max-height: 90vh;
+  overflow-y: auto;
+  position: relative;
+  z-index: 10001;
+  animation: modalSlideIn 0.3s ease-out;
+}
+
+@keyframes modalSlideIn {
+  from {
+    transform: translateY(-50px);
+    opacity: 0;
+  }
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
