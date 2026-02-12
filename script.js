@@ -4232,6 +4232,13 @@ async function guardarEdicionAsistencia(id, fecha) {
 
         mostrarNotificacion('Asistencia actualizada correctamente', 'success');
         cerrarModalEditarAsistencia();
+        
+        // Limpiar filtros para mostrar todos los registros después de editar
+        const filtroVendedor = document.getElementById('filtroVendedor');
+        const filtroFecha = document.getElementById('filtroFecha');
+        if (filtroVendedor) filtroVendedor.value = '';
+        if (filtroFecha) filtroFecha.value = '';
+        
         cargarAsistencias();
 
         // Si estamos editando el día actual del usuario logueado, actualizar estado
