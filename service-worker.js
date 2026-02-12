@@ -1,8 +1,8 @@
 // Sabrofood PWA Service Worker
-// Versión: 1.0.2
+// Versión: 1.0.4
 // Fecha: 12-02-2026
 
-const CACHE_VERSION = 'sabrofood-v1.0.2-20260212';
+const CACHE_VERSION = 'sabrofood-v1.0.4-20260212';
 const CACHE_NAME = `${CACHE_VERSION}-static`;
 const DATA_CACHE = `${CACHE_VERSION}-data`;
 
@@ -10,10 +10,8 @@ const DATA_CACHE = `${CACHE_VERSION}-data`;
 const STATIC_ASSETS = [
   '/sabrofood/',
   '/sabrofood/index.html',
-  '/sabrofood/style.css',
-  '/sabrofood/script.js',
-  '/sabrofood/bodega-module.js',
   '/sabrofood/manifest.json',
+  // Nota: style.css y script.js se cachean dinámicamente para permitir actualizaciones
   // Fuentes de Google
   'https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap',
   // CDN externas (QR y Charts)
@@ -95,13 +93,20 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
-  // 📦 REGLA 2: Cache First para archivos estáticos
+  // � REGLA 2: Network First para JS y CSS (permite actualizaciones rápidas)
+  const pathname = url.pathname.toLowerCase();
+  if (pathname.endsWith('.js') || pathname.endsWith('.css')) {
+    event.respondWith(networkFirst(request));
+    return;
+  }
+
+  // 📦 REGLA 3: Cache First para otros archivos estáticos
   if (isStaticAsset(url)) {
     event.respondWith(cacheFirst(request));
     return;
   }
 
-  // 🌐 REGLA 3: Network First para todo lo demás
+  // 🌐 REGLA 4: Network First para todo lo demás
   event.respondWith(networkFirst(request));
 });
 

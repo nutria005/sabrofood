@@ -1048,14 +1048,19 @@ function abrirModalCobro() {
     document.getElementById('montoTransferencia').value = '';
     document.getElementById('vueltoAmount').textContent = '$0';
 
+    // Limpiar campos de pago mixto
+    const mixtoEfectivo = document.getElementById('montoMixtoEfectivo');
+    const mixtoTarjeta = document.getElementById('montoMixtoTarjeta');
+    const mixtoTransferencia = document.getElementById('montoMixtoTransferencia');
+    if (mixtoEfectivo) mixtoEfectivo.value = '';
+    if (mixtoTarjeta) mixtoTarjeta.value = '';
+    if (mixtoTransferencia) mixtoTransferencia.value = '';
+
     // Limpiar display de pagos
     document.getElementById('pagosRegistrados').innerHTML = '';
     document.getElementById('pagosRegistrados').style.display = 'none';
     document.getElementById('montoPendiente').style.display = 'none';
     document.getElementById('progresoMixto').style.display = 'none';
-
-    // Resetear texto del botón
-    document.getElementById('btnPagoParcialText').textContent = 'Registrar Pago';
 
     // Resetear botón finalizar
     document.getElementById('btnFinalizarVenta').innerHTML = `
@@ -1075,6 +1080,7 @@ function abrirModalCobro() {
     const areaEfectivo = document.getElementById('areaEfectivo');
     const areaTarjeta = document.getElementById('areaTarjeta');
     const areaTransferencia = document.getElementById('areaTransferencia');
+    const areaMixto = document.getElementById('areaMixto');
 
     if (areaEfectivo) {
         areaEfectivo.style.display = 'block';
@@ -1082,6 +1088,7 @@ function abrirModalCobro() {
     }
     if (areaTarjeta) areaTarjeta.style.display = 'none';
     if (areaTransferencia) areaTransferencia.style.display = 'none';
+    if (areaMixto) areaMixto.style.display = 'none';
 
     const modal = document.getElementById('modalCobro');
     modal.style.display = 'flex';
@@ -1107,12 +1114,14 @@ function seleccionarMetodo(metodo) {
     const areaEfectivo = document.getElementById('areaEfectivo');
     const areaTarjeta = document.getElementById('areaTarjeta');
     const areaTransferencia = document.getElementById('areaTransferencia');
+    const areaMixto = document.getElementById('areaMixto');
 
     // Ocultar todas las áreas
     areaEfectivo.classList.remove('visible');
     areaEfectivo.style.display = 'none';
     areaTarjeta.style.display = 'none';
     areaTransferencia.style.display = 'none';
+    if (areaMixto) areaMixto.style.display = 'none';
 
     // Mostrar el área correspondiente
     if (metodo === 'Efectivo') {
@@ -1144,6 +1153,15 @@ function seleccionarMetodo(metodo) {
         } else {
             helperTransferencia.textContent = 'Ingresa el monto a pagar con transferencia';
         }
+    } else if (metodo === 'Mixto') {
+        if (areaMixto) {
+            areaMixto.style.display = 'block';
+            // Resetear campos del pago mixto
+            document.getElementById('montoMixtoEfectivo').value = '';
+            document.getElementById('montoMixtoTarjeta').value = '';
+            document.getElementById('montoMixtoTransferencia').value = '';
+            calcularPagoMixto();
+        }
     }
 }
 
@@ -1166,6 +1184,35 @@ function calcularVuelto() {
     }
 }
 
+function calcularPagoMixto() {
+    const efectivo = parseFloat(document.getElementById('montoMixtoEfectivo').value) || 0;
+    const tarjeta = parseFloat(document.getElementById('montoMixtoTarjeta').value) || 0;
+    const transferencia = parseFloat(document.getElementById('montoMixtoTransferencia').value) || 0;
+    
+    const totalIngresado = efectivo + tarjeta + transferencia;
+    const falta = totalVenta - totalIngresado;
+    
+    // Actualizar displays
+    document.getElementById('totalMixtoDisplay').textContent = '$' + formatoMoneda(totalVenta);
+    document.getElementById('pagadoMixtoDisplay').textContent = '$' + formatoMoneda(totalIngresado);
+    document.getElementById('faltaMixtoDisplay').textContent = '$' + formatoMoneda(Math.max(0, falta));
+    
+    // Cambiar color del falta según si está completo
+    const faltaDisplay = document.getElementById('faltaMixtoDisplay');
+    if (falta <= 0) {
+        faltaDisplay.style.color = 'hsl(142 76% 36%)'; // Verde
+    } else {
+        faltaDisplay.style.color = 'hsl(0 84% 60%)'; // Rojo
+    }
+}
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// NOTA: Las siguientes funciones de pagos parciales ya NO se usan
+// El flujo de pago mixto ahora se maneja directamente con el botón "Mixto"
+// Se mantienen comentadas por compatibilidad
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+/*
 function agregarPagoParcial() {
     // Validar que haya un método seleccionado
     if (!metodoPagoSeleccionado) {
@@ -1259,6 +1306,10 @@ function agregarPagoParcial() {
     if (areaTransferencia) areaTransferencia.style.display = 'none';
 }
 
+/*
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// FUNCIÓN OBSOLETA: Ya no se usa con el nuevo botón "Mixto"
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 function renderPagosRegistrados() {
     const container = document.getElementById('pagosRegistrados');
     const pendienteContainer = document.getElementById('montoPendiente');
@@ -1344,6 +1395,7 @@ function eliminarPago(index) {
     renderPagosRegistrados();
     mostrarNotificacion('Pago eliminado', 'info');
 }
+*/
 
 async function finalizarVenta() {
     if (!currentUser) {
@@ -1356,8 +1408,30 @@ async function finalizarVenta() {
     let metodoPagoFinal;
     let montoPagadoTotal = 0;
 
+    // NUEVO: Si es pago mixto simplificado
+    if (metodoPagoSeleccionado === 'Mixto') {
+        const efectivo = parseFloat(document.getElementById('montoMixtoEfectivo').value) || 0;
+        const tarjeta = parseFloat(document.getElementById('montoMixtoTarjeta').value) || 0;
+        const transferencia = parseFloat(document.getElementById('montoMixtoTransferencia').value) || 0;
+        
+        const totalIngresado = efectivo + tarjeta + transferencia;
+        
+        if (totalIngresado < totalVenta) {
+            mostrarNotificacion(`Falta completar el pago. Ingresado: $${formatoMoneda(totalIngresado)} de $${formatoMoneda(totalVenta)}`, 'error');
+            return;
+        }
+        
+        // Construir array de pagos registrados automáticamente
+        pagosRegistrados = [];
+        if (efectivo > 0) pagosRegistrados.push({ metodo: 'Efectivo', monto: efectivo });
+        if (tarjeta > 0) pagosRegistrados.push({ metodo: 'Tarjeta', monto: tarjeta });
+        if (transferencia > 0) pagosRegistrados.push({ metodo: 'Transferencia', monto: transferencia });
+        
+        montoPagadoTotal = totalIngresado;
+        metodoPagoFinal = 'Mixto (' + pagosRegistrados.map(p => p.metodo).join(' + ') + ')';
+    }
     // Si hay pagos parciales registrados
-    if (pagosRegistrados.length > 0) {
+    else if (pagosRegistrados.length > 0) {
         montoPagadoTotal = pagosRegistrados.reduce((sum, p) => sum + p.monto, 0);
 
         // Verificar si falta completar el pago
@@ -2128,11 +2202,17 @@ function renderTablaHistorial(ventas) {
                 <td>${productosTexto}</td>
                 <td><strong>$${formatoMoneda(v.total)}</strong></td>
                 <td><span class="badge badge-success">${v.metodo_pago}</span></td>
-                <td>
+                <td style="display: flex; gap: 4px;">
                     <button class="btn-icon" onclick="verDetalleVenta(${v.id})" title="Ver detalle">
                         <svg width="16" height="16" viewBox="0 0 20 20" fill="none">
                             <circle cx="10" cy="10" r="3" stroke="currentColor" stroke-width="2"/>
                             <path d="M2 10s3-6 8-6 8 6 8 6-3 6-8 6-8-6-8-6z" stroke="currentColor" stroke-width="2"/>
+                        </svg>
+                    </button>
+                    <button class="btn-icon" onclick="imprimirBoletaDirecta(${v.id})" title="Imprimir boleta" style="color: hsl(142 76% 36%);">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
+                            <path d="M6 9V2h12v7M6 18H4a2 2 0 01-2-2v-5a2 2 0 012-2h16a2 2 0 012 2v5a2 2 0 01-2 2h-2" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                            <rect x="6" y="14" width="12" height="8" rx="1" stroke="currentColor" stroke-width="2"/>
                         </svg>
                     </button>
                 </td>
@@ -2200,6 +2280,13 @@ async function verDetalleVenta(id) {
                 console.warn('No se pudo parsear pagos_detalle');
             }
         }
+
+        // Guardar datos para impresión
+        ventaActualParaImprimir = {
+            venta: venta,
+            items: items || [],
+            detallesPagos: detallesPagos
+        };
 
         // Renderizar contenido
         content.innerHTML = `
@@ -2301,6 +2388,318 @@ function cerrarModalDetalleVenta() {
     setTimeout(() => {
         modal.style.display = 'none';
     }, 300);
+}
+
+// Variable global para almacenar la venta actual
+let ventaActualParaImprimir = null;
+
+/**
+ * Imprimir boleta directamente desde el historial
+ */
+async function imprimirBoletaDirecta(id) {
+    try {
+        // Mostrar indicador de carga
+        mostrarNotificacion('Preparando boleta...', 'info');
+
+        // Consultar venta
+        const { data: venta, error: ventaError } = await supabaseClient
+            .from('ventas')
+            .select('*')
+            .eq('id', id)
+            .single();
+
+        if (ventaError) throw ventaError;
+
+        // Consultar items de la venta
+        const { data: items, error: itemsError } = await supabaseClient
+            .from('ventas_items')
+            .select('*')
+            .eq('venta_id', id);
+
+        if (itemsError) {
+            console.warn('No se pudieron cargar los items:', itemsError);
+        }
+
+        // Parsear detalle de pagos si existe
+        let detallesPagos = [];
+        if (venta.pagos_detalle) {
+            try {
+                detallesPagos = typeof venta.pagos_detalle === 'string'
+                    ? JSON.parse(venta.pagos_detalle)
+                    : venta.pagos_detalle;
+            } catch (e) {
+                console.warn('No se pudo parsear pagos_detalle');
+            }
+        }
+
+        // Guardar datos para impresión
+        ventaActualParaImprimir = {
+            venta: venta,
+            items: items || [],
+            detallesPagos: detallesPagos
+        };
+
+        // Llamar a la función de impresión
+        imprimirBoleta();
+
+    } catch (error) {
+        console.error('Error al preparar boleta:', error);
+        mostrarNotificacion('Error al cargar datos de la venta', 'error');
+    }
+}
+
+/**
+ * Imprimir boleta de venta
+ */
+function imprimirBoleta() {
+    if (!ventaActualParaImprimir) {
+        mostrarNotificacion('No hay datos de venta para imprimir', 'error');
+        return;
+    }
+
+    const venta = ventaActualParaImprimir.venta;
+    const items = ventaActualParaImprimir.items || [];
+    const detallesPagos = ventaActualParaImprimir.detallesPagos || [];
+
+    // Crear ventana de impresión
+    const ventanaImpresion = window.open('', '', 'width=800,height=600');
+    
+    const htmlBoleta = `
+        <!DOCTYPE html>
+        <html lang="es">
+        <head>
+            <meta charset="UTF-8">
+            <meta name="viewport" content="width=device-width, initial-scale=1.0">
+            <title>Boleta #${venta.id} - Sabrofood</title>
+            <style>
+                * {
+                    margin: 0;
+                    padding: 0;
+                    box-sizing: border-box;
+                }
+                
+                body {
+                    font-family: 'Courier New', Courier, monospace;
+                    padding: 20px;
+                    max-width: 80mm;
+                    margin: 0 auto;
+                    background: white;
+                }
+                
+                .boleta {
+                    border: 2px solid #000;
+                    padding: 15px;
+                }
+                
+                .header {
+                    text-align: center;
+                    border-bottom: 2px dashed #000;
+                    padding-bottom: 10px;
+                    margin-bottom: 15px;
+                }
+                
+                .header h1 {
+                    font-size: 24px;
+                    font-weight: bold;
+                    margin-bottom: 5px;
+                }
+                
+                .header p {
+                    font-size: 12px;
+                    margin: 2px 0;
+                }
+                
+                .info-venta {
+                    margin-bottom: 15px;
+                    font-size: 12px;
+                    border-bottom: 1px dashed #000;
+                    padding-bottom: 10px;
+                }
+                
+                .info-venta p {
+                    margin: 3px 0;
+                    display: flex;
+                    justify-content: space-between;
+                }
+                
+                .info-venta strong {
+                    font-weight: bold;
+                }
+                
+                .productos {
+                    margin-bottom: 15px;
+                }
+                
+                .productos-header {
+                    font-weight: bold;
+                    display: grid;
+                    grid-template-columns: 2fr 1fr 1fr 1fr;
+                    gap: 5px;
+                    border-bottom: 2px solid #000;
+                    padding-bottom: 5px;
+                    margin-bottom: 10px;
+                    font-size: 11px;
+                }
+                
+                .producto-item {
+                    display: grid;
+                    grid-template-columns: 2fr 1fr 1fr 1fr;
+                    gap: 5px;
+                    margin-bottom: 8px;
+                    font-size: 11px;
+                }
+                
+                .producto-item .nombre {
+                    font-weight: 500;
+                }
+                
+                .producto-item .cantidad,
+                .producto-item .precio,
+                .producto-item .subtotal {
+                    text-align: right;
+                }
+                
+                .totales {
+                    border-top: 2px solid #000;
+                    padding-top: 10px;
+                    margin-top: 10px;
+                }
+                
+                .total-item {
+                    display: flex;
+                    justify-content: space-between;
+                    margin: 5px 0;
+                    font-size: 12px;
+                }
+                
+                .total-item.final {
+                    font-size: 16px;
+                    font-weight: bold;
+                    border-top: 2px double #000;
+                    padding-top: 8px;
+                    margin-top: 8px;
+                }
+                
+                .pagos {
+                    margin-top: 15px;
+                    border-top: 1px dashed #000;
+                    padding-top: 10px;
+                    font-size: 12px;
+                }
+                
+                .pago-item {
+                    display: flex;
+                    justify-content: space-between;
+                    margin: 3px 0;
+                }
+                
+                .footer {
+                    text-align: center;
+                    margin-top: 20px;
+                    border-top: 2px dashed #000;
+                    padding-top: 10px;
+                    font-size: 11px;
+                }
+                
+                .footer p {
+                    margin: 3px 0;
+                }
+                
+                @media print {
+                    body {
+                        padding: 0;
+                    }
+                    
+                    .boleta {
+                        border: none;
+                    }
+                    
+                    @page {
+                        margin: 10mm;
+                        size: 80mm auto;
+                    }
+                }
+            </style>
+        </head>
+        <body>
+            <div class="boleta">
+                <div class="header">
+                    <h1>SABROFOOD</h1>
+                    <p>Sistema de Punto de Venta</p>
+                    <p>━━━━━━━━━━━━━━━━━━━━</p>
+                    <p><strong>BOLETA DE VENTA</strong></p>
+                </div>
+                
+                <div class="info-venta">
+                    <p><strong>N° Boleta:</strong> <span>#${venta.id}</span></p>
+                    <p><strong>Fecha:</strong> <span>${new Date(venta.created_at || venta.fecha).toLocaleDateString('es-CL')}</span></p>
+                    <p><strong>Hora:</strong> <span>${new Date(venta.created_at || venta.fecha).toLocaleTimeString('es-CL', { hour: '2-digit', minute: '2-digit' })}</span></p>
+                    <p><strong>Vendedor:</strong> <span>${venta.vendedor_nombre || venta.vendedor || 'Sin asignar'}</span></p>
+                </div>
+                
+                <div class="productos">
+                    <div class="productos-header">
+                        <div>PRODUCTO</div>
+                        <div style="text-align: right;">CANT</div>
+                        <div style="text-align: right;">P.U.</div>
+                        <div style="text-align: right;">TOTAL</div>
+                    </div>
+                    ${items.length > 0 ? items.map(item => `
+                        <div class="producto-item">
+                            <div class="nombre">${item.producto_nombre}</div>
+                            <div class="cantidad">${item.cantidad}</div>
+                            <div class="precio">$${formatoMoneda(item.precio_unitario)}</div>
+                            <div class="subtotal">$${formatoMoneda(item.subtotal)}</div>
+                        </div>
+                    `).join('') : '<p style="text-align: center; color: #666;">Sin productos registrados</p>'}
+                </div>
+                
+                <div class="totales">
+                    <div class="total-item final">
+                        <span>TOTAL:</span>
+                        <span>$${formatoMoneda(venta.total)}</span>
+                    </div>
+                </div>
+                
+                ${detallesPagos.length > 0 ? `
+                    <div class="pagos">
+                        <p style="font-weight: bold; margin-bottom: 5px;">FORMA DE PAGO:</p>
+                        ${detallesPagos.map(pago => `
+                            <div class="pago-item">
+                                <span>${pago.metodo}:</span>
+                                <span>$${formatoMoneda(pago.monto)}</span>
+                            </div>
+                        `).join('')}
+                    </div>
+                ` : `
+                    <div class="pagos">
+                        <p style="font-weight: bold;">FORMA DE PAGO: ${venta.metodo_pago}</p>
+                    </div>
+                `}
+                
+                <div class="footer">
+                    <p>━━━━━━━━━━━━━━━━━━━━</p>
+                    <p>¡Gracias por su compra!</p>
+                    <p style="margin-top: 8px; font-size: 10px;">
+                        Documento no válido como factura
+                    </p>
+                </div>
+            </div>
+            
+            <script>
+                // Imprimir automáticamente al cargar
+                window.onload = function() {
+                    window.print();
+                    // Cerrar ventana después de imprimir o cancelar
+                    setTimeout(() => window.close(), 500);
+                };
+            </script>
+        </body>
+        </html>
+    `;
+    
+    ventanaImpresion.document.write(htmlBoleta);
+    ventanaImpresion.document.close();
 }
 
 // ===================================

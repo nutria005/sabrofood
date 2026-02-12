@@ -3378,3 +3378,104 @@ body {
     opacity: 1;
   }
 }
+
+/* ===================================
+   BANNER DE ACTUALIZACIÓN PWA
+   =================================== */
+.update-banner {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  background: linear-gradient(135deg, hsl(217 91% 60%), hsl(217 91% 50%));
+  color: white;
+  padding: 12px 16px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+  z-index: 10000;
+  animation: slideDown 0.3s ease-out;
+  gap: 12px;
+}
+
+@keyframes slideDown {
+  from {
+    transform: translateY(-100%);
+  }
+  to {
+    transform: translateY(0);
+  }
+}
+
+.update-banner-content {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex: 1;
+}
+
+.update-banner-content svg {
+  flex-shrink: 0;
+}
+
+.update-banner-content span {
+  font-weight: 500;
+  font-size: 14px;
+}
+
+.update-banner-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.btn-update-dismiss,
+.btn-update-now {
+  padding: 6px 16px;
+  border-radius: 6px;
+  border: none;
+  font-weight: 600;
+  font-size: 13px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.btn-update-dismiss {
+  background: rgba(255, 255, 255, 0.2);
+  color: white;
+}
+
+.btn-update-dismiss:hover {
+  background: rgba(255, 255, 255, 0.3);
+}
+
+.btn-update-now {
+  background: white;
+  color: hsl(217 91% 50%);
+}
+
+.btn-update-now:hover {
+  background: hsl(0 0% 95%);
+  transform: scale(1.05);
+}
+
+@media (max-width: 600px) {
+  .update-banner {
+    flex-direction: column;
+    padding: 12px;
+    gap: 12px;
+  }
+
+  .update-banner-content span {
+    font-size: 13px;
+  }
+
+  .update-banner-actions {
+    width: 100%;
+  }
+
+  .btn-update-dismiss,
+  .btn-update-now {
+    flex: 1;
+  }
+}
