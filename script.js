@@ -1642,6 +1642,25 @@ async function cargarInventario() {
             break;
     }
 
+    // Aplicar filtro adicional por proveedor si está seleccionado
+    const filtroProveedorSelect = document.getElementById('filtroProveedor');
+    if (filtroProveedorSelect) {
+        const proveedorSeleccionado = filtroProveedorSelect.value;
+        if (proveedorSeleccionado) {
+            if (proveedorSeleccionado === 'Sin proveedor') {
+                // Filtrar productos sin proveedor (null, '', o 'Sin proveedor')
+                productosFiltrados = productosFiltrados.filter(p => 
+                    !p.proveedor || p.proveedor === '' || p.proveedor === 'Sin proveedor'
+                );
+            } else {
+                // Filtrar por proveedor específico
+                productosFiltrados = productosFiltrados.filter(p => 
+                    p.proveedor === proveedorSeleccionado
+                );
+            }
+        }
+    }
+
     // Tabla
     const tbody = document.getElementById('inventoryTableBody');
 
@@ -1656,7 +1675,7 @@ async function cargarInventario() {
 
         tbody.innerHTML = `
             <tr>
-                <td colspan="7" style="text-align: center; padding: 40px; color: #6b7280;">
+                <td colspan="8" style="text-align: center; padding: 40px; color: #6b7280;">
                     <div style="font-size: 48px; margin-bottom: 12px;">📦</div>
                     <div style="font-size: 16px; font-weight: 600;">${mensajeFiltro}</div>
                 </td>
@@ -1666,6 +1685,12 @@ async function cargarInventario() {
     }
 
     tbody.innerHTML = productosFiltrados.map(p => {
+        // Validar que el producto tenga ID válido
+        if (!p.id) {
+            console.error('Producto sin ID:', p);
+            return '';
+        }
+
         const stockBajo = p.stock <= (p.stock_minimo || 5);
         const stockCero = p.stock === 0;
 
@@ -1688,6 +1713,9 @@ async function cargarInventario() {
             codigoBarrasHTML = `<span class="sin-codigo">⚠️ Sin código</span>`;
         }
 
+        // Escapar el nombre del producto para evitar problemas con HTML
+        const nombreEscapado = escapeHtml(p.nombre);
+
         // Botón de eliminar solo para encargado
         const btnEliminar = currentUserRole === 'encargado' ? `
             <button class="btn-icon btn-icon-delete" onclick="eliminarProductoDirecto(${p.id})" title="Eliminar">
@@ -1697,9 +1725,16 @@ async function cargarInventario() {
             </button>
         ` : '';
 
+        // Mostrar proveedor, categoria en formato: "Proveedor, Categoria"
+        let proveedorCategoria = '';
+        if (p.proveedor && p.proveedor !== '' && p.proveedor !== 'Sin proveedor') {
+            proveedorCategoria = p.proveedor;
+        }
+        
         return `
             <tr>
-                <td><strong>${p.nombre}</strong></td>
+                <td><strong>${nombreEscapado}</strong></td>
+                <td>${proveedorCategoria || '-'}</td>
                 <td>${p.categoria || '-'}</td>
                 <td>$${formatoMoneda(p.precio)}</td>
                 <td><strong>${Math.floor(p.stock)}</strong></td>
@@ -2939,7 +2974,24 @@ function abrirModalEditar(producto) {
     const esEncargado = currentUserRole === 'encargado';
 
     document.getElementById('editNombre').value = producto.nombre;
-    document.getElementById('editCategoria').value = producto.categoria || '';
+    document.getElementById('editProveedor').value = producto.proveedor || '';
+    
+    // Establecer categoría - verificar si existe en el dropdown
+    const categoriaSelect = document.getElementById('editCategoria');
+    const categoriaProducto = producto.categoria || '';
+    
+    // Verificar si la categoría existe en las opciones del select
+    let categoriaExiste = false;
+    for (let option of categoriaSelect.options) {
+        if (option.value === categoriaProducto) {
+            categoriaExiste = true;
+            break;
+        }
+    }
+    
+    // Si la categoría existe, establecerla; si no, dejar en vacío para mostrar "Seleccionar categoría"
+    categoriaSelect.value = categoriaExiste ? categoriaProducto : '';
+    
     document.getElementById('editPrecio').value = producto.precio;
     document.getElementById('editStock').value = producto.stock;
     document.getElementById('editCodigoBarras').value = producto.codigo_barras || '';
@@ -2957,6 +3009,7 @@ function abrirModalEditar(producto) {
     // Si es vendedor, solo puede editar el stock
     if (!esEncargado) {
         document.getElementById('editNombre').setAttribute('readonly', 'readonly');
+        document.getElementById('editProveedor').setAttribute('disabled', 'disabled');
         document.getElementById('editCategoria').setAttribute('disabled', 'disabled');
         document.getElementById('editPrecio').setAttribute('readonly', 'readonly');
         document.getElementById('editCodigoBarras').setAttribute('readonly', 'readonly');
@@ -2966,6 +3019,7 @@ function abrirModalEditar(producto) {
         if (btnEliminar) btnEliminar.style.display = 'none';
     } else {
         document.getElementById('editNombre').removeAttribute('readonly');
+        document.getElementById('editProveedor').removeAttribute('disabled');
         document.getElementById('editCategoria').removeAttribute('disabled');
         document.getElementById('editPrecio').removeAttribute('readonly');
         document.getElementById('editCodigoBarras').removeAttribute('readonly');
@@ -3009,6 +3063,7 @@ async function guardarEdicion() {
         // Si es encargado, puede actualizar todos los campos
         if (esEncargado) {
             const nuevoNombre = document.getElementById('editNombre').value.trim();
+            const nuevoProveedor = document.getElementById('editProveedor').value;
             const nuevaCategoria = document.getElementById('editCategoria').value;
             const nuevoPrecio = parseFloat(document.getElementById('editPrecio').value);
             const nuevoCodigoBarras = document.getElementById('editCodigoBarras').value.trim();
@@ -3031,6 +3086,7 @@ async function guardarEdicion() {
 
             updateData = {
                 nombre: nuevoNombre,
+                proveedor: nuevoProveedor || null,
                 categoria: nuevaCategoria,
                 precio: nuevoPrecio,
                 stock: nuevoStock,
@@ -3827,6 +3883,7 @@ async function guardarNuevoProducto() {
     const codigoBarra = document.getElementById('nuevoCodigoBarra').value;
     const nombre = document.getElementById('nuevoNombre').value;
     const marca = document.getElementById('nuevoMarca').value;
+    const proveedor = document.getElementById('nuevoProveedor').value;
     const categoria = document.getElementById('nuevoCategoria').value;
     const precio = parseFloat(document.getElementById('nuevoPrecio').value);
     const stock = parseFloat(document.getElementById('nuevoStock').value);
@@ -3844,6 +3901,7 @@ async function guardarNuevoProducto() {
                 codigo_barras: codigoBarra,
                 nombre: nombre,
                 marca: marca,
+                proveedor: proveedor || null,
                 categoria: categoria,
                 precio: precio,
                 stock: stock,

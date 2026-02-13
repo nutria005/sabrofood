@@ -415,11 +415,38 @@
                         </div>
                     </div>
 
+                    <div style="margin: 10px 0; padding: 10px; background: white; border-radius: 8px;">
+                        <label for="filtroProveedor" style="margin-right: 10px; font-weight: 500;">Filtrar por Proveedor:</label>
+                        <select id="filtroProveedor" onchange="filtrarInventario()" style="padding: 8px; border: 1px solid #ddd; border-radius: 4px; min-width: 200px;">
+                            <option value="">Todos los proveedores</option>
+                            <option value="Sin proveedor">Sin proveedor</option>
+                            <option value="Befoods">Befoods</option>
+                            <option value="Cruce">Cruce</option>
+                            <option value="Argentinos">Argentinos</option>
+                            <option value="Mya Spa">Mya Spa</option>
+                            <option value="Chile Dog">Chile Dog</option>
+                            <option value="SBrit care">SBrit care</option>
+                            <option value="Bravery">Bravery</option>
+                            <option value="Dragpharma">Dragpharma</option>
+                            <option value="Fit formula">Fit formula</option>
+                            <option value="Farmacia">Farmacia</option>
+                            <option value="Belcando & Leonardo">Belcando & Leonardo</option>
+                            <option value="Wampy">Wampy</option>
+                            <option value="Josera">Josera</option>
+                            <option value="Acomer">Acomer</option>
+                            <option value="Dockneddy">Dockneddy</option>
+                            <option value="Topk9">Topk9</option>
+                            <option value="Cova">Cova</option>
+                            <option value="Purina">Purina</option>
+                        </select>
+                    </div>
+
                     <div class="inventory-table-container">
                         <table class="inventory-table" id="inventoryTable">
                             <thead>
                                 <tr>
                                     <th>Producto</th>
+                                    <th>Proveedor</th>
                                     <th>Categoría</th>
                                     <th>Precio</th>
                                     <th>Stock</th>
@@ -430,7 +457,7 @@
                             </thead>
                             <tbody id="inventoryTableBody">
                                 <tr>
-                                    <td colspan="7" class="text-center">
+                                    <td colspan="8" class="text-center">
                                         <div class="loading-state">
                                             <div class="spinner"></div>
                                             <p>Cargando inventario...</p>
@@ -1293,16 +1320,44 @@
                     <input type="text" id="editNombre" class="form-input" placeholder="Nombre del producto">
                 </div>
                 <div class="form-group">
+                    <label>Proveedor (opcional)</label>
+                    <select id="editProveedor" class="form-select">
+                        <option value="">Sin proveedor</option>
+                        <option value="Befoods">Befoods</option>
+                        <option value="Cruce">Cruce</option>
+                        <option value="Argentinos">Argentinos</option>
+                        <option value="Mya Spa">Mya Spa</option>
+                        <option value="Chile Dog">Chile Dog</option>
+                        <option value="SBrit care">SBrit care</option>
+                        <option value="Bravery">Bravery</option>
+                        <option value="Dragpharma">Dragpharma</option>
+                        <option value="Fit formula">Fit formula</option>
+                        <option value="Farmacia">Farmacia</option>
+                        <option value="Belcando & Leonardo">Belcando & Leonardo</option>
+                        <option value="Wampy">Wampy</option>
+                        <option value="Josera">Josera</option>
+                        <option value="Acomer">Acomer</option>
+                        <option value="Dockneddy">Dockneddy</option>
+                        <option value="Topk9">Topk9</option>
+                        <option value="Cova">Cova</option>
+                        <option value="Purina">Purina</option>
+                    </select>
+                </div>
+                <div class="form-group">
                     <label>Categoría</label>
                     <select id="editCategoria" class="form-select">
                         <option value="">Seleccionar categoría</option>
-                        <option value="Perro Adulto">Perro Adulto</option>
-                        <option value="Perro Cachorro">Perro Cachorro</option>
+                        <option value="Adulto">Adulto</option>
+                        <option value="Cachorro">Cachorro</option>
+                        <option value="Senior">Senior</option>
                         <option value="Gato Adulto">Gato Adulto</option>
-                        <option value="Gato Kitten">Gato Kitten</option>
-                        <option value="Granel">Granel</option>
-                        <option value="Accesorios">Accesorios</option>
+                        <option value="Gatito">Gatito</option>
+                        <option value="Argentino">Argentino</option>
+                        <option value="HR/AZ">HR/AZ</option>
+                        <option value="Cruce">Cruce</option>
+                        <option value="Arena">Arena</option>
                         <option value="Snacks">Snacks</option>
+                        <option value="Accesorios">Accesorios</option>
                         <option value="Otros">Otros</option>
                     </select>
                 </div>
@@ -1327,7 +1382,7 @@
                 </div>
             </div>
             <div class="modal-footer">
-                <button class="btn btn-danger" onclick="eliminarProducto()" style="margin-right: auto;">
+                <button class="btn btn-danger" onclick="eliminarProducto()">
                     <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
                         <path d="M7 3h6M3 5h14M5 5v11a2 2 0 002 2h6a2 2 0 002-2V5M8 9v6M12 9v6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
                     </svg>
@@ -1400,16 +1455,45 @@
                     <input type="text" id="nuevoMarca" class="form-input" placeholder="Ej: Champion">
                 </div>
                 <div class="form-group">
+                    <label>Proveedor (opcional)</label>
+                    <select id="nuevoProveedor" class="form-select">
+                        <option value="">Sin proveedor</option>
+                        <option value="Befoods">Befoods</option>
+                        <option value="Cruce">Cruce</option>
+                        <option value="Argentinos">Argentinos</option>
+                        <option value="Mya Spa">Mya Spa</option>
+                        <option value="Chile Dog">Chile Dog</option>
+                        <option value="SBrit care">SBrit care</option>
+                        <option value="Bravery">Bravery</option>
+                        <option value="Dragpharma">Dragpharma</option>
+                        <option value="Fit formula">Fit formula</option>
+                        <option value="Farmacia">Farmacia</option>
+                        <option value="Belcando & Leonardo">Belcando & Leonardo</option>
+                        <option value="Wampy">Wampy</option>
+                        <option value="Josera">Josera</option>
+                        <option value="Acomer">Acomer</option>
+                        <option value="Dockneddy">Dockneddy</option>
+                        <option value="Topk9">Topk9</option>
+                        <option value="Cova">Cova</option>
+                        <option value="Purina">Purina</option>
+                    </select>
+                </div>
+                <div class="form-group">
                     <label>Categoría</label>
                     <select id="nuevoCategoria" class="form-select">
+                        <option value="">Seleccionar categoría</option>
                         <option value="Adulto">Adulto</option>
                         <option value="Cachorro">Cachorro</option>
                         <option value="Senior">Senior</option>
                         <option value="Gato Adulto">Gato Adulto</option>
                         <option value="Gatito">Gatito</option>
+                        <option value="Argentino">Argentino</option>
+                        <option value="HR/AZ">HR/AZ</option>
+                        <option value="Cruce">Cruce</option>
                         <option value="Arena">Arena</option>
                         <option value="Snacks">Snacks</option>
                         <option value="Accesorios">Accesorios</option>
+                        <option value="Otros">Otros</option>
                     </select>
                 </div>
                 <div class="form-group">
