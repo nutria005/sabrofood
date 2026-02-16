@@ -223,8 +223,16 @@ async function validarStockAntesDeVenta() {
     if (!supabaseClient) return true;
 
     try {
-        // Obtener IDs de productos en carrito
-        const productosIds = carrito.map(item => item.id);
+        // Filtrar solo productos normales (no granel) para validar stock
+        const productosNormales = carrito.filter(item => !item.esGranel);
+        
+        if (productosNormales.length === 0) {
+            // Solo hay productos de granel, no validar stock
+            return true;
+        }
+
+        // Obtener IDs de productos normales en carrito
+        const productosIds = productosNormales.map(item => item.id);
 
         // Consultar stock actual en DB
         const { data: productosActuales, error } = await supabaseClient
@@ -234,8 +242,8 @@ async function validarStockAntesDeVenta() {
 
         if (error) throw error;
 
-        // Verificar cada producto
-        for (const item of carrito) {
+        // Verificar cada producto normal
+        for (const item of productosNormales) {
             const productoActual = productosActuales.find(p => p.id === item.id);
 
             if (!productoActual) {
@@ -830,28 +838,65 @@ function renderCarrito() {
         return;
     }
 
-    totalVenta = carrito.reduce((sum, item) => sum + (item.precio * item.cantidad), 0);
+    // Calcular total: productos normales + granel
+    totalVenta = carrito.reduce((sum, item) => {
+        if (item.esGranel) {
+            return sum + item.montoGranel;
+        } else {
+            return sum + (item.precio * item.cantidad);
+        }
+    }, 0);
 
-    carritoItems.innerHTML = carrito.map((item, index) => `
-        <div class="cart-item">
-            <div class="cart-item-header">
-                <div class="cart-item-name">${item.nombre}</div>
-                <button class="cart-item-remove" onclick="removerDelCarrito(${index})">
-                    <svg width="14" height="14" viewBox="0 0 20 20" fill="none">
-                        <path d="M15 5L5 15M5 5l10 10" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
-                    </svg>
-                </button>
-            </div>
-            <div class="cart-item-footer">
-                <div class="cart-item-controls">
-                    <button onclick="cambiarCantidad(${index}, -1)">−</button>
-                    <span class="cart-item-quantity">${item.cantidad}</span>
-                    <button onclick="cambiarCantidad(${index}, 1)">+</button>
+    carritoItems.innerHTML = carrito.map((item, index) => {
+        // Renderizar diferente según si es granel o no
+        if (item.esGranel) {
+            return `
+                <div class="cart-item" style="border-left: 3px solid hsl(var(--success));">
+                    <div class="cart-item-header">
+                        <div class="cart-item-name">
+                            🌾 ${item.nombre}
+                            <div style="font-size: 11px; color: hsl(var(--muted-foreground)); margin-top: 2px;">
+                                ~${item.pesoEstimado} kg estimado
+                            </div>
+                        </div>
+                        <button class="cart-item-remove" onclick="removerDelCarrito(${index})">
+                            <svg width="14" height="14" viewBox="0 0 20 20" fill="none">
+                                <path d="M15 5L5 15M5 5l10 10" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+                            </svg>
+                        </button>
+                    </div>
+                    <div class="cart-item-footer">
+                        <div style="font-size: 12px; color: hsl(var(--muted-foreground));">
+                            Granel - Monto fijo
+                        </div>
+                        <div class="cart-item-price">$${formatoMoneda(item.montoGranel)}</div>
+                    </div>
                 </div>
-                <div class="cart-item-price">$${formatoMoneda(item.precio * item.cantidad)}</div>
-            </div>
-        </div>
-    `).join('');
+            `;
+        } else {
+            // Producto normal con controles de cantidad
+            return `
+                <div class="cart-item">
+                    <div class="cart-item-header">
+                        <div class="cart-item-name">${item.nombre}</div>
+                        <button class="cart-item-remove" onclick="removerDelCarrito(${index})">
+                            <svg width="14" height="14" viewBox="0 0 20 20" fill="none">
+                                <path d="M15 5L5 15M5 5l10 10" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+                            </svg>
+                        </button>
+                    </div>
+                    <div class="cart-item-footer">
+                        <div class="cart-item-controls">
+                            <button onclick="cambiarCantidad(${index}, -1)">−</button>
+                            <span class="cart-item-quantity">${item.cantidad}</span>
+                            <button onclick="cambiarCantidad(${index}, 1)">+</button>
+                        </div>
+                        <div class="cart-item-price">$${formatoMoneda(item.precio * item.cantidad)}</div>
+                    </div>
+                </div>
+            `;
+        }
+    }).join('');
 
     totalEl.textContent = '$' + formatoMoneda(totalVenta);
     btnCobrar.disabled = false;
@@ -862,6 +907,13 @@ function renderCarrito() {
 
 function cambiarCantidad(index, delta) {
     const item = carrito[index];
+    
+    // No permitir cambiar cantidad de items de granel
+    if (item.esGranel) {
+        mostrarNotificacion('Los productos a granel tienen monto fijo. Elimina y agrega nuevamente.', 'warning');
+        return;
+    }
+    
     const newQty = item.cantidad + delta;
 
     if (newQty <= 0) {
@@ -1506,14 +1558,32 @@ async function finalizarVenta() {
             console.log('📦 Guardando items de la venta #' + ventaId);
 
             // Guardar items en ventas_items
-            const items = carrito.map(item => ({
-                venta_id: ventaId,
-                producto_id: item.id,
-                cantidad: item.cantidad,
-                precio_unitario: item.precio,
-                subtotal: item.precio * item.cantidad,
-                producto_nombre: item.nombre
-            }));
+            const items = carrito.map(item => {
+                if (item.esGranel) {
+                    // Item de granel: guardar monto fijo en lugar de precio * cantidad
+                    return {
+                        venta_id: ventaId,
+                        producto_id: item.id,
+                        cantidad: 1, // Siempre 1 para granel
+                        precio_unitario: item.montoGranel, // El monto total vendido
+                        subtotal: item.montoGranel,
+                        producto_nombre: item.nombre + ' (Granel)',
+                        es_granel: true, // Marcador para reporting
+                        peso_estimado_kg: item.pesoEstimado // Informativo
+                    };
+                } else {
+                    // Item normal
+                    return {
+                        venta_id: ventaId,
+                        producto_id: item.id,
+                        cantidad: item.cantidad,
+                        precio_unitario: item.precio,
+                        subtotal: item.precio * item.cantidad,
+                        producto_nombre: item.nombre,
+                        es_granel: false
+                    };
+                }
+            });
 
             const { error: itemsError } = await supabaseClient
                 .from('ventas_items')
@@ -1526,8 +1596,14 @@ async function finalizarVenta() {
                 console.log('✅ Items guardados:', items.length);
             }
 
-            // Actualizar stock
+            // Actualizar stock SOLO para productos normales (NO granel)
             for (const item of carrito) {
+                if (item.esGranel) {
+                    // NO descontar stock para productos a granel
+                    console.log(`⏭️ Saltando actualización de stock para granel: ${item.nombre}`);
+                    continue;
+                }
+
                 const nuevoStock = item.stock - item.cantidad;
 
                 const { error: stockError } = await supabaseClient
@@ -2964,6 +3040,185 @@ function reproducirBeep() {
 }
 
 // ===================================
+// MODAL VENTA A GRANEL
+// ===================================
+
+let productoGranelSeleccionado = null;
+let productosGranel = [];
+
+async function cargarProductosGranel() {
+    try {
+        // Cargar productos tipo="granel" de la base de datos
+        const { data, error } = await supabaseClient
+            .from('productos')
+            .select('*')
+            .eq('tipo', 'granel')
+            .eq('activo', true)
+            .order('nombre');
+
+        if (error) throw error;
+
+        productosGranel = data || [];
+        mostrarProductosGranel(productosGranel);
+    } catch (error) {
+        console.error('Error cargando productos granel:', error);
+        mostrarNotificacion('Error cargando productos a granel', 'error');
+    }
+}
+
+function mostrarProductosGranel(productos) {
+    const lista = document.getElementById('listaProductosGranel');
+    
+    if (!productos || productos.length === 0) {
+        lista.innerHTML = `
+            <div style="padding: 40px; text-align: center; color: hsl(var(--muted-foreground));">
+                <div style="font-size: 48px; margin-bottom: 12px;">🌾</div>
+                <p>No hay productos a granel disponibles</p>
+                <small>Contacta al encargado para agregar productos</small>
+            </div>
+        `;
+        return;
+    }
+
+    lista.innerHTML = productos.map(p => `
+        <div class="producto-granel-item" onclick="seleccionarProductoGranel(${p.id})" style="
+            padding: 12px;
+            margin-bottom: 8px;
+            border: 2px solid ${productoGranelSeleccionado?.id === p.id ? 'hsl(var(--success))' : 'hsl(var(--border))'};
+            border-radius: 8px;
+            cursor: pointer;
+            transition: all 0.2s;
+            background: ${productoGranelSeleccionado?.id === p.id ? 'hsl(var(--success) / 0.1)' : 'white'};
+        " onmouseover="this.style.borderColor='hsl(var(--primary))'" onmouseout="this.style.borderColor='${productoGranelSeleccionado?.id === p.id ? 'hsl(var(--success))' : 'hsl(var(--border))'}' ">
+            <div style="display: flex; justify-content: space-between; align-items: center;">
+                <div>
+                    <strong style="color: hsl(var(--foreground));">${p.nombre}</strong>
+                    <div style="font-size: 12px; color: hsl(var(--muted-foreground)); margin-top: 4px;">
+                        ${p.categoria || 'Sin categoría'}
+                    </div>
+                </div>
+                <div style="text-align: right;">
+                    <div style="font-size: 18px; font-weight: 700; color: hsl(var(--success));">
+                        $${formatoMoneda(p.precio)}/kg
+                    </div>
+                </div>
+            </div>
+        </div>
+    `).join('');
+}
+
+function filtrarProductosGranel() {
+    const busqueda = document.getElementById('searchGranelInput').value.toLowerCase();
+    const productosFiltrados = productosGranel.filter(p => 
+        p.nombre.toLowerCase().includes(busqueda) ||
+        (p.categoria && p.categoria.toLowerCase().includes(busqueda))
+    );
+    mostrarProductosGranel(productosFiltrados);
+}
+
+function seleccionarProductoGranel(idProducto) {
+    productoGranelSeleccionado = productosGranel.find(p => p.id === idProducto);
+    
+    if (!productoGranelSeleccionado) return;
+
+    // Actualizar UI
+    mostrarProductosGranel(productosGranel);
+    
+    // Mostrar sección de monto
+    document.getElementById('granelSeleccionado').style.display = 'block';
+    document.getElementById('granelNombreSeleccionado').textContent = productoGranelSeleccionado.nombre;
+    document.getElementById('granelPrecioKg').textContent = `Precio: $${formatoMoneda(productoGranelSeleccionado.precio)}/kg`;
+    document.getElementById('granelMonto').value = '';
+    document.getElementById('pesoEstimado').textContent = '0 kg';
+    document.getElementById('btnAgregarGranel').disabled = true;
+    
+    // Focus en input de monto
+    setTimeout(() => {
+        document.getElementById('granelMonto').focus();
+    }, 100);
+}
+
+function calcularPesoEstimado() {
+    const monto = parseFloat(document.getElementById('granelMonto').value) || 0;
+    const precioKg = productoGranelSeleccionado?.precio || 0;
+    
+    if (monto > 0 && precioKg > 0) {
+        const pesoKg = (monto / precioKg).toFixed(2);
+        document.getElementById('pesoEstimado').textContent = `${pesoKg} kg`;
+        document.getElementById('btnAgregarGranel').disabled = false;
+    } else {
+        document.getElementById('pesoEstimado').textContent = '0 kg';
+        document.getElementById('btnAgregarGranel').disabled = true;
+    }
+}
+
+function agregarGranelAlCarrito() {
+    const monto = parseFloat(document.getElementById('granelMonto').value);
+    
+    if (!productoGranelSeleccionado || !monto || monto <= 0) {
+        mostrarNotificacion('Ingresa un monto válido', 'error');
+        return;
+    }
+
+    const pesoEstimado = (monto / productoGranelSeleccionado.precio).toFixed(2);
+
+    // Agregar al carrito como un producto especial de granel
+    const itemGranel = {
+        ...productoGranelSeleccionado,
+        cantidad: 1, // Siempre 1 para granel
+        esGranel: true, // Marcador para identificar items de granel
+        montoGranel: monto, // Monto exacto ingresado
+        pesoEstimado: parseFloat(pesoEstimado) // Solo informativo
+    };
+
+    // Verificar si ya existe este producto granel en el carrito
+    const indexExistente = carrito.findIndex(item => 
+        item.esGranel && item.id === productoGranelSeleccionado.id
+    );
+
+    if (indexExistente !== -1) {
+        // Sumar al monto existente
+        carrito[indexExistente].montoGranel += monto;
+        carrito[indexExistente].pesoEstimado = (carrito[indexExistente].montoGranel / productoGranelSeleccionado.precio).toFixed(2);
+    } else {
+        // Agregar nuevo item
+        carrito.push(itemGranel);
+    }
+
+    actualizarCarrito();
+    mostrarNotificacion(`${productoGranelSeleccionado.nombre} agregado - $${formatoMoneda(monto)}`, 'success');
+    cerrarModalGranel();
+}
+
+function abrirModalGranel() {
+    // Resetear estado
+    productoGranelSeleccionado = null;
+    document.getElementById('searchGranelInput').value = '';
+    document.getElementById('granelSeleccionado').style.display = 'none';
+    document.getElementById('granelMonto').value = '';
+    
+    // Cargar productos granel
+    cargarProductosGranel();
+    
+    // Mostrar modal
+    const modal = document.getElementById('modalGranel');
+    modal.style.display = 'flex';
+    modal.classList.add('show');
+    
+    // Focus en búsqueda
+    setTimeout(() => {
+        document.getElementById('searchGranelInput').focus();
+    }, 100);
+}
+
+function cerrarModalGranel() {
+    productoGranelSeleccionado = null;
+    const modal = document.getElementById('modalGranel');
+    modal.style.display = 'none';
+    modal.classList.remove('show');
+}
+
+// ===================================
 // MODAL EDITAR PRODUCTO (Encargado)
 // ===================================
 
@@ -3198,6 +3453,7 @@ async function eliminarProductoDirecto(id) {
 // Variables globales para caja
 let gastosDelDia = [];
 let pagosPersonalDelDia = []; // Nueva variable para pagos al personal
+let sencilloInicial = 0; // Efectivo inicial del día
 let ventasDelDia = {
     efectivo: 0,
     transbank: 0,
@@ -3220,6 +3476,9 @@ async function cargarDatosCaja() {
         day: 'numeric'
     });
     document.getElementById('cajaFechaHoy').textContent = fechaFormateada;
+
+    // Cargar sencillo inicial
+    cargarSencilloInicial();
 
     // Cargar ventas del día
     await cargarVentasDelDia();
@@ -3396,55 +3655,151 @@ function renderGastosDelDia() {
         return;
     }
 
-    container.innerHTML = gastosDelDia.map(gasto => {
-        const fecha = new Date(gasto.fecha);
-        const hora = fecha.toLocaleTimeString('es-CL', { hour: '2-digit', minute: '2-digit' });
+    // Separar gastos por categoría
+    const gastosFijos = gastosDelDia.filter(g => ['Combustible', 'Peaje', 'Aseo', 'Bolsas'].includes(g.categoria || g.descripcion));
+    const gastosOtros = gastosDelDia.filter(g => !['Combustible', 'Peaje', 'Aseo', 'Bolsas'].includes(g.categoria || g.descripcion));
 
-        return `
-            <div class="gasto-item">
-                <div class="gasto-info">
-                    <p class="gasto-descripcion">${gasto.descripcion}</p>
-                    <div class="gasto-meta">
-                        <span>
-                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" style="display: inline-block; vertical-align: middle;">
-                                <circle cx="12" cy="8" r="3" stroke="currentColor" stroke-width="2"/>
-                                <path d="M6 21v-2a4 4 0 014-4h4a4 4 0 014 4v2" stroke="currentColor" stroke-width="2"/>
+    let html = '';
+
+    // Mostrar Gastos Fijos si existen
+    if (gastosFijos.length > 0) {
+        html += '<div class="gastos-seccion"><h4 style="font-size: 14px; font-weight: 600; color: hsl(var(--muted-foreground)); margin-bottom: 12px;">📌 Gastos Fijos</h4>';
+        
+        html += gastosFijos.map(gasto => {
+            const fecha = new Date(gasto.fecha);
+            const hora = fecha.toLocaleTimeString('es-CL', { hour: '2-digit', minute: '2-digit' });
+
+            return `
+                <div class="gasto-item" style="border-left: 4px solid hsl(var(--primary));">
+                    <div class="gasto-info">
+                        <p class="gasto-descripcion">${gasto.categoria || gasto.descripcion}</p>
+                        <div class="gasto-meta">
+                            <span>
+                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" style="display: inline-block; vertical-align: middle;">
+                                    <circle cx="12" cy="8" r="3" stroke="currentColor" stroke-width="2"/>
+                                    <path d="M6 21v-2a4 4 0 014-4h4a4 4 0 014 4v2" stroke="currentColor" stroke-width="2"/>
+                                </svg>
+                                ${gasto.asignado_a}
+                            </span>
+                            <span>
+                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" style="display: inline-block; vertical-align: middle;">
+                                    <circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="2"/>
+                                    <path d="M12 6v6l4 2" stroke="currentColor" stroke-width="2"/>
+                                </svg>
+                                ${hora}
+                            </span>
+                        </div>
+                    </div>
+                    <span class="gasto-monto">$${formatoMoneda(gasto.monto)}</span>
+                    <div class="gasto-actions">
+                        <button class="btn-icon btn-delete" onclick="eliminarGasto(${gasto.id})" title="Eliminar">
+                            <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
+                                <path d="M3 6h18M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
                             </svg>
-                            ${gasto.asignado_a}
-                        </span>
-                        <span>
-                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" style="display: inline-block; vertical-align: middle;">
-                                <circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="2"/>
-                                <path d="M12 6v6l4 2" stroke="currentColor" stroke-width="2"/>
-                            </svg>
-                            ${hora}
-                        </span>
+                        </button>
                     </div>
                 </div>
-                <span class="gasto-monto">$${formatoMoneda(gasto.monto)}</span>
-                <div class="gasto-actions">
-                    <button class="btn-icon btn-delete" onclick="eliminarGasto(${gasto.id})" title="Eliminar">
-                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
-                            <path d="M3 6h18M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
-                        </svg>
-                    </button>
+            `;
+        }).join('');
+        
+        html += '</div>';
+    }
+
+    // Mostrar Otros Gastos si existen
+    if (gastosOtros.length > 0) {
+        html += '<div class="gastos-seccion" style="margin-top: 24px;"><h4 style="font-size: 14px; font-weight: 600; color: hsl(var(--muted-foreground)); margin-bottom: 12px;">📋 Otros Gastos</h4>';
+        
+        html += gastosOtros.map(gasto => {
+            const fecha = new Date(gasto.fecha);
+            const hora = fecha.toLocaleTimeString('es-CL', { hour: '2-digit', minute: '2-digit' });
+
+            return `
+                <div class="gasto-item">
+                    <div class="gasto-info">
+                        <p class="gasto-descripcion">${gasto.descripcion}</p>
+                        <div class="gasto-meta">
+                            <span>
+                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" style="display: inline-block; vertical-align: middle;">
+                                    <circle cx="12" cy="8" r="3" stroke="currentColor" stroke-width="2"/>
+                                    <path d="M6 21v-2a4 4 0 014-4h4a4 4 0 014 4v2" stroke="currentColor" stroke-width="2"/>
+                                </svg>
+                                ${gasto.asignado_a}
+                            </span>
+                            <span>
+                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" style="display: inline-block; vertical-align: middle;">
+                                    <circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="2"/>
+                                    <path d="M12 6v6l4 2" stroke="currentColor" stroke-width="2"/>
+                                </svg>
+                                ${hora}
+                            </span>
+                        </div>
+                    </div>
+                    <span class="gasto-monto">$${formatoMoneda(gasto.monto)}</span>
+                    <div class="gasto-actions">
+                        <button class="btn-icon btn-delete" onclick="eliminarGasto(${gasto.id})" title="Eliminar">
+                            <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
+                                <path d="M3 6h18M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+                            </svg>
+                        </button>
+                    </div>
                 </div>
-            </div>
-        `;
-    }).join('');
+            `;
+        }).join('');
+        
+        html += '</div>';
+    }
+
+    container.innerHTML = html;
 }
 
 /**
  * Registrar nuevo gasto
  */
+/**
+ * Toggle para mostrar/ocultar input de descripción personalizada
+ */
+function toggleDescripcionPersonalizada() {
+    const categoria = document.getElementById('gastoCategoria').value;
+    const grupoPersonalizado = document.getElementById('descripcionPersonalizadaGroup');
+    const inputPersonalizado = document.getElementById('gastoDescripcionPersonalizada');
+    
+    if (categoria === 'Otro') {
+        grupoPersonalizado.style.display = 'block';
+        inputPersonalizado.required = true;
+    } else {
+        grupoPersonalizado.style.display = 'none';
+        inputPersonalizado.required = false;
+        inputPersonalizado.value = '';
+    }
+}
+
+/**
+ * Registrar gasto con categoría predeterminada o personalizada
+ */
 async function registrarGasto(event) {
     event.preventDefault();
 
     const monto = parseFloat(document.getElementById('gastoMonto').value);
-    const descripcion = document.getElementById('gastoDescripcion').value.trim();
+    const categoria = document.getElementById('gastoCategoria').value;
+    const descripcionPersonalizada = document.getElementById('gastoDescripcionPersonalizada').value.trim();
     const asignado = document.getElementById('gastoAsignado').value;
 
-    if (!monto || !descripcion || !asignado) {
+    // Determinar descripción y categoría final
+    let descripcion, categoriaFinal;
+    
+    if (categoria === 'Otro') {
+        if (!descripcionPersonalizada) {
+            mostrarNotificacion('Ingresa una descripción personalizada', 'warning');
+            return;
+        }
+        descripcion = descripcionPersonalizada;
+        categoriaFinal = 'Otros';
+    } else {
+        descripcion = categoria;
+        categoriaFinal = categoria;
+    }
+
+    if (!monto || !categoria || !asignado) {
         mostrarNotificacion('Completa todos los campos', 'warning');
         return;
     }
@@ -3461,6 +3816,7 @@ async function registrarGasto(event) {
                 monto: monto,
                 descripcion: descripcion,
                 asignado_a: asignado,
+                categoria: categoriaFinal,
                 registrado_por: currentUser,
                 fecha: new Date().toISOString()
             }])
@@ -3472,6 +3828,7 @@ async function registrarGasto(event) {
 
         // Limpiar formulario
         document.getElementById('formGasto').reset();
+        toggleDescripcionPersonalizada(); // Ocultar input personalizado
 
         // Recargar gastos
         await cargarGastosDelDia();
@@ -4819,6 +5176,223 @@ async function cargarVendedoresParaFiltro() {
 
     } catch (error) {
         console.error('Error cargando vendedores para filtro:', error);
+    }
+}
+
+// ===================================
+// MÓDULO: SENCILLO INICIAL Y GASTOS FIJOS
+// ===================================
+
+/**
+ * Cargar sencillo inicial del día desde localStorage
+ */
+function cargarSencilloInicial() {
+    const hoy = new Date().toISOString().split('T')[0];
+    const key = `sencillo_inicial_${hoy}`;
+    const guardado = localStorage.getItem(key);
+    
+    sencilloInicial = guardado ? parseFloat(guardado) : 0;
+    document.getElementById('sencilloInicial').textContent = '$' + formatoMoneda(sencilloInicial);
+    
+    console.log(`💵 Sencillo inicial cargado: $${formatoMoneda(sencilloInicial)}`);
+}
+
+/**
+ * Editar sencillo inicial
+ */
+async function editarSencilloInicial() {
+    const montoActual = sencilloInicial;
+    const nuevoMonto = prompt(`Ingresa el sencillo inicial del día:\n\nActual: $${formatoMoneda(montoActual)}`, montoActual);
+    
+    if (nuevoMonto === null) return; // Cancelado
+    
+    const monto = parseFloat(nuevoMonto);
+    
+    if (isNaN(monto) || monto < 0) {
+        mostrarNotificacion('Monto inválido', 'warning');
+        return;
+    }
+    
+    // Guardar en localStorage
+    const hoy = new Date().toISOString().split('T')[0];
+    const key = `sencillo_inicial_${hoy}`;
+    localStorage.setItem(key, monto.toString());
+    
+    sencilloInicial = monto;
+    document.getElementById('sencilloInicial').textContent = '$' + formatoMoneda(sencilloInicial);
+    
+    mostrarNotificacion('✅ Sencillo inicial actualizado', 'success');
+    console.log(`💵 Sencillo inicial actualizado: $${formatoMoneda(sencilloInicial)}`);
+}
+
+// ============================================
+// SISTEMA DE DEVOLUCIONES
+// ============================================
+
+let productoDevolucionSeleccionado = null;
+
+/**
+ * Abrir modal de devolución
+ */
+function abrirModalDevolucion() {
+    console.log('🔄 Abriendo modal de devolución...');
+    
+    const modal = document.getElementById('modalDevolucion');
+    if (!modal) {
+        console.error('❌ Modal de devolución no encontrado en el DOM');
+        mostrarNotificacion('Error: Modal no encontrado', 'error');
+        return;
+    }
+    
+    modal.classList.add('active');
+    document.getElementById('devolucionBusqueda').value = '';
+    document.getElementById('devolucionBusqueda').focus();
+    document.getElementById('resultadosBusquedaDevolucion').style.display = 'none';
+    document.getElementById('productoSeleccionadoDevolucion').style.display = 'none';
+    productoDevolucionSeleccionado = null;
+    
+    console.log('✅ Modal de devolución abierto correctamente');
+}
+
+/**
+ * Cerrar modal de devolución
+ */
+function cerrarModalDevolucion() {
+    document.getElementById('modalDevolucion').classList.remove('active');
+    document.getElementById('formDevolucion').reset();
+    productoDevolucionSeleccionado = null;
+}
+
+/**
+ * Buscar producto para devolución
+ */
+async function buscarProductoDevolucion() {
+    const termino = document.getElementById('devolucionBusqueda').value.trim().toLowerCase();
+    const resultadosDiv = document.getElementById('resultadosBusquedaDevolucion');
+    
+    if (termino.length < 2) {
+        resultadosDiv.style.display = 'none';
+        return;
+    }
+    
+    try {
+        const { data: productos, error } = await supabaseClient
+            .from('productos')
+            .select('*')
+            .or(`nombre.ilike.%${termino}%,codigo_barras.ilike.%${termino}%`)
+            .limit(10);
+        
+        if (error) throw error;
+        
+        if (productos.length === 0) {
+            resultadosDiv.innerHTML = '<div style="padding: 12px; text-align: center; color: hsl(var(--muted-foreground));">No se encontraron productos</div>';
+            resultadosDiv.style.display = 'block';
+            return;
+        }
+        
+        resultadosDiv.innerHTML = productos.map(p => `
+            <div class="resultado-busqueda" 
+                 onclick="seleccionarProductoDevolucion(${p.id}, '${p.nombre.replace(/'/g, "\\'")}', ${p.stock})"
+                 style="padding: 12px; cursor: pointer; border-bottom: 1px solid hsl(var(--border)); transition: background 0.2s;"
+                 onmouseover="this.style.background='hsl(var(--accent))'"
+                 onmouseout="this.style.background='white'">
+                <strong>${p.nombre}</strong>
+                <br>
+                <small style="color: hsl(var(--muted-foreground));">
+                    Stock: ${p.stock} | Precio: $${formatoMoneda(p.precio)}
+                </small>
+            </div>
+        `).join('');
+        
+        resultadosDiv.style.display = 'block';
+        
+    } catch (error) {
+        console.error('Error buscando productos:', error);
+        mostrarNotificacion('Error al buscar productos', 'error');
+    }
+}
+
+/**
+ * Seleccionar producto para devolución
+ */
+function seleccionarProductoDevolucion(id, nombre, stock) {
+    productoDevolucionSeleccionado = { id, nombre, stock };
+    
+    document.getElementById('nombreProductoDevolucion').textContent = nombre;
+    document.getElementById('stockProductoDevolucion').textContent = stock;
+    document.getElementById('devolucionBusqueda').value = nombre;
+    document.getElementById('resultadosBusquedaDevolucion').style.display = 'none';
+    document.getElementById('productoSeleccionadoDevolucion').style.display = 'block';
+    
+    // Enfocar cantidad
+    document.getElementById('devolucionCantidad').focus();
+}
+
+/**
+ * Registrar devolución
+ */
+async function registrarDevolucion(event) {
+    event.preventDefault();
+    
+    if (!productoDevolucionSeleccionado) {
+        mostrarNotificacion('Selecciona un producto', 'warning');
+        return;
+    }
+    
+    const cantidad = parseInt(document.getElementById('devolucionCantidad').value);
+    const motivo = document.getElementById('devolucionMotivo').value;
+    const observaciones = document.getElementById('devolucionObservaciones').value.trim();
+    
+    if (!cantidad || cantidad <= 0) {
+        mostrarNotificacion('Cantidad inválida', 'warning');
+        return;
+    }
+    
+    if (!motivo) {
+        mostrarNotificacion('Selecciona un motivo', 'warning');
+        return;
+    }
+    
+    try {
+        // Incrementar stock del producto
+        const { data: producto, error: errorProducto } = await supabaseClient
+            .from('productos')
+            .select('stock')
+            .eq('id', productoDevolucionSeleccionado.id)
+            .single();
+        
+        if (errorProducto) throw errorProducto;
+        
+        const nuevoStock = producto.stock + cantidad;
+        
+        const { error: errorUpdate } = await supabaseClient
+            .from('productos')
+            .update({ stock: nuevoStock })
+            .eq('id', productoDevolucionSeleccionado.id);
+        
+        if (errorUpdate) throw errorUpdate;
+        
+        mostrarNotificacion(`✅ Devolución registrada: +${cantidad} ${productoDevolucionSeleccionado.nombre}`, 'success');
+        
+        console.log(`🔄 Devolución registrada:
+            Producto: ${productoDevolucionSeleccionado.nombre}
+            Cantidad: ${cantidad}
+            Motivo: ${motivo}
+            Stock anterior: ${producto.stock}
+            Stock nuevo: ${nuevoStock}
+            Observaciones: ${observaciones || 'Ninguna'}`);
+        
+        // Cerrar modal
+        cerrarModalDevolucion();
+        
+        // Recargar inventario si estamos en la vista de inventario
+        if (currentView === 'inventory') {
+            await cargarProductos();
+        }
+        
+    } catch (error) {
+        console.error('Error registrando devolución:', error);
+        mostrarNotificacion('Error al registrar devolución', 'error');
     }
 }
 
