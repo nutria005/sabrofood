@@ -416,30 +416,38 @@
                         </div>
                     </div>
 
-                    <div style="margin: 10px 0; padding: 10px; background: white; border-radius: 8px;">
-                        <label for="filtroProveedor" style="margin-right: 10px; font-weight: 500;">Filtrar por Proveedor:</label>
-                        <select id="filtroProveedor" onchange="filtrarInventario()" style="padding: 8px; border: 1px solid #ddd; border-radius: 4px; min-width: 200px;">
-                            <option value="">Todos los proveedores</option>
-                            <option value="Sin proveedor">Sin proveedor</option>
-                            <option value="Befoods">Befoods</option>
-                            <option value="Cruce">Cruce</option>
-                            <option value="Argentinos">Argentinos</option>
-                            <option value="Mya Spa">Mya Spa</option>
-                            <option value="Chile Dog">Chile Dog</option>
-                            <option value="Brit Care">Brit Care</option>
-                            <option value="Bravery">Bravery</option>
-                            <option value="Dragpharma">Dragpharma</option>
-                            <option value="Fit formula">Fit formula</option>
-                            <option value="Farmacia">Farmacia</option>
-                            <option value="Belcando & Leonardo">Belcando & Leonardo</option>
-                            <option value="Wampy">Wampy</option>
-                            <option value="Josera">Josera</option>
-                            <option value="Acomer">Acomer</option>
-                            <option value="Dockneddy">Dockneddy</option>
-                            <option value="Topk9">Topk9</option>
-                            <option value="Cova">Cova</option>
-                            <option value="Purina">Purina</option>
-                        </select>
+                    <div style="margin: 10px 0; padding: 10px; background: white; border-radius: 8px; display: flex; justify-content: space-between; align-items: center;">
+                        <div>
+                            <label for="filtroProveedor" style="margin-right: 10px; font-weight: 500;">Filtrar por Proveedor:</label>
+                            <select id="filtroProveedor" onchange="filtrarInventario()" style="padding: 8px; border: 1px solid #ddd; border-radius: 4px; min-width: 200px;">
+                                <option value="">Todos los proveedores</option>
+                                <option value="Sin proveedor">Sin proveedor</option>
+                                <option value="Befoods">Befoods</option>
+                                <option value="Cruce">Cruce</option>
+                                <option value="Argentinos">Argentinos</option>
+                                <option value="Mya Spa">Mya Spa</option>
+                                <option value="Chile Dog">Chile Dog</option>
+                                <option value="Brit Care">Brit Care</option>
+                                <option value="Bravery">Bravery</option>
+                                <option value="Dragpharma">Dragpharma</option>
+                                <option value="Fit formula">Fit formula</option>
+                                <option value="Farmacia">Farmacia</option>
+                                <option value="Belcando & Leonardo">Belcando & Leonardo</option>
+                                <option value="Wampy">Wampy</option>
+                                <option value="Josera">Josera</option>
+                                <option value="Acomer">Acomer</option>
+                                <option value="Dockneddy">Dockneddy</option>
+                                <option value="Topk9">Topk9</option>
+                                <option value="Cova">Cova</option>
+                                <option value="Purina">Purina</option>
+                            </select>
+                        </div>
+                        <button id="btnCrearProducto" class="btn btn-success" onclick="abrirModalCrearProducto()" style="display: none;">
+                            <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
+                                <path d="M10 5v10M5 10h10" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+                            </svg>
+                            <span>Crear Producto</span>
+                        </button>
                     </div>
 
                     <div class="inventory-table-container">
@@ -876,7 +884,7 @@
                             </div>
 
                             <div class="stats-summary">
-                                <div class="stat-row">
+                                <div class="stat-row" style="cursor: pointer;" onclick="abrirModalEditarPagosPersonal()" title="Click para editar pagos">
                                     <span class="stat-label">
                                         <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
                                             <circle cx="12" cy="8" r="3" stroke="currentColor" stroke-width="2"/>
@@ -1419,12 +1427,12 @@
         </div>
     </div>
 
-    <!-- MODAL: Editar Producto (Solo Encargado) -->
+    <!-- MODAL: Editar/Crear Producto (Solo Encargado) -->
     <div id="modalEditarProducto" class="modal">
         <div class="modal-overlay" onclick="cerrarModalEditar()"></div>
         <div class="modal-content">
             <div class="modal-header">
-                <h3>✏️ Editar Producto</h3>
+                <h3 id="tituloModalProducto">✏️ Editar Producto</h3>
                 <button class="btn-close" onclick="cerrarModalEditar()">
                     <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
                         <path d="M15 5L5 15M5 5l10 10" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
@@ -1496,14 +1504,14 @@
                 </div>
             </div>
             <div class="modal-footer">
-                <button class="btn btn-danger" onclick="eliminarProducto()">
+                <button class="btn btn-danger" id="btnEliminarProducto" onclick="eliminarProducto()">
                     <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
                         <path d="M7 3h6M3 5h14M5 5v11a2 2 0 002 2h6a2 2 0 002-2V5M8 9v6M12 9v6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
                     </svg>
                     <span>Eliminar</span>
                 </button>
                 <button class="btn btn-secondary" onclick="cerrarModalEditar()">Cancelar</button>
-                <button class="btn btn-success" onclick="guardarEdicion()">Guardar Cambios</button>
+                <button class="btn btn-success" id="btnGuardarProducto" onclick="guardarEdicion()">Guardar Cambios</button>
             </div>
         </div>
     </div>
@@ -1794,6 +1802,31 @@
                     </svg>
                     <span>Registrar Pago</span>
                 </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- MODAL: Editar Pagos al Personal -->
+    <div id="modalEditarPagosPersonal" class="modal">
+        <div class="modal-overlay" onclick="cerrarModalEditarPagosPersonal()"></div>
+        <div class="modal-content" style="max-width: 900px;">
+            <div class="modal-header">
+                <h3>✏️ Editar Pagos al Personal</h3>
+                <button class="btn-close" onclick="cerrarModalEditarPagosPersonal()">
+                    <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
+                        <path d="M15 5L5 15M5 5l10 10" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+                    </svg>
+                </button>
+            </div>
+            <div class="modal-body">
+                <p class="helper-text">Edita los montos de jornada y almuerzo de los empleados pagados hoy.</p>
+
+                <div id="listaPagosPersonalEditar" style="margin-top: 20px;">
+                    <!-- Lista de pagos se carga dinámicamente -->
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" onclick="cerrarModalEditarPagosPersonal()">Cerrar</button>
             </div>
         </div>
     </div>

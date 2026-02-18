@@ -393,11 +393,15 @@ async function handleLogin() {
         cargarProductos();
         inicializarRealtime();
 
-        // Auto-marcar entrada al iniciar sesión
-        marcarEntradaAutomatica();
-
         console.log('✅ Login exitoso:', currentUser, '| Rol:', currentUserRole);
+        
+        // Notificación de bienvenida y recordatorio de asistencia
         mostrarNotificacion(`Bienvenido, ${currentUser}`, 'success');
+        
+        // Recordar marcar entrada manualmente
+        setTimeout(() => {
+            mostrarNotificacion('📋 Recuerda marcar tu entrada en la pestaña Asistencia', 'info');
+        }, 3000);
 
     } catch (error) {
         console.error('❌ Error en login:', error);
@@ -429,6 +433,10 @@ function aplicarPermisosRol() {
     const btnPreciosInventario = document.getElementById('btnAdminPreciosInventario');
     if (btnPreciosInventario) btnPreciosInventario.style.display = esAdmin ? 'inline-flex' : 'none';
 
+    // Botón Crear Producto en Inventario
+    const btnCrearProducto = document.getElementById('btnCrearProducto');
+    if (btnCrearProducto) btnCrearProducto.style.display = esAdmin ? 'inline-flex' : 'none';
+
     // Ranking de vendedores
     const rankingVendedores = document.getElementById('rankingVendedores');
     if (rankingVendedores) rankingVendedores.style.display = esAdmin ? 'block' : 'none';
@@ -449,14 +457,8 @@ async function handleLogout() {
         }
     }
 
-    // Verificar si olvidó marcar salida
-    const debeMarcarSalida = await verificarSalidaPendiente();
-    if (debeMarcarSalida) {
-        await marcarEvento('salida');
-        mostrarNotificacion('Salida marcada automáticamente', 'success');
-        // Dar tiempo para que se vea la notificación
-        await new Promise(resolve => setTimeout(resolve, 1500));
-    }
+    // Recordatorio: marcar salida manualmente
+    // La marca de asistencia ahora es completamente manual
 
     // Desconectar Realtime
     desconectarRealtime();
@@ -1798,12 +1800,20 @@ async function cargarInventario() {
             return '';
         }
 
-        const stockBajo = p.stock <= (p.stock_minimo || 5);
+        // Detectar si es producto granel
+        const esGranel = p.nombre && p.nombre.toLowerCase().includes('(granel)') || p.tipo === 'granel';
+
+        const stockBajo = p.stock <= (p.stock_minimo_sacos || 5);
         const stockCero = p.stock === 0;
 
         let estadoBadge = 'badge-success';
         let estadoTexto = 'En Stock';
-        if (stockCero) {
+        
+        // Para productos granel NO mostrar estado de stock
+        if (esGranel) {
+            estadoBadge = 'badge-info';
+            estadoTexto = 'Granel';
+        } else if (stockCero) {
             estadoBadge = 'badge-danger';
             estadoTexto = 'Sin Stock';
         } else if (stockBajo) {
@@ -1995,21 +2005,27 @@ async function cargarVentas() {
                 }
                 
                 // Transformar movimientos al formato de "ventas" para la tabla
-                const movimientosFormateados = movimientos.map(m => ({
-                    id: `M-${m.id}`,
-                    created_at: m.created_at,
-                    fecha: m.created_at,
-                    vendedor_nombre: repartidoresPorPedido[m.pedido_id] || '🚚 Reparto',
-                    productos: [{
-                        nombre: nombresProductos[m.producto_id] || `Producto ID: ${m.producto_id}`,
-                        cantidad: m.cantidad
-                    }],
-                    total: 0, // Movimientos no tienen valor monetario
-                    metodo_pago: 'REPARTO',
-                    pedido_id: m.pedido_id,
-                    tipo_registro: 'movimiento', // Marca para diferenciar
-                    motivo: m.motivo
-                }));
+                const movimientosFormateados = movimientos.map(m => {
+                    const nombreProducto = nombresProductos[m.producto_id] || `Producto ID: ${m.producto_id}`;
+                    const esGranel = nombreProducto.toLowerCase().includes('(granel)');
+                    
+                    return {
+                        id: `M-${m.id}`,
+                        created_at: m.created_at,
+                        fecha: m.created_at,
+                        vendedor_nombre: repartidoresPorPedido[m.pedido_id] || '🚚 Reparto',
+                        productos: [{
+                            nombre: nombreProducto,
+                            cantidad: m.cantidad
+                        }],
+                        total: esGranel ? m.cantidad : 0, // Si es granel, cantidad = monto en pesos
+                        metodo_pago: 'REPARTO',
+                        pedido_id: m.pedido_id,
+                        tipo_registro: 'movimiento', // Marca para diferenciar
+                        motivo: m.motivo,
+                        es_granel: esGranel
+                    };
+                });
                 
                 console.log('✅ Movimientos formateados:', movimientosFormateados.length);
                 
@@ -2443,13 +2459,18 @@ function renderTablaHistorial(ventas) {
         // Formatear según tipo de registro
         if (esMovimiento) {
             // MOVIMIENTO DE REPARTO
+            // Si es producto granel, mostrar el monto en la columna Total
+            const totalCelda = v.es_granel && v.total > 0 
+                ? `<strong>$${formatoMoneda(v.total)}</strong>` 
+                : '';
+            
             return `
                 <tr>
                     <td><strong>${v.id}</strong></td>
                     <td>${new Date(v.created_at).toLocaleString('es-CL', { timeZone: 'America/Santiago' })}</td>
                     <td>${v.vendedor_nombre}</td>
                     <td>${productosTexto}</td>
-                    <td></td>
+                    <td>${totalCelda}</td>
                     <td><span class="badge badge-warning">REPARTO</span></td>
                     <td>
                         <span style="font-size: 12px; color: #6b7280;">${v.motivo || 'Salida por reparto'}</span>
@@ -3373,69 +3394,91 @@ function cerrarModalGranel() {
 }
 
 // ===================================
-// MODAL EDITAR PRODUCTO (Encargado)
+// MODAL CREAR/EDITAR PRODUCTO (Encargado)
 // ===================================
+
+/**
+ * Abrir modal en modo crear (nuevo producto)
+ */
+function abrirModalCrearProducto() {
+    abrirModalEditar(null);
+}
 
 function abrirModalEditar(producto) {
     productoEditando = producto;
     cerrarEscaner();
 
     const esEncargado = currentUserRole === 'encargado';
+    const modoCrear = !producto; // null = modo crear
 
-    document.getElementById('editNombre').value = producto.nombre;
-    document.getElementById('editProveedor').value = producto.proveedor || '';
-    
-    // Establecer categoría - verificar si existe en el dropdown
-    const categoriaSelect = document.getElementById('editCategoria');
-    const categoriaProducto = producto.categoria || '';
-    
-    // Verificar si la categoría existe en las opciones del select
-    let categoriaExiste = false;
-    for (let option of categoriaSelect.options) {
-        if (option.value === categoriaProducto) {
-            categoriaExiste = true;
-            break;
+    // Cambiar título y botones según modo
+    const titulo = document.getElementById('tituloModalProducto');
+    const btnGuardar = document.getElementById('btnGuardarProducto');
+    const btnEliminar = document.getElementById('btnEliminarProducto');
+
+    if (modoCrear) {
+        titulo.textContent = '➕ Crear Producto';
+        btnGuardar.textContent = 'Guardar Producto';
+        btnEliminar.style.display = 'none';
+        
+        // Limpiar campos
+        document.getElementById('editNombre').value = '';
+        document.getElementById('editProveedor').value = '';
+        document.getElementById('editCategoria').value = '';
+        document.getElementById('editPrecio').value = '';
+        document.getElementById('editStock').value = '0';
+        document.getElementById('editCodigoBarras').value = '';
+        document.getElementById('editStockMinimo').value = '3';
+    } else {
+        titulo.textContent = '✏️ Editar Producto';
+        btnGuardar.textContent = 'Guardar Cambios';
+        btnEliminar.style.display = esEncargado ? 'inline-flex' : 'none';
+        
+        // Llenar campos con datos existentes
+        document.getElementById('editNombre').value = producto.nombre;
+        document.getElementById('editProveedor').value = producto.proveedor || '';
+        
+        // Establecer categoría - verificar si existe en el dropdown
+        const categoriaSelect = document.getElementById('editCategoria');
+        const categoriaProducto = producto.categoria || '';
+        
+        let categoriaExiste = false;
+        for (let option of categoriaSelect.options) {
+            if (option.value === categoriaProducto) {
+                categoriaExiste = true;
+                break;
+            }
         }
+        
+        categoriaSelect.value = categoriaExiste ? categoriaProducto : '';
+        
+        document.getElementById('editPrecio').value = producto.precio;
+        document.getElementById('editStock').value = producto.stock;
+        document.getElementById('editCodigoBarras').value = producto.codigo_barras || '';
+        document.getElementById('editStockMinimo').value = producto.stock_minimo_sacos || '';
     }
-    
-    // Si la categoría existe, establecerla; si no, dejar en vacío para mostrar "Seleccionar categoría"
-    categoriaSelect.value = categoriaExiste ? categoriaProducto : '';
-    
-    document.getElementById('editPrecio').value = producto.precio;
-    document.getElementById('editStock').value = producto.stock;
-    document.getElementById('editCodigoBarras').value = producto.codigo_barras || '';
 
     // Campo de stock mínimo (solo para encargado)
     const stockMinimoGroup = document.getElementById('editStockMinimoGroup');
-    const stockMinimoInput = document.getElementById('editStockMinimo');
     if (esEncargado) {
         stockMinimoGroup.style.display = 'block';
-        stockMinimoInput.value = producto.stock_minimo_sacos || '';
     } else {
         stockMinimoGroup.style.display = 'none';
     }
 
-    // Si es vendedor, solo puede editar el stock
-    if (!esEncargado) {
+    // Si es vendedor, solo puede editar el stock (no crear)
+    if (!esEncargado && !modoCrear) {
         document.getElementById('editNombre').setAttribute('readonly', 'readonly');
         document.getElementById('editProveedor').setAttribute('disabled', 'disabled');
         document.getElementById('editCategoria').setAttribute('disabled', 'disabled');
         document.getElementById('editPrecio').setAttribute('readonly', 'readonly');
         document.getElementById('editCodigoBarras').setAttribute('readonly', 'readonly');
-
-        // Ocultar botón de eliminar
-        const btnEliminar = document.querySelector('#modalEditarProducto .btn-danger');
-        if (btnEliminar) btnEliminar.style.display = 'none';
-    } else {
+    } else if (esEncargado) {
         document.getElementById('editNombre').removeAttribute('readonly');
         document.getElementById('editProveedor').removeAttribute('disabled');
         document.getElementById('editCategoria').removeAttribute('disabled');
         document.getElementById('editPrecio').removeAttribute('readonly');
         document.getElementById('editCodigoBarras').removeAttribute('readonly');
-
-        // Mostrar botón de eliminar
-        const btnEliminar = document.querySelector('#modalEditarProducto .btn-danger');
-        if (btnEliminar) btnEliminar.style.display = 'inline-flex';
     }
 
     const modal = document.getElementById('modalEditarProducto');
@@ -3451,9 +3494,15 @@ function cerrarModalEditar() {
 }
 
 async function guardarEdicion() {
-    if (!productoEditando) return;
-
     const esEncargado = currentUserRole === 'encargado';
+    const modoCrear = !productoEditando;
+    
+    // Solo vendedor puede editar, no crear
+    if (!esEncargado && modoCrear) {
+        mostrarNotificacion('No tienes permisos para crear productos', 'error');
+        return;
+    }
+
     const nuevoStock = parseFloat(document.getElementById('editStock').value);
 
     if (isNaN(nuevoStock)) {
@@ -3467,7 +3516,7 @@ async function guardarEdicion() {
     }
 
     try {
-        let updateData = { stock: nuevoStock };
+        let productData = { stock: nuevoStock };
 
         // Si es encargado, puede actualizar todos los campos
         if (esEncargado) {
@@ -3493,29 +3542,62 @@ async function guardarEdicion() {
                 return;
             }
 
-            updateData = {
+            productData = {
                 nombre: nuevoNombre,
                 proveedor: nuevoProveedor || null,
                 categoria: nuevaCategoria,
                 precio: nuevoPrecio,
                 stock: nuevoStock,
-                codigo_barras: nuevoCodigoBarras
+                codigo_barras: nuevoCodigoBarras || null,
+                tipo: 'empacado' // Tipo por defecto para sacos
             };
+
+            // Auto-detectar si es producto granel por el nombre
+            if (nuevoNombre.toLowerCase().includes('(granel)')) {
+                productData.tipo = 'granel';
+            }
 
             // Agregar stock mínimo solo si tiene valor
             if (nuevoStockMinimo !== '' && !isNaN(nuevoStockMinimo)) {
-                updateData.stock_minimo_sacos = parseInt(nuevoStockMinimo);
+                productData.stock_minimo_sacos = parseInt(nuevoStockMinimo);
             }
         }
 
-        const { error } = await supabaseClient
-            .from('productos')
-            .update(updateData)
-            .eq('id', productoEditando.id);
+        if (modoCrear) {
+            // Si no es granel, obtener el tipo de un producto normal existente
+            if (productData.tipo !== 'granel') {
+                const { data: productoEjemplo } = await supabaseClient
+                    .from('productos')
+                    .select('tipo')
+                    .neq('tipo', 'granel')
+                    .limit(1)
+                    .single();
+                
+                if (productoEjemplo && productoEjemplo.tipo) {
+                    productData.tipo = productoEjemplo.tipo;
+                }
+            }
+            
+            // CREAR nuevo producto
+            const { error } = await supabaseClient
+                .from('productos')
+                .insert([productData]);
+            
+            if (error) throw error;
+                
+            mostrarNotificacion('✅ Producto creado exitosamente', 'success');
+        } else {
+            // ACTUALIZAR producto existente
+            const { error } = await supabaseClient
+                .from('productos')
+                .update(productData)
+                .eq('id', productoEditando.id);
+            
+            if (error) throw error;
+            
+            mostrarNotificacion('✅ Producto actualizado exitosamente', 'success');
+        }
 
-        if (error) throw error;
-
-        mostrarNotificacion('✅ Producto actualizado exitosamente', 'success');
         cerrarModalEditar();
         await cargarProductos();
 
@@ -3525,8 +3607,8 @@ async function guardarEdicion() {
         }
 
     } catch (error) {
-        console.error('Error actualizando:', error);
-        mostrarNotificacion('Error al guardar cambios', 'error');
+        console.error('Error guardando producto:', error);
+        mostrarNotificacion('Error al guardar el producto', 'error');
     }
 }
 
@@ -4364,6 +4446,179 @@ function actualizarResumenPagosPersonal() {
     document.getElementById('totalJornadas').textContent = '$' + formatoMoneda(totalJornadas);
     document.getElementById('totalAlmuerzos').textContent = '$' + formatoMoneda(totalAlmuerzos);
     document.getElementById('totalPagadoPersonal').textContent = '$' + formatoMoneda(totalPagado);
+}
+
+/**
+ * Abrir modal de editar pagos al personal
+ */
+function abrirModalEditarPagosPersonal() {
+    // Solo encargado puede editar
+    if (currentUserRole !== 'encargado') {
+        mostrarNotificacion('Solo el encargado puede editar pagos al personal', 'warning');
+        return;
+    }
+
+    if (pagosPersonalDelDia.length === 0) {
+        mostrarNotificacion('No hay pagos registrados hoy', 'info');
+        return;
+    }
+
+    // Renderizar lista
+    renderListaPagosEditar();
+
+    // Abrir modal
+    const modal = document.getElementById('modalEditarPagosPersonal');
+    modal.style.display = 'flex';
+    modal.classList.add('show');
+}
+
+/**
+ * Cerrar modal de editar pagos
+ */
+function cerrarModalEditarPagosPersonal() {
+    const modal = document.getElementById('modalEditarPagosPersonal');
+    modal.style.display = 'none';
+    modal.classList.remove('show');
+}
+
+/**
+ * Renderizar lista de pagos editables
+ */
+function renderListaPagosEditar() {
+    const lista = document.getElementById('listaPagosPersonalEditar');
+
+    if (pagosPersonalDelDia.length === 0) {
+        lista.innerHTML = '<p style="text-align: center; color: hsl(var(--muted-foreground));">No hay pagos registrados hoy</p>';
+        return;
+    }
+
+    const html = `
+        <div style="overflow-x: auto;">
+            <table style="width: 100%; border-collapse: collapse;">
+                <thead>
+                    <tr style="background: hsl(var(--secondary)); border-bottom: 2px solid hsl(var(--border));">
+                        <th style="padding: 12px; text-align: left; font-weight: 600;">Empleado</th>
+                        <th style="padding: 12px; text-align: left; font-weight: 600;">Puesto</th>
+                        <th style="padding: 12px; text-align: center; font-weight: 600;">Pago Jornada</th>
+                        <th style="padding: 12px; text-align: center; font-weight: 600;">Pago Almuerzo</th>
+                        <th style="padding: 12px; text-align: center; font-weight: 600;">Total</th>
+                        <th style="padding: 12px; text-align: center; font-weight: 600;">Acciones</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    ${pagosPersonalDelDia.map(pago => `
+                        <tr style="border-bottom: 1px solid hsl(var(--border));" id="row-pago-${pago.id}">
+                            <td style="padding: 12px; font-weight: 500;">${pago.nombre_empleado}</td>
+                            <td style="padding: 12px; text-transform: capitalize;">${pago.puesto}</td>
+                            <td style="padding: 12px; text-align: center;">
+                                <input 
+                                    type="number" 
+                                    class="form-input" 
+                                    id="jornada-${pago.id}"
+                                    value="${pago.pago_jornada}"
+                                    min="0"
+                                    step="100"
+                                    style="width: 120px; text-align: center;"
+                                    onchange="calcularTotalPagoEditar(${pago.id})"
+                                >
+                            </td>
+                            <td style="padding: 12px; text-align: center;">
+                                <input 
+                                    type="number" 
+                                    class="form-input" 
+                                    id="almuerzo-${pago.id}"
+                                    value="${pago.pago_almuerzo}"
+                                    min="0"
+                                    step="100"
+                                    style="width: 120px; text-align: center;"
+                                    onchange="calcularTotalPagoEditar(${pago.id})"
+                                >
+                            </td>
+                            <td style="padding: 12px; text-align: center; font-weight: 700; color: hsl(var(--success));" id="total-${pago.id}">
+                                $${formatoMoneda(pago.total_pago)}
+                            </td>
+                            <td style="padding: 12px; text-align: center;">
+                                <button 
+                                    class="btn btn-primary" 
+                                    onclick="guardarPagoEditado(${pago.id})"
+                                    style="padding: 8px 16px; font-size: 14px;"
+                                >
+                                    <svg width="16" height="16" viewBox="0 0 20 20" fill="none" style="margin-right: 4px;">
+                                        <path d="M5 10l3 3 7-7" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                                    </svg>
+                                    Guardar
+                                </button>
+                            </td>
+                        </tr>
+                    `).join('')}
+                </tbody>
+            </table>
+        </div>
+    `;
+
+    lista.innerHTML = html;
+}
+
+/**
+ * Calcular total al editar pago
+ */
+function calcularTotalPagoEditar(pagoId) {
+    const jornada = parseFloat(document.getElementById(`jornada-${pagoId}`).value) || 0;
+    const almuerzo = parseFloat(document.getElementById(`almuerzo-${pagoId}`).value) || 0;
+    const total = jornada + almuerzo;
+
+    document.getElementById(`total-${pagoId}`).textContent = '$' + formatoMoneda(total);
+}
+
+/**
+ * Guardar pago editado
+ */
+async function guardarPagoEditado(pagoId) {
+    const nuevoJornada = parseFloat(document.getElementById(`jornada-${pagoId}`).value);
+    const nuevoAlmuerzo = parseFloat(document.getElementById(`almuerzo-${pagoId}`).value);
+
+    if (isNaN(nuevoJornada) || isNaN(nuevoAlmuerzo)) {
+        mostrarNotificacion('Valores inválidos', 'error');
+        return;
+    }
+
+    if (nuevoJornada < 0 || nuevoAlmuerzo < 0) {
+        mostrarNotificacion('Los montos no pueden ser negativos', 'error');
+        return;
+    }
+
+    const nuevoTotal = nuevoJornada + nuevoAlmuerzo;
+
+    try {
+        const { error } = await supabaseClient
+            .from('pagos_personal')
+            .update({
+                pago_jornada: nuevoJornada,
+                pago_almuerzo: nuevoAlmuerzo,
+                total_pago: nuevoTotal
+            })
+            .eq('id', pagoId);
+
+        if (error) throw error;
+
+        mostrarNotificacion('✅ Pago actualizado correctamente', 'success');
+
+        // Actualizar en la lista local
+        const pagoIndex = pagosPersonalDelDia.findIndex(p => p.id === pagoId);
+        if (pagoIndex !== -1) {
+            pagosPersonalDelDia[pagoIndex].pago_jornada = nuevoJornada;
+            pagosPersonalDelDia[pagoIndex].pago_almuerzo = nuevoAlmuerzo;
+            pagosPersonalDelDia[pagoIndex].total_pago = nuevoTotal;
+        }
+
+        // Actualizar resumen en panel izquierdo
+        actualizarResumenPagosPersonal();
+        actualizarTotalesCaja();
+
+    } catch (error) {
+        console.error('Error actualizando pago:', error);
+        mostrarNotificacion('Error al actualizar el pago', 'error');
+    }
 }
 
 // ===================================
