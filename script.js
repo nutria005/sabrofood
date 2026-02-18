@@ -99,6 +99,8 @@ document.addEventListener('DOMContentLoaded', () => {
 });
 
 async function initApp() {
+    console.log('🔧 Inicializando aplicación...');
+    
     // Verificar si hay sesión guardada (nuevo sistema con validación de BD)
     const sesionRestaurada = await verificarSesionGuardada();
 
@@ -107,6 +109,8 @@ async function initApp() {
         return;
     }
 
+    console.log('ℹ️ No hay sesión guardada - mostrando login');
+    
     // Limpiar sesión antigua si existe
     localStorage.removeItem('sabrofood_user');
 
@@ -474,32 +478,59 @@ async function handleLogout() {
 
 // Verificar sesión guardada al cargar
 async function verificarSesionGuardada() {
+    console.log('🔍 Verificando sesión guardada...');
     const sessionToken = localStorage.getItem('sabrofood_session');
 
-    if (!sessionToken) return false;
+    if (!sessionToken) {
+        console.log('ℹ️ No hay token de sesión guardado');
+        return false;
+    }
 
     try {
         // Decodificar token
         const sessionData = JSON.parse(atob(sessionToken));
+        console.log('✅ Token decodificado:', { username: sessionData.username, timestamp: new Date(sessionData.timestamp) });
 
         // Verificar que no sea muy antigua (30 días máximo)
         const thirtyDays = 30 * 24 * 60 * 60 * 1000;
-        if (Date.now() - sessionData.timestamp > thirtyDays) {
+        const edad = Date.now() - sessionData.timestamp;
+        const diasTranscurridos = Math.floor(edad / (24 * 60 * 60 * 1000));
+        
+        console.log(`⏱️ Sesión tiene ${diasTranscurridos} días de antigüedad (máximo: 30 días)`);
+        
+        if (edad > thirtyDays) {
+            console.warn('⚠️ Sesión expirada (más de 30 días)');
             localStorage.removeItem('sabrofood_session');
             return false;
         }
 
         // Verificar que el usuario aún existe y está activo
+        console.log('🔄 Verificando usuario en base de datos...');
         const { data, error } = await supabaseClient
             .from('usuarios')
             .select('username, role, activo')
             .eq('username', sessionData.username)
             .single();
 
-        if (error || !data || !data.activo) {
+        if (error) {
+            console.error('❌ Error al verificar usuario:', error);
             localStorage.removeItem('sabrofood_session');
             return false;
         }
+        
+        if (!data) {
+            console.warn('⚠️ Usuario no encontrado en BD');
+            localStorage.removeItem('sabrofood_session');
+            return false;
+        }
+        
+        if (!data.activo) {
+            console.warn('⚠️ Usuario inactivo');
+            localStorage.removeItem('sabrofood_session');
+            return false;
+        }
+
+        console.log('✅ Usuario válido y activo:', data.username, '| Rol:', data.role);
 
         // Restaurar sesión
         currentUser = data.username;
@@ -526,7 +557,7 @@ async function verificarSesionGuardada() {
         cargarProductos();
         inicializarRealtime();
 
-        console.log('✅ Sesión restaurada:', currentUser);
+        console.log('🎉 Sesión restaurada exitosamente:', currentUser);
         return true;
 
     } catch (error) {
@@ -1912,7 +1943,109 @@ async function cargarVentas() {
             }
         }
 
-        // Calcular KPIs
+        // 🔄 CARGAR MOVIMIENTOS DE STOCK (salidas por reparto)
+        console.log('🔍 Consultando movimientos de stock desde:', fechaInicioStr);
+        
+        const { data: movimientos, error: movError } = await supabaseClient
+            .from('movimientos_stock')
+            .select('*')
+            .eq('tipo', 'SALIDA')
+            .gte('created_at', fechaInicioStr)
+            .order('created_at', { ascending: false });
+
+        if (movError) {
+            console.error('❌ Error cargando movimientos de stock:', movError);
+        } else {
+            console.log(`📦 Movimientos encontrados:`, movimientos?.length || 0);
+            
+            if (movimientos && movimientos.length > 0) {
+                // Obtener nombres de productos
+                const productosIds = [...new Set(movimientos.map(m => m.producto_id).filter(Boolean))];
+                console.log('🔍 Consultando nombres de productos:', productosIds);
+                
+                let nombresProductos = {};
+                if (productosIds.length > 0) {
+                    const { data: prods } = await supabaseClient
+                        .from('productos')
+                        .select('id, nombre')
+                        .in('id', productosIds);
+                    
+                    if (prods) {
+                        nombresProductos = Object.fromEntries(prods.map(p => [p.id, p.nombre]));
+                    }
+                }
+                
+                // Obtener nombres de repartidores desde pedidos
+                const pedidosIds = [...new Set(movimientos.map(m => m.pedido_id).filter(Boolean))];
+                console.log('🔍 Consultando pedidos para obtener repartidores:', pedidosIds.length);
+                
+                let repartidoresPorPedido = {};
+                if (pedidosIds.length > 0) {
+                    const { data: pedidos } = await supabaseClient
+                        .from('pedidos')
+                        .select('id, chofer_asignado')
+                        .in('id', pedidosIds);
+                    
+                    if (pedidos) {
+                        repartidoresPorPedido = Object.fromEntries(
+                            pedidos.map(p => [p.id, p.chofer_asignado || 'Sin asignar'])
+                        );
+                        console.log('✅ Repartidores obtenidos:', Object.keys(repartidoresPorPedido).length);
+                    }
+                }
+                
+                // Transformar movimientos al formato de "ventas" para la tabla
+                const movimientosFormateados = movimientos.map(m => ({
+                    id: `M-${m.id}`,
+                    created_at: m.created_at,
+                    fecha: m.created_at,
+                    vendedor_nombre: repartidoresPorPedido[m.pedido_id] || '🚚 Reparto',
+                    productos: [{
+                        nombre: nombresProductos[m.producto_id] || `Producto ID: ${m.producto_id}`,
+                        cantidad: m.cantidad
+                    }],
+                    total: 0, // Movimientos no tienen valor monetario
+                    metodo_pago: 'REPARTO',
+                    pedido_id: m.pedido_id,
+                    tipo_registro: 'movimiento', // Marca para diferenciar
+                    motivo: m.motivo
+                }));
+                
+                console.log('✅ Movimientos formateados:', movimientosFormateados.length);
+                
+                // Combinar ventas con movimientos en un nuevo array
+                const todosLosRegistros = [...ventas, ...movimientosFormateados];
+                
+                // Reordenar por fecha
+                todosLosRegistros.sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
+                
+                console.log('📊 Total registros (ventas + movimientos):', todosLosRegistros.length);
+                
+                // Calcular KPIs (solo con ventas reales, no movimientos)
+                calcularKPIs(ventas);
+
+                // Generar gráficos
+                generarGraficoVentasDiarias(ventas, periodo);
+                generarGraficoMetodosPago(ventas);
+                await generarGraficoTopProductos(periodo);
+
+                // Ranking de vendedores solo para admin
+                if (esAdmin) {
+                    generarTablaVendedores(ventas);
+                    const ranking = document.getElementById('rankingVendedores');
+                    if (ranking) ranking.style.display = 'block';
+                } else {
+                    const ranking = document.getElementById('rankingVendedores');
+                    if (ranking) ranking.style.display = 'none';
+                }
+
+                // Renderizar tabla de historial (con ventas Y movimientos)
+                renderTablaHistorial(todosLosRegistros);
+                return; // Salir temprano ya que procesamos todo
+            }
+        }
+
+        // Si NO hay movimientos, procesar solo ventas
         calcularKPIs(ventas);
 
         // Generar gráficos
@@ -2289,6 +2422,8 @@ function renderTablaHistorial(ventas) {
     }
 
     tbody.innerHTML = ventas.slice(0, 50).map(v => {
+        const esMovimiento = v.tipo_registro === 'movimiento';
+        
         // Formatear lista de productos
         let productosTexto = '';
         if (v.productos && v.productos.length > 0) {
@@ -2305,30 +2440,49 @@ function renderTablaHistorial(ventas) {
             productosTexto = `<span style="color: hsl(var(--muted-foreground));">Sin items</span>`;
         }
 
-        return `
-            <tr>
-                <td><strong>#${v.id}</strong></td>
-                <td>${new Date(v.created_at || v.fecha).toLocaleString('es-CL', { timeZone: 'America/Santiago' })}</td>
-                <td>${v.vendedor_nombre || v.vendedor || 'Sin asignar'}</td>
-                <td>${productosTexto}</td>
-                <td><strong>$${formatoMoneda(v.total)}</strong></td>
-                <td><span class="badge badge-success">${v.metodo_pago}</span></td>
-                <td style="display: flex; gap: 4px;">
-                    <button class="btn-icon" onclick="verDetalleVenta(${v.id})" title="Ver detalle">
-                        <svg width="16" height="16" viewBox="0 0 20 20" fill="none">
-                            <circle cx="10" cy="10" r="3" stroke="currentColor" stroke-width="2"/>
-                            <path d="M2 10s3-6 8-6 8 6 8 6-3 6-8 6-8-6-8-6z" stroke="currentColor" stroke-width="2"/>
-                        </svg>
-                    </button>
-                    <button class="btn-icon" onclick="imprimirBoletaDirecta(${v.id})" title="Imprimir boleta" style="color: hsl(142 76% 36%);">
-                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
-                            <path d="M6 9V2h12v7M6 18H4a2 2 0 01-2-2v-5a2 2 0 012-2h16a2 2 0 012 2v5a2 2 0 01-2 2h-2" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-                            <rect x="6" y="14" width="12" height="8" rx="1" stroke="currentColor" stroke-width="2"/>
-                        </svg>
-                    </button>
-                </td>
-            </tr>
-        `;
+        // Formatear según tipo de registro
+        if (esMovimiento) {
+            // MOVIMIENTO DE REPARTO
+            return `
+                <tr>
+                    <td><strong>${v.id}</strong></td>
+                    <td>${new Date(v.created_at).toLocaleString('es-CL', { timeZone: 'America/Santiago' })}</td>
+                    <td>${v.vendedor_nombre}</td>
+                    <td>${productosTexto}</td>
+                    <td></td>
+                    <td><span class="badge badge-warning">REPARTO</span></td>
+                    <td>
+                        <span style="font-size: 12px; color: #6b7280;">${v.motivo || 'Salida por reparto'}</span>
+                    </td>
+                </tr>
+            `;
+        } else {
+            // VENTA NORMAL
+            return `
+                <tr>
+                    <td><strong>#${v.id}</strong></td>
+                    <td>${new Date(v.created_at || v.fecha).toLocaleString('es-CL', { timeZone: 'America/Santiago' })}</td>
+                    <td>${v.vendedor_nombre || v.vendedor || 'Sin asignar'}</td>
+                    <td>${productosTexto}</td>
+                    <td><strong>$${formatoMoneda(v.total)}</strong></td>
+                    <td><span class="badge badge-success">${v.metodo_pago}</span></td>
+                    <td style="display: flex; gap: 4px;">
+                        <button class="btn-icon" onclick="verDetalleVenta(${v.id})" title="Ver detalle">
+                            <svg width="16" height="16" viewBox="0 0 20 20" fill="none">
+                                <circle cx="10" cy="10" r="3" stroke="currentColor" stroke-width="2"/>
+                                <path d="M2 10s3-6 8-6 8 6 8 6-3 6-8 6-8-6-8-6z" stroke="currentColor" stroke-width="2"/>
+                            </svg>
+                        </button>
+                        <button class="btn-icon" onclick="imprimirBoletaDirecta(${v.id})" title="Imprimir boleta" style="color: hsl(142 76% 36%);">
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
+                                <path d="M6 9V2h12v7M6 18H4a2 2 0 01-2-2v-5a2 2 0 012-2h16a2 2 0 012 2v5a2 2 0 01-2 2h-2" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                                <rect x="6" y="14" width="12" height="8" rx="1" stroke="currentColor" stroke-width="2"/>
+                            </svg>
+                        </button>
+                    </td>
+                </tr>
+            `;
+        }
     }).join('');
 }
 
@@ -5223,176 +5377,5 @@ async function editarSencilloInicial() {
     
     mostrarNotificacion('✅ Sencillo inicial actualizado', 'success');
     console.log(`💵 Sencillo inicial actualizado: $${formatoMoneda(sencilloInicial)}`);
-}
-
-// ============================================
-// SISTEMA DE DEVOLUCIONES
-// ============================================
-
-let productoDevolucionSeleccionado = null;
-
-/**
- * Abrir modal de devolución
- */
-function abrirModalDevolucion() {
-    console.log('🔄 Abriendo modal de devolución...');
-    
-    const modal = document.getElementById('modalDevolucion');
-    if (!modal) {
-        console.error('❌ Modal de devolución no encontrado en el DOM');
-        mostrarNotificacion('Error: Modal no encontrado', 'error');
-        return;
-    }
-    
-    modal.classList.add('active');
-    document.getElementById('devolucionBusqueda').value = '';
-    document.getElementById('devolucionBusqueda').focus();
-    document.getElementById('resultadosBusquedaDevolucion').style.display = 'none';
-    document.getElementById('productoSeleccionadoDevolucion').style.display = 'none';
-    productoDevolucionSeleccionado = null;
-    
-    console.log('✅ Modal de devolución abierto correctamente');
-}
-
-/**
- * Cerrar modal de devolución
- */
-function cerrarModalDevolucion() {
-    document.getElementById('modalDevolucion').classList.remove('active');
-    document.getElementById('formDevolucion').reset();
-    productoDevolucionSeleccionado = null;
-}
-
-/**
- * Buscar producto para devolución
- */
-async function buscarProductoDevolucion() {
-    const termino = document.getElementById('devolucionBusqueda').value.trim().toLowerCase();
-    const resultadosDiv = document.getElementById('resultadosBusquedaDevolucion');
-    
-    if (termino.length < 2) {
-        resultadosDiv.style.display = 'none';
-        return;
-    }
-    
-    try {
-        const { data: productos, error } = await supabaseClient
-            .from('productos')
-            .select('*')
-            .or(`nombre.ilike.%${termino}%,codigo_barras.ilike.%${termino}%`)
-            .limit(10);
-        
-        if (error) throw error;
-        
-        if (productos.length === 0) {
-            resultadosDiv.innerHTML = '<div style="padding: 12px; text-align: center; color: hsl(var(--muted-foreground));">No se encontraron productos</div>';
-            resultadosDiv.style.display = 'block';
-            return;
-        }
-        
-        resultadosDiv.innerHTML = productos.map(p => `
-            <div class="resultado-busqueda" 
-                 onclick="seleccionarProductoDevolucion(${p.id}, '${p.nombre.replace(/'/g, "\\'")}', ${p.stock})"
-                 style="padding: 12px; cursor: pointer; border-bottom: 1px solid hsl(var(--border)); transition: background 0.2s;"
-                 onmouseover="this.style.background='hsl(var(--accent))'"
-                 onmouseout="this.style.background='white'">
-                <strong>${p.nombre}</strong>
-                <br>
-                <small style="color: hsl(var(--muted-foreground));">
-                    Stock: ${p.stock} | Precio: $${formatoMoneda(p.precio)}
-                </small>
-            </div>
-        `).join('');
-        
-        resultadosDiv.style.display = 'block';
-        
-    } catch (error) {
-        console.error('Error buscando productos:', error);
-        mostrarNotificacion('Error al buscar productos', 'error');
-    }
-}
-
-/**
- * Seleccionar producto para devolución
- */
-function seleccionarProductoDevolucion(id, nombre, stock) {
-    productoDevolucionSeleccionado = { id, nombre, stock };
-    
-    document.getElementById('nombreProductoDevolucion').textContent = nombre;
-    document.getElementById('stockProductoDevolucion').textContent = stock;
-    document.getElementById('devolucionBusqueda').value = nombre;
-    document.getElementById('resultadosBusquedaDevolucion').style.display = 'none';
-    document.getElementById('productoSeleccionadoDevolucion').style.display = 'block';
-    
-    // Enfocar cantidad
-    document.getElementById('devolucionCantidad').focus();
-}
-
-/**
- * Registrar devolución
- */
-async function registrarDevolucion(event) {
-    event.preventDefault();
-    
-    if (!productoDevolucionSeleccionado) {
-        mostrarNotificacion('Selecciona un producto', 'warning');
-        return;
-    }
-    
-    const cantidad = parseInt(document.getElementById('devolucionCantidad').value);
-    const motivo = document.getElementById('devolucionMotivo').value;
-    const observaciones = document.getElementById('devolucionObservaciones').value.trim();
-    
-    if (!cantidad || cantidad <= 0) {
-        mostrarNotificacion('Cantidad inválida', 'warning');
-        return;
-    }
-    
-    if (!motivo) {
-        mostrarNotificacion('Selecciona un motivo', 'warning');
-        return;
-    }
-    
-    try {
-        // Incrementar stock del producto
-        const { data: producto, error: errorProducto } = await supabaseClient
-            .from('productos')
-            .select('stock')
-            .eq('id', productoDevolucionSeleccionado.id)
-            .single();
-        
-        if (errorProducto) throw errorProducto;
-        
-        const nuevoStock = producto.stock + cantidad;
-        
-        const { error: errorUpdate } = await supabaseClient
-            .from('productos')
-            .update({ stock: nuevoStock })
-            .eq('id', productoDevolucionSeleccionado.id);
-        
-        if (errorUpdate) throw errorUpdate;
-        
-        mostrarNotificacion(`✅ Devolución registrada: +${cantidad} ${productoDevolucionSeleccionado.nombre}`, 'success');
-        
-        console.log(`🔄 Devolución registrada:
-            Producto: ${productoDevolucionSeleccionado.nombre}
-            Cantidad: ${cantidad}
-            Motivo: ${motivo}
-            Stock anterior: ${producto.stock}
-            Stock nuevo: ${nuevoStock}
-            Observaciones: ${observaciones || 'Ninguna'}`);
-        
-        // Cerrar modal
-        cerrarModalDevolucion();
-        
-        // Recargar inventario si estamos en la vista de inventario
-        if (currentView === 'inventory') {
-            await cargarProductos();
-        }
-        
-    } catch (error) {
-        console.error('Error registrando devolución:', error);
-        mostrarNotificacion('Error al registrar devolución', 'error');
-    }
 }
 

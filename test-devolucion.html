@@ -1,0 +1,194 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>TEST - Modal Devolución</title>
+    <link rel="stylesheet" href="style.css">
+    <style>
+        body {
+            padding: 40px;
+            font-family: Inter, sans-serif;
+        }
+        .test-container {
+            max-width: 600px;
+            margin: 0 auto;
+            text-align: center;
+        }
+        .big-button {
+            padding: 24px 48px;
+            font-size: 20px;
+            font-weight: bold;
+            background: #22c55e;
+            color: white;
+            border: none;
+            border-radius: 12px;
+            cursor: pointer;
+            margin: 20px 0;
+            transition: all 0.3s;
+        }
+        .big-button:hover {
+            background: #16a34a;
+            transform: scale(1.05);
+        }
+        .status {
+            padding: 16px;
+            background: #f3f4f6;
+            border-radius: 8px;
+            margin: 20px 0;
+            font-family: monospace;
+        }
+    </style>
+</head>
+<body>
+    <div class="test-container">
+        <h1>🧪 TEST Modal Devolución</h1>
+        <p>Esta página NO usa Service Worker. Si funciona aquí, el problema es el caché.</p>
+        
+        <button class="big-button" onclick="testModal()">
+            🔄 ABRIR MODAL DEVOLUCIÓN
+        </button>
+        
+        <div class="status" id="status">
+            Presiona el botón para probar...
+        </div>
+    </div>
+
+    <!-- MODAL: Registrar Devolución -->
+    <div id="modalDevolucion" class="modal">
+        <div class="modal-overlay" onclick="cerrarModalDevolucion()"></div>
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>🔄 Registrar Devolución de Producto</h3>
+                <button class="btn-close" onclick="cerrarModalDevolucion()">
+                    <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
+                        <path d="M15 5L5 15M5 5l10 10" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+                    </svg>
+                </button>
+            </div>
+            <div class="modal-body">
+                <div class="alert alert-warning" style="margin-bottom: 20px;">
+                    <strong>⚠️ Registro Manual de Devolución</strong><br>
+                    Este formulario NO incrementa el stock automáticamente. Solo queda registrado en la consola para control interno.
+                </div>
+
+                <form id="formDevolucion" onsubmit="registrarDevolucion(event)">
+                    <div class="form-group">
+                        <label for="devolucionProducto">Nombre del Producto *</label>
+                        <input type="text" 
+                               id="devolucionProducto" 
+                               class="form-input" 
+                               placeholder="Ej: Champion Adulto 18kg"
+                               required
+                               autocomplete="off">
+                    </div>
+
+                    <div class="form-group">
+                        <label for="devolucionCantidad">Cantidad *</label>
+                        <input type="number" 
+                               id="devolucionCantidad" 
+                               class="form-input" 
+                               placeholder="1" 
+                               min="1" 
+                               max="100"
+                               value="1"
+                               required>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="devolucionMotivo">Motivo de Devolución *</label>
+                        <select id="devolucionMotivo" class="form-select" required>
+                            <option value="">Seleccionar motivo...</option>
+                            <option value="Error de entrega">❌ Error de entrega</option>
+                            <option value="Producto equivocado">🔄 Producto equivocado</option>
+                            <option value="Cliente devolvió">👤 Cliente devolvió</option>
+                            <option value="Producto defectuoso">⚠️ Producto defectuoso</option>
+                            <option value="Cambio de pedido">📝 Cambio de pedido</option>
+                            <option value="Sobrante de bodega">📦 Sobrante de bodega</option>
+                            <option value="Otro">📋 Otro</option>
+                        </select>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="devolucionObservaciones">Observaciones (opcional)</label>
+                        <textarea id="devolucionObservaciones" 
+                                  class="form-input" 
+                                  placeholder="Detalles adicionales sobre la devolución..."
+                                  rows="3"
+                                  style="resize: vertical;"></textarea>
+                    </div>
+
+                    <button type="submit" class="btn btn-success btn-block">
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
+                            <path d="M5 13l4 4L19 7" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                        </svg>
+                        <span>Registrar Devolución</span>
+                    </button>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let currentUser = 'TEST USER';
+
+        function testModal() {
+            const status = document.getElementById('status');
+            status.innerHTML = '🔵 Intentando abrir modal...';
+            
+            console.log('🔵 FUNCIÓN LLAMADA: testModal()');
+            
+            const modal = document.getElementById('modalDevolucion');
+            console.log('🔵 Modal encontrado:', modal);
+            
+            if (!modal) {
+                status.innerHTML = '❌ ERROR: Modal no encontrado en el DOM';
+                alert('❌ Modal no encontrado');
+                return;
+            }
+            
+            modal.classList.add('active');
+            status.innerHTML = '✅ Modal abierto correctamente!';
+            console.log('✅ Modal abierto');
+        }
+
+        function cerrarModalDevolucion() {
+            const modal = document.getElementById('modalDevolucion');
+            if (modal) {
+                modal.classList.remove('active');
+            }
+            
+            const form = document.getElementById('formDevolucion');
+            if (form) {
+                form.reset();
+            }
+            
+            document.getElementById('status').innerHTML = '✅ Modal cerrado';
+        }
+
+        function registrarDevolucion(event) {
+            event.preventDefault();
+            
+            const producto = document.getElementById('devolucionProducto').value.trim();
+            const cantidad = parseInt(document.getElementById('devolucionCantidad').value);
+            const motivo = document.getElementById('devolucionMotivo').value;
+            const observaciones = document.getElementById('devolucionObservaciones').value.trim();
+            
+            console.log('═══════════════════════════════════════════');
+            console.log('🔄 DEVOLUCIÓN REGISTRADA (TEST)');
+            console.log('═══════════════════════════════════════════');
+            console.log('📅 Fecha:', new Date().toLocaleString('es-CL'));
+            console.log('👤 Vendedor:', currentUser);
+            console.log('📦 Producto:', producto);
+            console.log('🔢 Cantidad:', cantidad);
+            console.log('📝 Motivo:', motivo);
+            console.log('💬 Observaciones:', observaciones || 'Ninguna');
+            console.log('═══════════════════════════════════════════');
+            
+            alert(`✅ Devolución registrada: ${cantidad}x ${producto}`);
+            
+            cerrarModalDevolucion();
+        }
+    </script>
+</body>
+</html>

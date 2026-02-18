@@ -349,14 +349,6 @@
                         <p class="view-subtitle">Control de stock y productos</p>
                     </div>
                     <div class="view-actions">
-                        <button class="btn btn-success" onclick="abrirModalDevolucion()" style="margin-right: 8px;">
-                            <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
-                                <path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-                                <polyline points="9 22 9 12 15 12 15 22" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-                            </svg>
-                            <span>Registrar Devolución</span>
-                        </button>
-                        
                         <button id="btnAdminPreciosInventario" class="btn btn-primary" onclick="abrirModalAdminPrecios()" style="display: none;">
                             <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
                                 <path d="M12 2v20M17 5H9.5a3.5 3.5 0 000 7h5a3.5 3.5 0 010 7H6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
@@ -1427,86 +1419,6 @@
         </div>
     </div>
 
-    <!-- MODAL: Registrar Devolución -->
-    <div id="modalDevolucion" class="modal">
-        <div class="modal-overlay" onclick="cerrarModalDevolucion()"></div>
-        <div class="modal-content">
-            <div class="modal-header">
-                <h3>🔄 Registrar Devolución</h3>
-                <button class="btn-close" onclick="cerrarModalDevolucion()">
-                    <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
-                        <path d="M15 5L5 15M5 5l10 10" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
-                    </svg>
-                </button>
-            </div>
-            <div class="modal-body">
-                <div class="alert alert-info" style="margin-bottom: 16px;">
-                    <strong>💡 Devolución de productos</strong><br>
-                    Registra productos devueltos por error, cambio o defecto. El stock se recuperará automáticamente.
-                </div>
-
-                <form id="formDevolucion" onsubmit="registrarDevolucion(event)">
-                    <div class="form-group">
-                        <label for="devolucionBusqueda">Buscar Producto</label>
-                        <input type="text" 
-                               id="devolucionBusqueda" 
-                               class="form-input" 
-                               placeholder="Escribe el nombre del producto..."
-                               oninput="buscarProductoDevolucion()"
-                               autocomplete="off">
-                        <div id="resultadosBusquedaDevolucion" style="display: none; max-height: 200px; overflow-y: auto; border: 1px solid hsl(var(--border)); border-radius: 4px; margin-top: 4px; background: white;"></div>
-                    </div>
-
-                    <div id="productoSeleccionadoDevolucion" style="display: none;">
-                        <div class="alert alert-success" style="margin-bottom: 16px;">
-                            <strong>Producto seleccionado:</strong><br>
-                            <span id="nombreProductoDevolucion"></span><br>
-                            <small>Stock actual: <span id="stockProductoDevolucion"></span> unidades</small>
-                        </div>
-
-                        <div class="form-group">
-                            <label for="devolucionCantidad">Cantidad Devuelta</label>
-                            <input type="number" 
-                                   id="devolucionCantidad" 
-                                   class="form-input" 
-                                   placeholder="1" 
-                                   min="1" max="100"
-                                   required>
-                        </div>
-
-                        <div class="form-group">
-                            <label for="devolucionMotivo">Motivo</label>
-                            <select id="devolucionMotivo" class="form-select" required>
-                                <option value="">Seleccionar motivo...</option>
-                                <option value="Error de entrega">❌ Error de entrega</option>
-                                <option value="Producto equivocado">🔄 Producto equivocado</option>
-                                <option value="Cliente devolvió">👤 Cliente devolvió</option>
-                                <option value="Producto defectuoso">⚠️ Producto defectuoso</option>
-                                <option value="Cambio de pedido">📝 Cambio de pedido</option>
-                                <option value="Otro">📋 Otro</option>
-                            </select>
-                        </div>
-
-                        <div class="form-group">
-                            <label for="devolucionObservaciones">Observaciones (opcional)</label>
-                            <textarea id="devolucionObservaciones" 
-                                      class="form-input" 
-                                      placeholder="Detalles adicionales..."
-                                      rows="3"></textarea>
-                        </div>
-
-                        <button type="submit" class="btn btn-success btn-block">
-                            <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
-                                <path d="M5 13l4 4L19 7" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-                            </svg>
-                            <span>Registrar Devolución</span>
-                        </button>
-                    </div>
-                </form>
-            </div>
-        </div>
-    </div>
-
     <!-- MODAL: Editar Producto (Solo Encargado) -->
     <div id="modalEditarProducto" class="modal">
         <div class="modal-overlay" onclick="cerrarModalEditar()"></div>
@@ -1943,7 +1855,7 @@
     <script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
     <script src="supabase-config.js?v=20260119-fix"></script>
-    <script src="script.js?v=20260212-v104"></script>
+    <script src="script.js?v=20260216-devolucion"></script>
     <script src="bodega-module.js?v=20260211-cleaned"></script>
     <script src="pwa-install.js?v=20260212-pwa"></script>
 

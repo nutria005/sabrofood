@@ -222,11 +222,18 @@ async function buscarProductosParaReposicion() {
     }
 
     try {
-        // Buscar en productos a granel
+        // Buscar en productos a granel (TODAS las categorías de comida para mascotas)
         const { data, error } = await supabaseClient
             .from('productos')
             .select('id, nombre, categoria')
-            .in('categoria', ['Adulto', 'Cachorro', 'Senior', 'Gato', 'Gatito', 'Arena'])
+            .in('categoria', [
+                'Adulto', 'Cachorro', 'Senior',           // Perros
+                'Gato', 'Gatito',                           // Gatos genéricos
+                'Gato Adulto', 'Gato Kitten',              // Gatos específicos
+                'Perro Adulto', 'Perro Cachorro',          // Perros específicos
+                'Arena',                                    // Arena para gatos
+                'Granel'                                    // Productos a granel
+            ])
             .ilike('nombre', `%${query}%`)
             .limit(10);
 
