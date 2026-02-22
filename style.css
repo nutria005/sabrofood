@@ -1593,7 +1593,25 @@ body {
 @media (max-width: 1024px) {
   .bottom-nav {
     display: flex;
-    justify-content: space-around;
+    justify-content: flex-start;
+    overflow-x: auto;
+    overflow-y: hidden;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: thin;
+    scrollbar-color: hsl(var(--muted-foreground) / 0.3) transparent;
+  }
+
+  .bottom-nav::-webkit-scrollbar {
+    height: 4px;
+  }
+
+  .bottom-nav::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  .bottom-nav::-webkit-scrollbar-thumb {
+    background: hsl(var(--muted-foreground) / 0.3);
+    border-radius: 2px;
   }
 }
 
@@ -1611,8 +1629,9 @@ body {
   color: hsl(var(--muted-foreground));
   cursor: pointer;
   transition: all 0.2s;
-  flex: 1;
-  max-width: 120px;
+  flex-shrink: 0;
+  min-width: 80px;
+  white-space: nowrap;
 }
 
 .bottom-nav-item.active {
