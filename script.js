@@ -3505,6 +3505,9 @@ function abrirModalEditar(producto) {
     const esEncargado = currentUserRole === 'encargado';
     const modoCrear = !producto; // null = modo crear
 
+    // Actualizar dropdown de proveedores con lista dinámica
+    actualizarSelectProveedores();
+
     // Cambiar título y botones según modo
     const titulo = document.getElementById('tituloModalProducto');
     const btnGuardar = document.getElementById('btnGuardarProducto');
@@ -3640,12 +3643,21 @@ async function guardarEdicion() {
                 categoria: nuevaCategoria,
                 precio: nuevoPrecio,
                 stock: nuevoStock,
-                codigo_barras: nuevoCodigoBarras || null,
-                tipo: 'empacado' // Tipo por defecto para sacos
+                codigo_barras: nuevoCodigoBarras || null
             };
 
-            // Auto-detectar si es producto granel por el nombre
-            if (nuevoNombre.toLowerCase().includes('(granel)')) {
+            // Solo establecer tipo si estamos CREANDO un producto nuevo
+            // Al EDITAR, preservamos el tipo original para evitar errores de validación
+            if (modoCrear) {
+                productData.tipo = 'empacado'; // Tipo por defecto para productos nuevos
+                
+                // Auto-detectar si es producto granel por el nombre
+                if (nuevoNombre.toLowerCase().includes('(granel)')) {
+                    productData.tipo = 'granel';
+                }
+            }
+            // Al editar, si queremos cambiar el tipo basado en el nombre, lo hacemos
+            else if (nuevoNombre.toLowerCase().includes('(granel)') && productoEditando.tipo !== 'granel') {
                 productData.tipo = 'granel';
             }
 
