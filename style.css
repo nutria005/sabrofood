@@ -814,7 +814,7 @@ body {
 
 @media (max-width: 1024px) {
   .cart-footer {
-    padding-bottom: 24px;
+    padding-bottom: 100px;
   }
 }
 
@@ -1758,7 +1758,22 @@ body {
   }
 
   .modal-content {
-    margin: auto 16px;
+    margin: 16px;
+    max-height: calc(100vh - 32px);
+  }
+
+  .modal-large {
+    max-width: calc(100vw - 32px);
+    width: calc(100vw - 32px);
+    margin: 16px;
+  }
+
+  .modal-footer {
+    position: sticky;
+    bottom: 0;
+    background: #ffffff;
+    padding-bottom: 20px;
+    box-shadow: 0 -4px 12px rgba(0, 0, 0, 0.05);
   }
 }
 
