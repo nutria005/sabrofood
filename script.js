@@ -222,6 +222,7 @@ function actualizarStockEnCarrito(productoActualizado) {
 
 /**
  * Validación final de stock antes de cobrar
+ * MODIFICADO: Permite ventas con stock negativo (solo advierte)
  */
 async function validarStockAntesDeVenta() {
     if (!supabaseClient) return true;
@@ -246,7 +247,8 @@ async function validarStockAntesDeVenta() {
 
         if (error) throw error;
 
-        // Verificar cada producto normal
+        // Verificar cada producto normal y advertir si hay stock insuficiente
+        let hayProductosSinStock = false;
         for (const item of productosNormales) {
             const productoActual = productosActuales.find(p => p.id === item.id);
 
@@ -255,26 +257,26 @@ async function validarStockAntesDeVenta() {
                 return false;
             }
 
+            // Solo advertir, pero PERMITIR la venta con stock negativo
             if (productoActual.stock < item.cantidad) {
-                mostrarNotificacion(
-                    `❌ Stock insuficiente: "${productoActual.nombre}"\n` +
-                    `Disponible: ${productoActual.stock} | En carrito: ${item.cantidad}\n` +
-                    `Alguien más acaba de comprar este producto.`,
-                    'error'
+                hayProductosSinStock = true;
+                console.warn(
+                    `⚠️ Stock insuficiente: "${productoActual.nombre}" - ` +
+                    `Disponible: ${productoActual.stock} | En carrito: ${item.cantidad} | ` +
+                    `Stock quedará en: ${productoActual.stock - item.cantidad}`
                 );
-
-                // Actualizar carrito con stock real
+                
+                // Actualizar stock real en el item para cálculo correcto
                 item.stock = productoActual.stock;
-                if (item.cantidad > productoActual.stock) {
-                    item.cantidad = productoActual.stock;
-                }
-                renderCarrito();
-
-                return false;
             }
         }
 
-        return true;
+        // Notificar al usuario si hay productos sin stock suficiente
+        if (hayProductosSinStock) {
+            mostrarNotificacion('⚠️ Algunos productos quedarán con stock negativo', 'warning');
+        }
+
+        return true; // SIEMPRE permitir la venta
 
     } catch (error) {
         console.error('Error validando stock:', error);
@@ -392,6 +394,7 @@ async function handleLogin() {
         // Cargar datos
         cargarProductos();
         inicializarRealtime();
+        inicializarProveedores(); // Cargar proveedores desde localStorage
 
         console.log('✅ Login exitoso:', currentUser, '| Rol:', currentUserRole);
         
@@ -420,6 +423,9 @@ async function handleLogin() {
 function aplicarPermisosRol() {
     const esAdmin = currentUserRole === 'encargado';
 
+    // Agregar data-attribute al body para CSS responsive
+    document.body.setAttribute('data-user-role', currentUserRole);
+
     // Botón Asignar Códigos
     document.getElementById('btnAsignarCodigos').style.display = esAdmin ? 'flex' : 'none';
     document.getElementById('btnAsignarCodigosBottom').style.display = esAdmin ? 'flex' : 'none';
@@ -436,6 +442,10 @@ function aplicarPermisosRol() {
     // Botón Crear Producto en Inventario
     const btnCrearProducto = document.getElementById('btnCrearProducto');
     if (btnCrearProducto) btnCrearProducto.style.display = esAdmin ? 'inline-flex' : 'none';
+
+    // Botón Gestionar Proveedores en Inventario
+    const btnGestionarProveedores = document.getElementById('btnGestionarProveedores');
+    if (btnGestionarProveedores) btnGestionarProveedores.style.display = esAdmin ? 'inline-flex' : 'none';
 
     // Ranking de vendedores
     const rankingVendedores = document.getElementById('rankingVendedores');
@@ -750,9 +760,28 @@ function renderProductos() {
 
     // Filtrar por categoría
     if (categoriaActual !== 'Todos') {
-        productosFiltrados = productosFiltrados.filter(p =>
-            p.categoria && p.categoria.toLowerCase().includes(categoriaActual.toLowerCase())
-        );
+        if (categoriaActual === 'Adulto') {
+            // "Adulto" solo muestra productos de perro adulto (excluir gatos)
+            productosFiltrados = productosFiltrados.filter(p => 
+                p.categoria && 
+                p.categoria.toLowerCase() === 'adulto' &&
+                !p.nombre.toLowerCase().includes('gato')
+            );
+        } else if (categoriaActual === 'Gato') {
+            // "Gato" solo muestra gatos adultos (excluir gatito/senior)
+            productosFiltrados = productosFiltrados.filter(p => 
+                p.categoria && 
+                (p.categoria.toLowerCase() === 'gato adulto' || 
+                 (p.categoria.toLowerCase().includes('gato') && 
+                  !p.categoria.toLowerCase().includes('gatito') &&
+                  !p.categoria.toLowerCase().includes('senior')))
+            );
+        } else {
+            // Otras categorías usan filtro normal
+            productosFiltrados = productosFiltrados.filter(p =>
+                p.categoria && p.categoria.toLowerCase().includes(categoriaActual.toLowerCase())
+            );
+        }
     }
 
     // Filtrar por búsqueda
@@ -785,11 +814,16 @@ function renderProductos() {
         const stockMinimo = producto.stock_minimo || 5;
         const stockBajo = stock <= stockMinimo && stock > 0;
         const stockCero = stock === 0;
+        const esGranel = producto.nombre && producto.nombre.toLowerCase().includes('(granel)');
 
         let stockClass = 'stock-ok';
         let stockText = Math.floor(stock);
 
-        if (stockCero) {
+        // Productos granel no muestran "Sin stock"
+        if (esGranel) {
+            stockClass = 'stock-ok';
+            stockText = ''; // Sin badge de stock para granel
+        } else if (stockCero) {
             stockClass = 'stock-out';
             stockText = 'Sin stock';
         } else if (stockBajo) {
@@ -800,14 +834,11 @@ function renderProductos() {
             <div class="product-card" data-producto-id="${producto.id}">
                 <div class="product-card-header">
                     <div class="product-name">${producto.nombre}</div>
-                    <span class="product-stock ${stockClass}">${stockText}</span>
+                    ${stockText ? `<span class="product-stock ${stockClass}">${stockText}</span>` : ''}
                 </div>
                 <div class="product-category">${producto.marca || producto.categoria || 'General'}</div>
                 <div class="product-price">$${formatoMoneda(producto.precio || 0)}</div>
-                ${stockCero ?
-                    '<button class="btn-add-product" disabled style="opacity: 0.5; cursor: not-allowed;">Sin stock</button>' :
-                    `<button class="btn-add-product" onclick="agregarAlCarrito(${producto.id})">+ Agregar</button>`
-                }
+                <button class="btn-add-product" onclick="agregarAlCarrito(${producto.id})">+ Agregar</button>
             </div>
         `;
     }).join('');
@@ -817,20 +848,20 @@ function agregarAlCarrito(productoId) {
     const producto = productos.find(p => p.id === productoId);
     if (!producto) return;
 
-    if (producto.stock <= 0) {
-        mostrarNotificacion('Producto sin stock', 'error');
-        return;
-    }
-
     const itemExistente = carrito.find(item => item.id === producto.id);
 
     if (itemExistente) {
+        // Advertir si excede el stock disponible, pero permitir
         if (itemExistente.cantidad >= producto.stock) {
-            mostrarNotificacion('Stock insuficiente', 'warning');
-            return;
+            mostrarNotificacion('⚠️ Stock insuficiente - Venta permitida (stock negativo)', 'warning');
         }
         itemExistente.cantidad++;
     } else {
+        // Advertir si el producto no tiene stock, pero permitir
+        if (producto.stock <= 0) {
+            mostrarNotificacion('⚠️ Producto sin stock - Venta permitida (stock negativo)', 'warning');
+        }
+        
         carrito.push({
             id: producto.id,
             nombre: producto.nombre,
@@ -954,9 +985,9 @@ function cambiarCantidad(index, delta) {
         return;
     }
 
+    // Advertir si excede el stock, pero permitir
     if (newQty > item.stock) {
-        mostrarNotificacion('Stock insuficiente', 'warning');
-        return;
+        mostrarNotificacion('⚠️ Stock insuficiente - Incremento permitido (stock negativo)', 'warning');
     }
 
     item.cantidad = newQty;
@@ -1630,6 +1661,7 @@ async function finalizarVenta() {
             }
 
             // Actualizar stock SOLO para productos normales (NO granel)
+            // PERMITE STOCK NEGATIVO: Si se vende más de lo disponible, el stock queda en negativo
             for (const item of carrito) {
                 if (item.esGranel) {
                     // NO descontar stock para productos a granel
@@ -1637,7 +1669,7 @@ async function finalizarVenta() {
                     continue;
                 }
 
-                const nuevoStock = item.stock - item.cantidad;
+                const nuevoStock = item.stock - item.cantidad; // Permite valores negativos
 
                 const { error: stockError } = await supabaseClient
                     .from('productos')
@@ -1646,6 +1678,8 @@ async function finalizarVenta() {
 
                 if (stockError) {
                     console.error('❌ Error actualizando stock:', stockError);
+                } else if (nuevoStock < 0) {
+                    console.warn(`⚠️ Stock negativo: ${item.nombre} quedó en ${nuevoStock}`);
                 }
             }
         }
@@ -3360,7 +3394,7 @@ function agregarGranelAlCarrito() {
         carrito.push(itemGranel);
     }
 
-    actualizarCarrito();
+    renderCarrito();
     mostrarNotificacion(`${productoGranelSeleccionado.nombre} agregado - $${formatoMoneda(monto)}`, 'success');
     cerrarModalGranel();
 }
@@ -3510,10 +3544,8 @@ async function guardarEdicion() {
         return;
     }
 
-    if (nuevoStock < 0) {
-        mostrarNotificacion('El stock no puede ser negativo', 'error');
-        return;
-    }
+    // PERMITE STOCK NEGATIVO: Útil para ajustes manuales y correcciones
+    // No validamos que sea >= 0
 
     try {
         let productData = { stock: nuevoStock };
@@ -4618,6 +4650,285 @@ async function guardarPagoEditado(pagoId) {
     } catch (error) {
         console.error('Error actualizando pago:', error);
         mostrarNotificacion('Error al actualizar el pago', 'error');
+    }
+}
+
+// ===================================
+// GESTIÓN DE PROVEEDORES (Encargado)
+// ===================================
+
+let proveedoresActuales = [];
+let proveedorEditando = null;
+
+/**
+ * Inicializar proveedores desde localStorage
+ * FUSIONA proveedores guardados con los del HTML (sin duplicar)
+ */
+function inicializarProveedores() {
+    // Proveedores base del HTML (siempre deben estar)
+    const proveedoresBase = [
+        'Befoods', 'Cruce', 'Argentinos', 'Mya Spa', 'Chile Dog',
+        'Brit Care', 'Bravery', 'Dragpharma', 'Fit formula', 'Farmacia',
+        'Belcando & Leonardo', 'Wampy', 'Josera', 'Acomer', 'Dockneddy',
+        'Topk9', 'Cova', 'Purina'
+    ];
+
+    const proveedoresGuardados = localStorage.getItem('proveedores_sabrofood');
+    
+    if (proveedoresGuardados) {
+        try {
+            const guardados = JSON.parse(proveedoresGuardados);
+            
+            // Fusionar: primero los guardados, luego agregar los que falten de la base
+            proveedoresActuales = [...guardados];
+            
+            // Agregar proveedores base que no estén en guardados
+            proveedoresBase.forEach(prov => {
+                if (!proveedoresActuales.includes(prov)) {
+                    proveedoresActuales.push(prov);
+                }
+            });
+            
+            // Guardar la fusión actualizada
+            guardarProveedoresEnStorage();
+            
+        } catch (error) {
+            console.error('Error cargando proveedores:', error);
+            proveedoresActuales = proveedoresBase;
+            guardarProveedoresEnStorage();
+        }
+    } else {
+        // Primera vez: usar proveedores base
+        proveedoresActuales = proveedoresBase;
+        guardarProveedoresEnStorage();
+    }
+    
+    // Actualizar todos los select de la aplicación
+    actualizarSelectProveedores();
+    
+    console.log('✅ Proveedores inicializados:', proveedoresActuales.length);
+}
+
+/**
+ * Guardar proveedores en localStorage
+ */
+function guardarProveedoresEnStorage() {
+    localStorage.setItem('proveedores_sabrofood', JSON.stringify(proveedoresActuales));
+}
+
+/**
+ * Actualizar todos los select de proveedores en la aplicación
+ */
+function actualizarSelectProveedores() {
+    // Ordenar alfabéticamente para mejor UX
+    const proveedoresOrdenados = [...proveedoresActuales].sort();
+    const opcionesProveedor = proveedoresOrdenados.map(p => `<option value="${p}">${p}</option>`).join('');
+    
+    // Select de filtro de inventario
+    const filtroProveedor = document.getElementById('filtroProveedor');
+    if (filtroProveedor) {
+        const valorActual = filtroProveedor.value;
+        filtroProveedor.innerHTML = `
+            <option value="">Todos los proveedores</option>
+            <option value="Sin proveedor">Sin proveedor</option>
+            ${opcionesProveedor}
+        `;
+        filtroProveedor.value = valorActual;
+    }
+    
+    // Select del modal de editar producto
+    const editProveedor = document.getElementById('editProveedor');
+    if (editProveedor) {
+        const valorActualEdit = editProveedor.value;
+        editProveedor.innerHTML = `
+            <option value="">Sin proveedor</option>
+            ${opcionesProveedor}
+        `;
+        editProveedor.value = valorActualEdit;
+    }
+    
+    // Select del modal de nuevo producto
+    const nuevoProveedor = document.getElementById('nuevoProveedor');
+    if (nuevoProveedor) {
+        const valorActualNuevo = nuevoProveedor.value;
+        nuevoProveedor.innerHTML = `
+            <option value="">Sin proveedor</option>
+            ${opcionesProveedor}
+        `;
+        nuevoProveedor.value = valorActualNuevo;
+    }
+}
+
+/**
+ * Abrir modal de gestión de proveedores
+ */
+function abrirModalProveedores() {
+    if (currentUserRole !== 'encargado') {
+        mostrarNotificacion('Solo el encargado puede gestionar proveedores', 'warning');
+        return;
+    }
+    
+    // Re-inicializar proveedores para asegurar que estén cargados
+    if (proveedoresActuales.length === 0) {
+        inicializarProveedores();
+    }
+    
+    console.log('📋 Proveedores disponibles:', proveedoresActuales.length);
+    
+    proveedorEditando = null;
+    document.getElementById('inputNombreProveedor').value = '';
+    document.getElementById('tituloFormProveedor').textContent = '➕ Agregar Proveedor';
+    document.getElementById('textoBotonProveedor').textContent = 'Agregar';
+    document.getElementById('btnCancelarEditProveedor').style.display = 'none';
+    
+    renderizarListaProveedores();
+    
+    const modal = document.getElementById('modalProveedores');
+    modal.style.display = 'flex';
+    modal.classList.add('show');
+}
+
+/**
+ * Cerrar modal de proveedores
+ */
+function cerrarModalProveedores() {
+    const modal = document.getElementById('modalProveedores');
+    modal.style.display = 'none';
+    modal.classList.remove('show');
+    proveedorEditando = null;
+}
+
+/**
+ * Renderizar lista de proveedores
+ */
+function renderizarListaProveedores() {
+    const lista = document.getElementById('listaProveedores');
+    
+    console.log('🔄 Renderizando proveedores:', proveedoresActuales);
+    
+    if (!proveedoresActuales || proveedoresActuales.length === 0) {
+        lista.innerHTML = `
+            <div style="text-align: center; padding: 40px; color: #666;">
+                <p>No hay proveedores registrados</p>
+                <p style="font-size: 14px; margin-top: 10px;">Agrega el primer proveedor usando el formulario arriba</p>
+            </div>
+        `;
+        return;
+    }
+    
+    const proveedoresOrdenados = [...proveedoresActuales].sort();
+    
+    const html = proveedoresOrdenados.map((proveedor, index) => `
+        <div style="display: flex; align-items: center; justify-content: space-between; padding: 12px 15px; background: white; border: 1px solid #e0e0e0; border-radius: 6px; margin-bottom: 8px;">
+            <div style="flex: 1;">
+                <strong style="font-size: 15px;">${proveedor}</strong>
+            </div>
+            <div style="display: flex; gap: 8px;">
+                <button class="btn btn-sm btn-primary" onclick="editarProveedor('${proveedor.replace(/'/g, "\\'")}')">
+                    ✏️ Editar
+                </button>
+                <button class="btn btn-sm btn-danger" onclick="eliminarProveedor('${proveedor.replace(/'/g, "\\'")}')">
+                    🗑️ Eliminar
+                </button>
+            </div>
+        </div>
+    `).join('');
+    
+    lista.innerHTML = html;
+}
+
+/**
+ * Guardar proveedor (crear o actualizar)
+ */
+function guardarProveedor() {
+    const input = document.getElementById('inputNombreProveedor');
+    const nombreProveedor = input.value.trim();
+    
+    if (!nombreProveedor) {
+        mostrarNotificacion('Por favor ingresa el nombre del proveedor', 'warning');
+        input.focus();
+        return;
+    }
+    
+    if (proveedorEditando !== null) {
+        // Editar proveedor existente
+        const index = proveedoresActuales.indexOf(proveedorEditando);
+        
+        // Verificar si el nuevo nombre ya existe (excepto si es el mismo)
+        if (nombreProveedor !== proveedorEditando && proveedoresActuales.includes(nombreProveedor)) {
+            mostrarNotificacion('Ya existe un proveedor con ese nombre', 'warning');
+            return;
+        }
+        
+        if (index !== -1) {
+            proveedoresActuales[index] = nombreProveedor;
+            mostrarNotificacion('Proveedor actualizado exitosamente', 'success');
+        }
+    } else {
+        // Agregar nuevo proveedor
+        if (proveedoresActuales.includes(nombreProveedor)) {
+            mostrarNotificacion('Ya existe un proveedor con ese nombre', 'warning');
+            return;
+        }
+        
+        proveedoresActuales.push(nombreProveedor);
+        mostrarNotificacion('Proveedor agregado exitosamente', 'success');
+    }
+    
+    guardarProveedoresEnStorage();
+    actualizarSelectProveedores();
+    renderizarListaProveedores();
+    
+    // Limpiar formulario
+    input.value = '';
+    proveedorEditando = null;
+    document.getElementById('tituloFormProveedor').textContent = '➕ Agregar Proveedor';
+    document.getElementById('textoBotonProveedor').textContent = 'Agregar';
+    document.getElementById('btnCancelarEditProveedor').style.display = 'none';
+}
+
+/**
+ * Editar proveedor
+ */
+function editarProveedor(nombreProveedor) {
+    proveedorEditando = nombreProveedor;
+    
+    document.getElementById('inputNombreProveedor').value = nombreProveedor;
+    document.getElementById('tituloFormProveedor').textContent = '✏️ Editar Proveedor';
+    document.getElementById('textoBotonProveedor').textContent = 'Guardar Cambios';
+    document.getElementById('btnCancelarEditProveedor').style.display = 'inline-block';
+    
+    // Scroll al formulario
+    document.getElementById('inputNombreProveedor').focus();
+}
+
+/**
+ * Cancelar edición de proveedor
+ */
+function cancelarEditarProveedor() {
+    proveedorEditando = null;
+    
+    document.getElementById('inputNombreProveedor').value = '';
+    document.getElementById('tituloFormProveedor').textContent = '➕ Agregar Proveedor';
+    document.getElementById('textoBotonProveedor').textContent = 'Agregar';
+    document.getElementById('btnCancelarEditProveedor').style.display = 'none';
+}
+
+/**
+ * Eliminar proveedor
+ */
+function eliminarProveedor(nombreProveedor) {
+    if (!confirm(`¿Estás seguro de eliminar el proveedor "${nombreProveedor}"?\n\nEsta acción no afectará los productos existentes.`)) {
+        return;
+    }
+    
+    const index = proveedoresActuales.indexOf(nombreProveedor);
+    if (index !== -1) {
+        proveedoresActuales.splice(index, 1);
+        guardarProveedoresEnStorage();
+        actualizarSelectProveedores();
+        renderizarListaProveedores();
+        mostrarNotificacion('Proveedor eliminado exitosamente', 'success');
     }
 }
 

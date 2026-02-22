@@ -3488,3 +3488,42 @@ body {
     flex: 1;
   }
 }
+/* ===================================
+   RESPONSIVE TABLE (Mobile)
+   =================================== */
+
+/* Ocultar columnas para vendedores (SIEMPRE, en todas las resoluciones) */
+body[data-user-role="vendedor"] .inventory-table th:nth-child(3), /* Categoría */
+body[data-user-role="vendedor"] .inventory-table td:nth-child(3),
+body[data-user-role="vendedor"] .inventory-table th:nth-child(4), /* Precio */
+body[data-user-role="vendedor"] .inventory-table td:nth-child(4),
+body[data-user-role="vendedor"] .inventory-table th:nth-child(6), /* Código de Barras */
+body[data-user-role="vendedor"] .inventory-table td:nth-child(6) {
+  display: none;
+}
+
+/* Scroll horizontal en mobile */
+@media (max-width: 768px) {
+  .inventory-table-container {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  /* Hacer tabla scrolleable horizontalmente */
+  .inventory-table {
+    min-width: 600px;
+    display: table;
+  }
+
+  /* Reducir padding en celdas para mobile */
+  .inventory-table th,
+  .inventory-table td {
+    padding: 10px 8px;
+    font-size: 13px;
+  }
+
+  /* Reducir tamaño de fuente en encabezados */
+  .inventory-table th {
+    font-size: 11px;
+  }
+}

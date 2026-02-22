@@ -282,7 +282,7 @@
                         <div class="categories-scroll">
                             <button class="category-chip active" data-categoria="Todos" onclick="filtrarCategoria('Todos')">Todos</button>
                             <button class="category-chip" onclick="abrirModalGranel()" style="background: hsl(var(--success)); color: white; border-color: hsl(var(--success));">🌾 Granel</button>
-                            <button class="category-chip" data-categoria="Adulto" onclick="filtrarCategoria('Adulto')">🐕 Adulto</button>
+                            <button class="category-chip" data-categoria="Adulto" onclick="filtrarCategoria('Adulto')">🐕 Perro Adulto</button>
                             <button class="category-chip" data-categoria="Cachorro" onclick="filtrarCategoria('Cachorro')">🐶 Cachorro</button>
                             <button class="category-chip" data-categoria="Senior" onclick="filtrarCategoria('Senior')">🦴 Senior</button>
                             <button class="category-chip" data-categoria="Gato" onclick="filtrarCategoria('Gato')">🐈 Gato</button>
@@ -442,12 +442,20 @@
                                 <option value="Purina">Purina</option>
                             </select>
                         </div>
-                        <button id="btnCrearProducto" class="btn btn-success" onclick="abrirModalCrearProducto()" style="display: none;">
-                            <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
-                                <path d="M10 5v10M5 10h10" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
-                            </svg>
-                            <span>Crear Producto</span>
-                        </button>
+                        <div style="display: flex; gap: 10px;">
+                            <button id="btnCrearProducto" class="btn btn-success" onclick="abrirModalCrearProducto()" style="display: none;">
+                                <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
+                                    <path d="M10 5v10M5 10h10" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+                                </svg>
+                                <span>Crear Producto</span>
+                            </button>
+                            <button id="btnGestionarProveedores" class="btn btn-primary" onclick="abrirModalProveedores()" style="display: none;">
+                                <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
+                                    <path d="M17 18.5V16c0-1.1-.9-2-2-2H5c-1.1 0-2 .9-2 2v2.5M15 7.5a3 3 0 11-6 0 3 3 0 016 0zM6 7.5a3 3 0 11-6 0 3 3 0 016 0z" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+                                </svg>
+                                <span>Gestionar Proveedores</span>
+                            </button>
+                        </div>
                     </div>
 
                     <div class="inventory-table-container">
@@ -1472,7 +1480,7 @@
                     <label>Categoría</label>
                     <select id="editCategoria" class="form-select">
                         <option value="">Seleccionar categoría</option>
-                        <option value="Adulto">Adulto</option>
+                        <option value="Adulto">Perro Adulto</option>
                         <option value="Cachorro">Cachorro</option>
                         <option value="Senior">Senior</option>
                         <option value="Gato Adulto">Gato Adulto</option>
@@ -1604,7 +1612,7 @@
                     <label>Categoría</label>
                     <select id="nuevoCategoria" class="form-select">
                         <option value="">Seleccionar categoría</option>
-                        <option value="Adulto">Adulto</option>
+                        <option value="Adulto">Perro Adulto</option>
                         <option value="Cachorro">Cachorro</option>
                         <option value="Senior">Senior</option>
                         <option value="Gato Adulto">Gato Adulto</option>
@@ -1827,6 +1835,52 @@
             </div>
             <div class="modal-footer">
                 <button class="btn btn-secondary" onclick="cerrarModalEditarPagosPersonal()">Cerrar</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- MODAL: Gestionar Proveedores (Solo Encargado) -->
+    <div id="modalProveedores" class="modal">
+        <div class="modal-overlay" onclick="cerrarModalProveedores()"></div>
+        <div class="modal-content" style="max-width: 800px;">
+            <div class="modal-header">
+                <h3>🏢 Gestionar Proveedores</h3>
+                <button class="btn-close" onclick="cerrarModalProveedores()">
+                    <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
+                        <path d="M15 5L5 15M5 5l10 10" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+                    </svg>
+                </button>
+            </div>
+            <div class="modal-body">
+                <!-- Formulario para agregar/editar proveedor -->
+                <div style="background: #f8f9fa; padding: 15px; border-radius: 8px; margin-bottom: 20px;">
+                    <h4 style="margin: 0 0 15px 0; font-size: 16px;">
+                        <span id="tituloFormProveedor">➕ Agregar Proveedor</span>
+                    </h4>
+                    <div style="display: flex; gap: 10px; align-items: flex-end;">
+                        <div style="flex: 1;">
+                            <label for="inputNombreProveedor" style="display: block; margin-bottom: 5px; font-weight: 500;">Nombre del Proveedor</label>
+                            <input type="text" id="inputNombreProveedor" placeholder="Ej: Befoods, Purina, etc." style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px;">
+                        </div>
+                        <button id="btnGuardarProveedor" class="btn btn-success" onclick="guardarProveedor()">
+                            <span id="textoBotonProveedor">Agregar</span>
+                        </button>
+                        <button id="btnCancelarEditProveedor" class="btn btn-secondary" onclick="cancelarEditarProveedor()" style="display: none;">
+                            Cancelar
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Lista de proveedores -->
+                <div>
+                    <h4 style="margin: 0 0 15px 0; font-size: 16px;">📋 Lista de Proveedores</h4>
+                    <div id="listaProveedores" style="max-height: 400px; overflow-y: auto;">
+                        <!-- Se carga dinámicamente -->
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" onclick="cerrarModalProveedores()">Cerrar</button>
             </div>
         </div>
     </div>

@@ -21,7 +21,16 @@ async function cargarSolicitudesReposicion() {
     try {
         const { data, error } = await supabaseClient
             .from('solicitudes_reposicion')
-            .select('*')
+            .select(`
+                *,
+                productos:producto_id (
+                    id,
+                    nombre,
+                    categoria,
+                    stock,
+                    stock_minimo_sacos
+                )
+            `)
             .eq('estado', 'pendiente')
             .order('fecha_solicitud', { ascending: false });
 
@@ -61,13 +70,20 @@ function renderizarSolicitudes() {
     }
 
     const html = solicitudesReposicion.map(sol => {
-        const producto = productosConStock.find(p => p.id === sol.producto_id) || {};
+        // Obtener datos del producto del JOIN
+        const producto = sol.productos || {};
         const stockActual = producto.stock || 0;
         const stockMinimo = producto.stock_minimo_sacos || 0;
 
+        // Determinar texto de stock
+        const stockTexto = stockActual === 0 ? 'Sin Stock' : `${Math.floor(stockActual)} STOCK`;
+
         // Semáforo de stock
         let estadoStock, colorSemaforo;
-        if (stockMinimo === 0 || stockActual > stockMinimo) {
+        if (stockActual === 0) {
+            estadoStock = 'critico';
+            colorSemaforo = '🔴'; // Rojo - Sin stock
+        } else if (stockMinimo === 0 || stockActual > stockMinimo) {
             estadoStock = 'disponible';
             colorSemaforo = '🟢'; // Verde
         } else if (stockActual === stockMinimo) {
@@ -82,8 +98,8 @@ function renderizarSolicitudes() {
             <div class="solicitud-card solicitud-${estadoStock}" data-id="${sol.id}">
                 <div class="solicitud-info">
                     <div class="solicitud-header">
-                        <h4>${producto.nombre || 'Producto'}</h4>
-                        <span class="badge badge-${producto.categoria?.toLowerCase() || 'info'}">${producto.categoria || 'N/A'}</span>
+                        <h4>${producto.nombre || 'Producto sin nombre'}</h4>
+                        <span class="badge badge-${producto.categoria?.toLowerCase() || 'info'}">${producto.categoria || 'Sin categoría'}</span>
                     </div>
                     <div class="solicitud-meta">
                         <span class="meta-item">
@@ -107,8 +123,10 @@ function renderizarSolicitudes() {
                     <div class="stock-indicator stock-${estadoStock}">
                         <span class="stock-icon">${colorSemaforo}</span>
                         <div>
-                            <strong>${Math.floor(stockActual)}</strong>
-                            <span>stock</span>
+                            ${stockActual === 0 
+                                ? '<strong>Sin Stock</strong>' 
+                                : `<strong>${Math.floor(stockActual)}</strong><span>stock</span>`
+                            }
                         </div>
                     </div>
                     <div class="solicitud-actions">
