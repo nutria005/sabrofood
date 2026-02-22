@@ -1740,10 +1740,46 @@ function filtrarInventario(filtro) {
     cargarInventario();
 }
 
+/**
+ * Actualizar encabezados de tabla según rol del usuario
+ */
+function actualizarEncabezadosInventario() {
+    const thead = document.querySelector('#inventoryTable thead tr');
+    if (!thead) return;
+
+    const esVendedor = currentUserRole === 'vendedor';
+
+    if (esVendedor) {
+        // VENDEDOR: Producto | Acciones | Stock | Estado | Proveedor
+        thead.innerHTML = `
+            <th>Producto</th>
+            <th>Acciones</th>
+            <th>Stock</th>
+            <th>Estado</th>
+            <th>Proveedor</th>
+        `;
+    } else {
+        // ADMIN/ENCARGADO: Producto | Proveedor | Categoría | Precio | Stock | Código de Barras | Estado | Acciones
+        thead.innerHTML = `
+            <th>Producto</th>
+            <th>Proveedor</th>
+            <th>Categoría</th>
+            <th>Precio</th>
+            <th>Stock</th>
+            <th>Código de Barras</th>
+            <th>Estado</th>
+            <th>Acciones</th>
+        `;
+    }
+}
+
 async function cargarInventario() {
     if (productos.length === 0) {
         await cargarProductos();
     }
+
+    // Actualizar encabezados de tabla según rol
+    actualizarEncabezadosInventario();
 
     // Estadísticas
     const totalProductos = productos.length;
@@ -1806,6 +1842,7 @@ async function cargarInventario() {
 
     // Tabla
     const tbody = document.getElementById('inventoryTableBody');
+    const esVendedor = currentUserRole === 'vendedor';
 
     // Si no hay productos con el filtro activo
     if (productosFiltrados.length === 0) {
@@ -1816,9 +1853,11 @@ async function cargarInventario() {
             case 'enstock': mensajeFiltro = 'No hay productos en stock'; break;
         }
 
+        const colspan = esVendedor ? 5 : 8; // Vendedor tiene 5 columnas, Admin tiene 8
+
         tbody.innerHTML = `
             <tr>
-                <td colspan="8" style="text-align: center; padding: 40px; color: #6b7280;">
+                <td colspan="${colspan}" style="text-align: center; padding: 40px; color: #6b7280;">
                     <div style="font-size: 48px; margin-bottom: 12px;">📦</div>
                     <div style="font-size: 16px; font-weight: 600;">${mensajeFiltro}</div>
                 </td>
@@ -1882,25 +1921,46 @@ async function cargarInventario() {
             proveedorCategoria = p.proveedor;
         }
         
-        return `
-            <tr>
-                <td><strong>${nombreEscapado}</strong></td>
-                <td>${proveedorCategoria || '-'}</td>
-                <td>${p.categoria || '-'}</td>
-                <td>$${formatoMoneda(p.precio)}</td>
-                <td><strong>${Math.floor(p.stock)}</strong></td>
-                <td>${codigoBarrasHTML}</td>
-                <td><span class="badge ${estadoBadge}">${estadoTexto}</span></td>
-                <td>
-                    <button class="btn-icon" onclick="editarProducto(${p.id})" title="Editar">
-                        <svg width="16" height="16" viewBox="0 0 20 20" fill="none">
-                            <path d="M13.5 6.5l-8 8V17h2.5l8-8m-2.5-2.5l2-2 2.5 2.5-2 2m-2.5-2.5l2.5 2.5" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-                        </svg>
-                    </button>
-                    ${btnEliminar}
-                </td>
-            </tr>
-        `;
+        // Orden de columnas según el rol
+        if (esVendedor) {
+            // VENDEDOR: Producto | Acciones | Stock | Estado | Proveedor
+            return `
+                <tr>
+                    <td><strong>${nombreEscapado}</strong></td>
+                    <td>
+                        <button class="btn-icon" onclick="editarProducto(${p.id})" title="Editar">
+                            <svg width="16" height="16" viewBox="0 0 20 20" fill="none">
+                                <path d="M13.5 6.5l-8 8V17h2.5l8-8m-2.5-2.5l2-2 2.5 2.5-2 2m-2.5-2.5l2.5 2.5" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                            </svg>
+                        </button>
+                    </td>
+                    <td><strong>${Math.floor(p.stock)}</strong></td>
+                    <td><span class="badge ${estadoBadge}">${estadoTexto}</span></td>
+                    <td>${proveedorCategoria || '-'}</td>
+                </tr>
+            `;
+        } else {
+            // ADMIN/ENCARGADO: Producto | Proveedor | Categoría | Precio | Stock | Código de Barras | Estado | Acciones
+            return `
+                <tr>
+                    <td><strong>${nombreEscapado}</strong></td>
+                    <td>${proveedorCategoria || '-'}</td>
+                    <td>${p.categoria || '-'}</td>
+                    <td>$${formatoMoneda(p.precio)}</td>
+                    <td><strong>${Math.floor(p.stock)}</strong></td>
+                    <td>${codigoBarrasHTML}</td>
+                    <td><span class="badge ${estadoBadge}">${estadoTexto}</span></td>
+                    <td>
+                        <button class="btn-icon" onclick="editarProducto(${p.id})" title="Editar">
+                            <svg width="16" height="16" viewBox="0 0 20 20" fill="none">
+                                <path d="M13.5 6.5l-8 8V17h2.5l8-8m-2.5-2.5l2-2 2.5 2.5-2 2m-2.5-2.5l2.5 2.5" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                            </svg>
+                        </button>
+                        ${btnEliminar}
+                    </td>
+                </tr>
+            `;
+        }
     }).join('');
 }
 
