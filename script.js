@@ -4,10 +4,6 @@
 // Versión de la aplicación
 const APP_VERSION = '1.1.0-20260119';
 
-// Mostrar versión en consola
-console.log(`📱 Sabrofood POS v${APP_VERSION}`);
-console.log('🔗 Conectando a Supabase...');
-
 // Estado global
 let currentUser = '';
 let currentUserRole = ''; // 'vendedor' o 'encargado'
@@ -63,25 +59,11 @@ function forzarActualizacion() {
     }
 }
 
-// Detectar si la página viene de caché y mostrar notificación
-window.addEventListener('pageshow', function(event) {
-    if (event.persisted) {
-        console.warn('⚠️ Página cargada desde caché. Puede que no veas la última versión.');
-    } else if (window.performance) {
-        const navEntries = window.performance.getEntriesByType('navigation');
-        if (navEntries.length > 0 && navEntries[0].type === 'back_forward') {
-            console.warn('⚠️ Página cargada desde caché de navegación. Puede que no veas la última versión.');
-        }
-    }
-});
-
 // Verificar si hay nueva versión disponible
 function verificarVersion() {
     const versionGuardada = localStorage.getItem('app_version');
 
     if (versionGuardada && versionGuardada !== APP_VERSION) {
-        console.log(`🔄 Nueva versión detectada: ${versionGuardada} → ${APP_VERSION}`);
-
         // Mostrar notificación de actualización
         if (confirm('¡Hay una nueva versión disponible! ¿Deseas actualizar ahora?')) {
             forzarActualizacion();
@@ -94,22 +76,16 @@ function verificarVersion() {
 // Inicialización
 document.addEventListener('DOMContentLoaded', () => {
     verificarVersion();
-    console.log('🚀 Iniciando POS System...');
     initApp();
 });
 
 async function initApp() {
-    console.log('🔧 Inicializando aplicación...');
-    
     // Verificar si hay sesión guardada (nuevo sistema con validación de BD)
     const sesionRestaurada = await verificarSesionGuardada();
 
     if (sesionRestaurada) {
-        console.log('✅ Sesión restaurada automáticamente');
         return;
     }
-
-    console.log('ℹ️ No hay sesión guardada - mostrando login');
     
     // Limpiar sesión antigua si existe
     localStorage.removeItem('sabrofood_user');
@@ -145,13 +121,11 @@ function inicializarRealtime() {
                 table: 'productos'
             },
             (payload) => {
-                console.log('🔄 Cambio detectado en producto:', payload.new);
                 actualizarProductoEnTiempoReal(payload.new);
             }
         )
         .subscribe((status) => {
             if (status === 'SUBSCRIBED') {
-                console.log('✅ Suscripción Realtime activa');
                 mostrarNotificacion('Sistema en tiempo real activado', 'success');
             }
         });
@@ -292,7 +266,6 @@ function desconectarRealtime() {
     if (realtimeChannel) {
         supabaseClient.removeChannel(realtimeChannel);
         realtimeChannel = null;
-        console.log('🔴 Realtime desconectado');
     }
 }
 
@@ -394,9 +367,7 @@ async function handleLogin() {
         // Cargar datos
         cargarProductos();
         inicializarRealtime();
-        inicializarProveedores(); // Cargar proveedores desde localStorage
-
-        console.log('✅ Login exitoso:', currentUser, '| Rol:', currentUserRole);
+        inicializarProveedores();
         
         // Notificación de bienvenida y recordatorio de asistencia
         mostrarNotificacion(`Bienvenido, ${currentUser}`, 'success');
@@ -490,59 +461,36 @@ async function handleLogout() {
 
 // Verificar sesión guardada al cargar
 async function verificarSesionGuardada() {
-    console.log('🔍 Verificando sesión guardada...');
     const sessionToken = localStorage.getItem('sabrofood_session');
 
     if (!sessionToken) {
-        console.log('ℹ️ No hay token de sesión guardado');
         return false;
     }
 
     try {
         // Decodificar token
         const sessionData = JSON.parse(atob(sessionToken));
-        console.log('✅ Token decodificado:', { username: sessionData.username, timestamp: new Date(sessionData.timestamp) });
 
         // Verificar que no sea muy antigua (30 días máximo)
         const thirtyDays = 30 * 24 * 60 * 60 * 1000;
         const edad = Date.now() - sessionData.timestamp;
-        const diasTranscurridos = Math.floor(edad / (24 * 60 * 60 * 1000));
-        
-        console.log(`⏱️ Sesión tiene ${diasTranscurridos} días de antigüedad (máximo: 30 días)`);
         
         if (edad > thirtyDays) {
-            console.warn('⚠️ Sesión expirada (más de 30 días)');
             localStorage.removeItem('sabrofood_session');
             return false;
         }
 
         // Verificar que el usuario aún existe y está activo
-        console.log('🔄 Verificando usuario en base de datos...');
         const { data, error } = await supabaseClient
             .from('usuarios')
             .select('username, role, activo')
             .eq('username', sessionData.username)
             .single();
 
-        if (error) {
-            console.error('❌ Error al verificar usuario:', error);
+        if (error || !data || !data.activo) {
             localStorage.removeItem('sabrofood_session');
             return false;
         }
-        
-        if (!data) {
-            console.warn('⚠️ Usuario no encontrado en BD');
-            localStorage.removeItem('sabrofood_session');
-            return false;
-        }
-        
-        if (!data.activo) {
-            console.warn('⚠️ Usuario inactivo');
-            localStorage.removeItem('sabrofood_session');
-            return false;
-        }
-
-        console.log('✅ Usuario válido y activo:', data.username, '| Rol:', data.role);
 
         // Restaurar sesión
         currentUser = data.username;
@@ -569,7 +517,6 @@ async function verificarSesionGuardada() {
         cargarProductos();
         inicializarRealtime();
 
-        console.log('🎉 Sesión restaurada exitosamente:', currentUser);
         return true;
 
     } catch (error) {
@@ -690,30 +637,19 @@ async function cargarProductos() {
             return;
         }
 
-        console.log('🔍 Consultando tabla productos...');
-        console.log('📡 Supabase URL:', SUPABASE_CONFIG?.url);
-
         const { data, error } = await supabaseClient
             .from('productos')
             .select('*')
-            .order('nombre', { ascending: true });
-
-        console.log('📊 Respuesta de Supabase:');
-        console.log('  - Productos encontrados:', data ? data.length : 0);
-        console.log('  - Error:', error);
+            .order('nombre', { ascending: true});
 
         if (error) {
-            console.error('❌ Error Supabase:', error);
-            console.error('   Código:', error.code);
-            console.error('   Mensaje:', error.message);
+            console.error('Error Supabase:', error.message);
             mostrarNotificacion('Error al cargar productos: ' + error.message, 'error');
-            console.warn('⚠️ Usando productos MOCK de prueba');
             mostrarProductosMock();
             return;
         }
 
         if (!data || data.length === 0) {
-            console.warn('⚠️ No hay productos activos en la base de datos');
             mostrarNotificacion('No hay productos activos', 'warning');
             productos = [];
             renderProductos();
@@ -721,22 +657,17 @@ async function cargarProductos() {
         }
 
         productos = data;
-        console.log(`✅ ${productos.length} productos cargados correctamente`);
-        console.log('📋 Primeros 3 productos:', productos.slice(0, 3));
-        mostrarNotificacion(`${productos.length} productos cargados de Supabase`, 'success');
+        mostrarNotificacion(`${productos.length} productos cargados`, 'success');
         renderProductos();
 
     } catch (error) {
-        console.error('❌ Error crítico:', error);
-        console.error('   Stack:', error.stack);
+        console.error('Error crítico:', error);
         mostrarNotificacion('Error al cargar productos', 'error');
-        console.warn('⚠️ Usando productos MOCK de prueba');
         mostrarProductosMock();
     }
 }
 
 function mostrarProductosMock() {
-    console.log('📦 Usando productos de demostración');
     productos = [
         { id: 1, nombre: 'Pro Plan Adult 15kg', categoria: 'Adulto', precio: 54990, stock: 12, stock_minimo: 5, tipo: 'saco', peso_saco: '15kg' },
         { id: 2, nombre: 'Royal Canin Puppy 13kg', categoria: 'Cachorro', precio: 62990, stock: 8, stock_minimo: 5, tipo: 'saco', peso_saco: '13kg' },
@@ -872,7 +803,6 @@ function agregarAlCarrito(productoId) {
     }
 
     renderCarrito();
-    console.log('🛒 Producto agregado:', producto.nombre);
 }
 
 function renderCarrito() {
@@ -1603,23 +1533,18 @@ async function finalizarVenta() {
                 venta.pagos_detalle = JSON.stringify(pagosRegistrados);
             }
 
-            console.log('💾 Guardando venta:', venta);
-
             const { data: ventaGuardada, error } = await supabaseClient
                 .from('ventas')
                 .insert([venta])
                 .select();
 
             if (error) {
-                console.error('❌ Error guardando venta:', error);
+                console.error('Error guardando venta:', error.message);
                 mostrarNotificacion('Error al guardar la venta: ' + error.message, 'error');
                 return;
             }
 
-            console.log('✅ Venta guardada:', ventaGuardada);
-
             const ventaId = ventaGuardada[0].id;
-            console.log('📦 Guardando items de la venta #' + ventaId);
 
             // Guardar items en ventas_items
             const items = carrito.map(item => {
@@ -1654,18 +1579,13 @@ async function finalizarVenta() {
                 .insert(items);
 
             if (itemsError) {
-                console.error('❌ Error guardando items:', itemsError);
+                console.error('Error guardando items:', itemsError.message);
                 mostrarNotificacion('Advertencia: Items no guardados - ' + itemsError.message, 'warning');
-            } else {
-                console.log('✅ Items guardados:', items.length);
             }
 
             // Actualizar stock SOLO para productos normales (NO granel)
-            // PERMITE STOCK NEGATIVO: Si se vende más de lo disponible, el stock queda en negativo
             for (const item of carrito) {
                 if (item.esGranel) {
-                    // NO descontar stock para productos a granel
-                    console.log(`⏭️ Saltando actualización de stock para granel: ${item.nombre}`);
                     continue;
                 }
 
@@ -1677,9 +1597,7 @@ async function finalizarVenta() {
                     .eq('id', item.id);
 
                 if (stockError) {
-                    console.error('❌ Error actualizando stock:', stockError);
-                } else if (nuevoStock < 0) {
-                    console.warn(`⚠️ Stock negativo: ${item.nombre} quedó en ${nuevoStock}`);
+                    console.error('Error actualizando stock:', stockError.message);
                 }
             }
         }
@@ -2081,7 +1999,6 @@ async function cargarVentas() {
                 
                 // Obtener nombres de repartidores desde pedidos
                 const pedidosIds = [...new Set(movimientos.map(m => m.pedido_id).filter(Boolean))];
-                console.log('🔍 Consultando pedidos para obtener repartidores:', pedidosIds.length);
                 
                 let repartidoresPorPedido = {};
                 if (pedidosIds.length > 0) {
@@ -2094,7 +2011,6 @@ async function cargarVentas() {
                         repartidoresPorPedido = Object.fromEntries(
                             pedidos.map(p => [p.id, p.chofer_asignado || 'Sin asignar'])
                         );
-                        console.log('✅ Repartidores obtenidos:', Object.keys(repartidoresPorPedido).length);
                     }
                 }
                 
@@ -2121,15 +2037,11 @@ async function cargarVentas() {
                     };
                 });
                 
-                console.log('✅ Movimientos formateados:', movimientosFormateados.length);
-                
                 // Combinar ventas con movimientos en un nuevo array
                 const todosLosRegistros = [...ventas, ...movimientosFormateados];
                 
                 // Reordenar por fecha
                 todosLosRegistros.sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
-                
-                console.log('📊 Total registros (ventas + movimientos):', todosLosRegistros.length);
                 
                 // Calcular KPIs (solo con ventas reales, no movimientos)
                 calcularKPIs(ventas);
@@ -2201,13 +2113,6 @@ function calcularKPIs(ventas) {
     });
     const totalHoy = ventasHoy.reduce((sum, v) => sum + v.total, 0);
     document.getElementById('kpiVentasHoy').textContent = '$' + formatoMoneda(totalHoy);
-
-    console.log('📊 KPI Ventas Hoy:', {
-        fechaHoy,
-        ventasEncontradas: ventasHoy.length,
-        total: totalHoy,
-        ventas: ventasHoy
-    });
 
     // Ventas semana
     const ventasSemana = ventas.filter(v => new Date(v.created_at || v.fecha) >= inicioSemana);
@@ -3189,8 +3094,6 @@ function iniciarEscaner() {
         { facingMode: "environment" },
         config,
         (decodedText, decodedResult) => {
-            // Código escaneado exitosamente
-            console.log(`✅ Código escaneado: ${decodedText}`);
             procesarCodigoEscaneado(decodedText);
         },
         (errorMessage) => {
@@ -3245,7 +3148,6 @@ async function buscarPorCodigoBarras(codigoBarra) {
             .single();
 
         if (error) {
-            console.log('Producto no encontrado con código:', codigoBarra);
             return null;
         }
 
@@ -4845,8 +4747,6 @@ function abrirModalProveedores() {
         inicializarProveedores();
     }
     
-    console.log('📋 Proveedores disponibles:', proveedoresActuales.length);
-    
     proveedorEditando = null;
     document.getElementById('inputNombreProveedor').value = '';
     document.getElementById('tituloFormProveedor').textContent = '➕ Agregar Proveedor';
@@ -4875,8 +4775,6 @@ function cerrarModalProveedores() {
  */
 function renderizarListaProveedores() {
     const lista = document.getElementById('listaProveedores');
-    
-    console.log('🔄 Renderizando proveedores:', proveedoresActuales);
     
     if (!proveedoresActuales || proveedoresActuales.length === 0) {
         lista.innerHTML = `
