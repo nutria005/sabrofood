@@ -786,6 +786,13 @@
                         <p class="view-subtitle">Control de caja diario y arqueo</p>
                     </div>
                     <div class="view-actions">
+                        <button class="btn btn-secondary" onclick="abrirHistorialCaja()" style="margin-right: 12px;">
+                            <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
+                                <rect x="3" y="4" width="18" height="18" rx="2" stroke="currentColor" stroke-width="2"/>
+                                <path d="M16 2v4M8 2v4M3 10h18" stroke="currentColor" stroke-width="2"/>
+                            </svg>
+                            <span>Ver Historial</span>
+                        </button>
                         <button class="btn btn-primary" onclick="cerrarCajaDiaria()" style="margin-right: 12px;">
                             <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
                                 <path d="M9 12l2 2 4-4" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
@@ -1941,6 +1948,70 @@
 
     <!-- Overlay Carrito Móvil -->
     <div id="overlayCarritoMobile" class="cart-mobile-overlay" onclick="cerrarCarritoMobile()"></div>
+
+    <!-- MODAL HISTORIAL DE CAJA -->
+    <div id="modalHistorialCaja" class="modal" style="display: none;">
+        <div class="modal-overlay" onclick="cerrarHistorialCaja()"></div>
+        <div class="modal-content" style="max-width: 1200px; max-height: 90vh; overflow-y: auto;">
+            <div class="modal-header">
+                <div>
+                    <h2 style="margin: 0; font-size: 24px; font-weight: 700;">📊 Historial de Cierres de Caja</h2>
+                    <p style="margin: 4px 0 0; color: hsl(var(--muted-foreground)); font-size: 14px;">Consulta cierres anteriores y analiza tendencias</p>
+                </div>
+                <button class="btn-close" onclick="cerrarHistorialCaja()" style="background: none; border: none; font-size: 32px; cursor: pointer; color: hsl(var(--muted-foreground)); line-height: 1; padding: 0; width: 32px; height: 32px;">&times;</button>
+            </div>
+
+            <!-- Filtros -->
+            <div style="background: hsl(var(--muted) / 0.3); padding: 20px; border-radius: 12px; margin-bottom: 24px;">
+                <div style="display: flex; gap: 12px; flex-wrap: wrap; align-items: end;">
+                    <div style="flex: 1; min-width: 200px;">
+                        <label style="display: block; font-weight: 600; margin-bottom: 8px; font-size: 14px;">Filtro rápido</label>
+                        <select id="filtroRapidoHistorial" class="form-select" onchange="aplicarFiltroRapido()" style="width: 100%;">
+                            <option value="7">Últimos 7 días</option>
+                            <option value="15">Últimos 15 días</option>
+                            <option value="30">Último mes</option>
+                            <option value="custom">📅 Personalizado</option>
+                        </select>
+                    </div>
+                    <div id="filtroPersonalizadoContainer" style="display: none; flex: 2; min-width: 300px;">
+                        <div style="display: flex; gap: 12px; align-items: end;">
+                            <div style="flex: 1;">
+                                <label style="display: block; font-weight: 600; margin-bottom: 8px; font-size: 14px;">Desde</label>
+                                <input type="date" id="fechaDesde" class="form-input" style="width: 100%;">
+                            </div>
+                            <div style="flex: 1;">
+                                <label style="display: block; font-weight: 600; margin-bottom: 8px; font-size: 14px;">Hasta</label>
+                                <input type="date" id="fechaHasta" class="form-input" style="width: 100%;">
+                            </div>
+                            <button class="btn btn-primary" onclick="cargarHistorialCaja()" style="white-space: nowrap;">
+                                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" style="display: inline-block; vertical-align: middle;">
+                                    <circle cx="11" cy="11" r="8" stroke="currentColor" stroke-width="2"/>
+                                    <path d="M21 21l-4.35-4.35" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+                                </svg>
+                                <span>Buscar</span>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Gráfico -->
+            <div style="background: white; padding: 24px; border-radius: 12px; margin-bottom: 24px; box-shadow: 0 2px 8px rgba(0,0,0,0.1);">
+                <h3 style="margin: 0 0 20px; font-size: 18px; font-weight: 700;">📈 Tendencia de Ventas</h3>
+                <canvas id="chartHistorialVentas" style="max-height: 300px;"></canvas>
+            </div>
+
+            <!-- Tabla de Historial -->
+            <div style="background: white; padding: 24px; border-radius: 12px; box-shadow: 0 2px 8px rgba(0,0,0,0.1);">
+                <h3 style="margin: 0 0 20px; font-size: 18px; font-weight: 700;">📋 Registros de Cierres</h3>
+                <div id="tablaHistorialCaja">
+                    <div style="text-align: center; padding: 40px; color: hsl(var(--muted-foreground));">
+                        <p>Cargando historial...</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
 
     <!-- SCRIPTS -->
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>

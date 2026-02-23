@@ -126,7 +126,10 @@ function inicializarRealtime() {
         )
         .subscribe((status) => {
             if (status === 'SUBSCRIBED') {
-                mostrarNotificacion('Sistema en tiempo real activado', 'success');
+                // Espaciar notificación de Realtime (1.5 segundos después de login)
+                setTimeout(() => {
+                    mostrarNotificacion('Sistema en tiempo real activado', 'success');
+                }, 1500);
             }
         });
 }
@@ -369,13 +372,14 @@ async function handleLogin() {
         inicializarRealtime();
         inicializarProveedores();
         
-        // Notificación de bienvenida y recordatorio de asistencia
+        // Notificaciones espaciadas al iniciar
+        // 1. Bienvenida (inmediata)
         mostrarNotificacion(`Bienvenido, ${currentUser}`, 'success');
         
-        // Recordar marcar entrada manualmente
+        // 2. Recordatorio de asistencia (4 segundos después, dura 6 segundos, destacada)
         setTimeout(() => {
-            mostrarNotificacion('📋 Recuerda marcar tu entrada en la pestaña Asistencia', 'info');
-        }, 3000);
+            mostrarNotificacion('📋 Recuerda marcar tu entrada en la pestaña Asistencia', 'info', 6000, true);
+        }, 4000);
 
     } catch (error) {
         console.error('❌ Error en login:', error);
@@ -657,7 +661,10 @@ async function cargarProductos() {
         }
 
         productos = data;
-        mostrarNotificacion(`${productos.length} productos cargados`, 'success');
+        // Espaciar notificación de productos cargados (2.5 segundos después de login)
+        setTimeout(() => {
+            mostrarNotificacion(`${productos.length} productos cargados`, 'success');
+        }, 2500);
         renderProductos();
 
     } catch (error) {
@@ -3001,7 +3008,7 @@ function escapeHtml(text) {
     return div.innerHTML;
 }
 
-function mostrarNotificacion(mensaje, tipo = 'info') {
+function mostrarNotificacion(mensaje, tipo = 'info', duracion = 3000, destacado = false) {
     console.log(`[${tipo.toUpperCase()}] ${mensaje}`);
 
     // Crear notificación temporal
@@ -3021,17 +3028,27 @@ function mostrarNotificacion(mensaje, tipo = 'info') {
         animation: slideInRight 0.3s ease-out;
     `;
 
+    // Colores normales
     if (tipo === 'success') notif.style.borderLeft = '4px solid hsl(142 76% 36%)';
     if (tipo === 'error') notif.style.borderLeft = '4px solid hsl(0 84% 60%)';
     if (tipo === 'warning') notif.style.borderLeft = '4px solid hsl(38 92% 50%)';
     if (tipo === 'info') notif.style.borderLeft = '4px solid hsl(199 89% 48%)';
+
+    // Colores destacados (más fuertes) para notificaciones importantes
+    if (destacado && tipo === 'info') {
+        notif.style.borderLeft = '5px solid hsl(210 100% 45%)';
+        notif.style.background = 'linear-gradient(135deg, hsl(210 100% 97%), white)';
+        notif.style.color = 'hsl(210 100% 35%)';
+        notif.style.boxShadow = '0 10px 50px rgba(33, 150, 243, 0.3)';
+        notif.style.fontWeight = '700';
+    }
 
     document.body.appendChild(notif);
 
     setTimeout(() => {
         notif.style.animation = 'slideOutRight 0.3s ease-out';
         setTimeout(() => notif.remove(), 300);
-    }, 3000);
+    }, duracion);
 }
 
 // Añadir animaciones al CSS global
@@ -4264,6 +4281,439 @@ async function cerrarCajaDiaria() {
     } catch (error) {
         console.error('Error cerrando caja:', error);
         mostrarNotificacion('Error al cerrar caja', 'error');
+    }
+}
+
+// ===================================
+// MÓDULO: HISTORIAL DE CAJA
+// ===================================
+
+let chartHistorialVentas = null;
+let datosHistorialCaja = [];
+
+/**
+ * Abrir modal de historial de caja
+ */
+function abrirHistorialCaja() {
+    const modal = document.getElementById('modalHistorialCaja');
+    modal.style.display = 'flex';
+    
+    // Agregar clase show con un pequeño delay para la animación
+    setTimeout(() => {
+        modal.classList.add('show');
+    }, 10);
+    
+    // Establecer fechas por defecto (últimos 7 días)
+    const hoy = new Date();
+    const hace7Dias = new Date();
+    hace7Dias.setDate(hoy.getDate() - 7);
+    
+    document.getElementById('fechaHasta').value = hoy.toISOString().split('T')[0];
+    document.getElementById('fechaDesde').value = hace7Dias.toISOString().split('T')[0];
+    
+    // Cargar historial
+    aplicarFiltroRapido();
+}
+
+/**
+ * Cerrar modal de historial
+ */
+function cerrarHistorialCaja() {
+    const modal = document.getElementById('modalHistorialCaja');
+    modal.classList.remove('show');
+    setTimeout(() => {
+        modal.style.display = 'none';
+    }, 200);
+}
+
+/**
+ * Aplicar filtro rápido
+ */
+function aplicarFiltroRapido() {
+    const filtro = document.getElementById('filtroRapidoHistorial').value;
+    const contenedorPersonalizado = document.getElementById('filtroPersonalizadoContainer');
+    
+    if (filtro === 'custom') {
+        contenedorPersonalizado.style.display = 'block';
+        return;
+    } else {
+        contenedorPersonalizado.style.display = 'none';
+    }
+    
+    // Calcular fechas según filtro
+    const hoy = new Date();
+    const desde = new Date();
+    desde.setDate(hoy.getDate() - parseInt(filtro));
+    
+    document.getElementById('fechaHasta').value = hoy.toISOString().split('T')[0];
+    document.getElementById('fechaDesde').value = desde.toISOString().split('T')[0];
+    
+    // Cargar datos
+    cargarHistorialCaja();
+}
+
+/**
+ * Cargar historial de cierres desde Supabase
+ */
+async function cargarHistorialCaja() {
+    try {
+        if (typeof supabaseClient === 'undefined' || !supabaseClient) {
+            mostrarNotificacion('Error: Supabase no está configurado', 'error');
+            return;
+        }
+        
+        const fechaDesde = document.getElementById('fechaDesde').value;
+        const fechaHasta = document.getElementById('fechaHasta').value;
+        
+        if (!fechaDesde || !fechaHasta) {
+            mostrarNotificacion('Selecciona un rango de fechas', 'warning');
+            return;
+        }
+        
+        // Ajustar fechas para incluir todo el día
+        const desde = new Date(fechaDesde);
+        desde.setHours(0, 0, 0, 0);
+        const hasta = new Date(fechaHasta);
+        hasta.setHours(23, 59, 59, 999);
+        
+        const { data, error } = await supabaseClient
+            .from('cierres_diarios')
+            .select('*')
+            .gte('fecha', desde.toISOString().split('T')[0])
+            .lte('fecha', hasta.toISOString().split('T')[0])
+            .order('fecha', { ascending: false });
+        
+        if (error) throw error;
+        
+        datosHistorialCaja = data || [];
+        
+        // Renderizar gráfico y tabla
+        renderChartHistorial();
+        renderTablaHistorial();
+        
+        console.log(`✅ ${datosHistorialCaja.length} cierres cargados`);
+        
+    } catch (error) {
+        console.error('Error cargando historial:', error);
+        mostrarNotificacion('Error al cargar historial de caja', 'error');
+    }
+}
+
+/**
+ * Renderizar gráfico de historial
+ */
+function renderChartHistorial() {
+    const canvas = document.getElementById('chartHistorialVentas');
+    const ctx = canvas.getContext('2d');
+    
+    // Verificar Chart.js
+    if (typeof Chart === 'undefined') {
+        console.warn('⚠️ Chart.js no disponible');
+        canvas.parentElement.innerHTML = '<p style="text-align: center; color: hsl(var(--muted-foreground)); padding: 40px;">Gráfico no disponible</p>';
+        return;
+    }
+    
+    // Destruir gráfico anterior si existe
+    if (chartHistorialVentas) {
+        chartHistorialVentas.destroy();
+    }
+    
+    if (datosHistorialCaja.length === 0) {
+        canvas.parentElement.innerHTML = '<p style="text-align: center; color: hsl(var(--muted-foreground)); padding: 40px;">No hay datos para mostrar</p>';
+        return;
+    }
+    
+    // Preparar datos (invertir para mostrar cronológicamente)
+    const datosOrdenados = [...datosHistorialCaja].reverse();
+    const labels = datosOrdenados.map(d => {
+        const fecha = new Date(d.fecha);
+        return fecha.toLocaleDateString('es-CL', { day: '2-digit', month: 'short' });
+    });
+    const ventas = datosOrdenados.map(d => d.total_ventas || 0);
+    const gastos = datosOrdenados.map(d => d.total_gastos || 0);
+    
+    chartHistorialVentas = new Chart(ctx, {
+        type: 'line',
+        data: {
+            labels: labels,
+            datasets: [
+                {
+                    label: 'Ventas Totales',
+                    data: ventas,
+                    borderColor: 'hsl(142 76% 36%)',
+                    backgroundColor: 'hsl(142 76% 36% / 0.1)',
+                    borderWidth: 3,
+                    fill: true,
+                    tension: 0.4,
+                    pointRadius: 5,
+                    pointHoverRadius: 7,
+                    pointBackgroundColor: 'white',
+                    pointBorderWidth: 2
+                },
+                {
+                    label: 'Gastos',
+                    data: gastos,
+                    borderColor: 'hsl(0 84% 60%)',
+                    backgroundColor: 'hsl(0 84% 60% / 0.1)',
+                    borderWidth: 2,
+                    fill: true,
+                    tension: 0.4,
+                    pointRadius: 4,
+                    pointHoverRadius: 6,
+                    pointBackgroundColor: 'white',
+                    pointBorderWidth: 2
+                }
+            ]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: true,
+            plugins: {
+                legend: {
+                    display: true,
+                    position: 'top',
+                    labels: {
+                        usePointStyle: true,
+                        padding: 15,
+                        font: {
+                            size: 13,
+                            weight: '600'
+                        }
+                    }
+                },
+                tooltip: {
+                    backgroundColor: 'rgba(0, 0, 0, 0.8)',
+                    padding: 12,
+                    titleFont: { size: 14, weight: 'bold' },
+                    bodyFont: { size: 13 },
+                    callbacks: {
+                        label: function(context) {
+                            let label = context.dataset.label || '';
+                            if (label) {
+                                label += ': ';
+                            }
+                            label += '$' + formatoMoneda(context.parsed.y);
+                            return label;
+                        }
+                    }
+                }
+            },
+            scales: {
+                y: {
+                    beginAtZero: true,
+                    ticks: {
+                        callback: function(value) {
+                            return '$' + formatoMoneda(value);
+                        },
+                        font: {
+                            size: 12
+                        }
+                    },
+                    grid: {
+                        color: 'hsl(var(--border) / 0.3)'
+                    }
+                },
+                x: {
+                    grid: {
+                        display: false
+                    },
+                    ticks: {
+                        font: {
+                            size: 12
+                        }
+                    }
+                }
+            }
+        }
+    });
+}
+
+/**
+ * Renderizar tabla de historial
+ */
+function renderTablaHistorial() {
+    const container = document.getElementById('tablaHistorialCaja');
+    
+    if (datosHistorialCaja.length === 0) {
+        container.innerHTML = `
+            <div style="text-align: center; padding: 40px; color: hsl(var(--muted-foreground));">
+                <svg width="64" height="64" viewBox="0 0 24 24" fill="none" style="opacity: 0.3; margin: 0 auto 16px;">
+                    <rect x="3" y="4" width="18" height="18" rx="2" stroke="currentColor" stroke-width="2"/>
+                    <path d="M16 2v4M8 2v4M3 10h18" stroke="currentColor" stroke-width="2"/>
+                </svg>
+                <p>No hay cierres registrados en este período</p>
+            </div>
+        `;
+        return;
+    }
+    
+    let html = `
+        <div style="overflow-x: auto;">
+            <table style="width: 100%; border-collapse: collapse;">
+                <thead>
+                    <tr style="background: hsl(var(--muted) / 0.5); border-bottom: 2px solid hsl(var(--border));">
+                        <th style="padding: 12px; text-align: left; font-weight: 600; font-size: 13px;">Fecha</th>
+                        <th style="padding: 12px; text-align: right; font-weight: 600; font-size: 13px;">Total Ventas</th>
+                        <th style="padding: 12px; text-align: right; font-weight: 600; font-size: 13px;">Gastos</th>
+                        <th style="padding: 12px; text-align: right; font-weight: 600; font-size: 13px;">Diferencia</th>
+                        <th style="padding: 12px; text-align: center; font-weight: 600; font-size: 13px;">Estado</th>
+                        <th style="padding: 12px; text-align: center; font-weight: 600; font-size: 13px;">Acciones</th>
+                    </tr>
+                </thead>
+                <tbody>
+    `;
+    
+    datosHistorialCaja.forEach((cierre, index) => {
+        const fecha = new Date(cierre.fecha);
+        const fechaFormato = fecha.toLocaleDateString('es-CL', { 
+            weekday: 'short', 
+            day: '2-digit', 
+            month: 'short', 
+            year: 'numeric' 
+        });
+        
+        const diferencia = cierre.diferencia || 0;
+        let estadoIcon, estadoTexto, estadoColor;
+        
+        if (diferencia === 0) {
+            estadoIcon = '✅';
+            estadoTexto = 'Cuadrado';
+            estadoColor = 'hsl(142 76% 36%)';
+        } else if (diferencia > 0) {
+            estadoIcon = '📈';
+            estadoTexto = 'Sobrante';
+            estadoColor = 'hsl(199 89% 48%)';
+        } else {
+            estadoIcon = '⚠️';
+            estadoTexto = 'Faltante';
+            estadoColor = 'hsl(0 84% 60%)';
+        }
+        
+        html += `
+            <tr style="border-bottom: 1px solid hsl(var(--border)); transition: background 0.2s;" 
+                onmouseover="this.style.background='hsl(var(--muted) / 0.3)'" 
+                onmouseout="this.style.background='transparent'">
+                <td style="padding: 16px; font-weight: 600;">${fechaFormato}</td>
+                <td style="padding: 16px; text-align: right; font-weight: 600; color: hsl(142 76% 36%);">$${formatoMoneda(cierre.total_ventas || 0)}</td>
+                <td style="padding: 16px; text-align: right; color: hsl(0 84% 60%);">$${formatoMoneda(cierre.total_gastos || 0)}</td>
+                <td style="padding: 16px; text-align: right; font-weight: 600; color: ${estadoColor};">
+                    ${diferencia >= 0 ? '+' : ''}$${formatoMoneda(Math.abs(diferencia))}
+                </td>
+                <td style="padding: 16px; text-align: center;">
+                    <span style="background: ${estadoColor}15; color: ${estadoColor}; padding: 4px 12px; border-radius: 6px; font-size: 13px; font-weight: 600;">
+                        ${estadoIcon} ${estadoTexto}
+                    </span>
+                </td>
+                <td style="padding: 16px; text-align: center;">
+                    <button onclick="verDetallesCierre(${index})" 
+                            class="btn btn-sm" 
+                            style="padding: 6px 12px; background: hsl(var(--primary)); color: white; border: none; border-radius: 6px; cursor: pointer; font-size: 13px;"
+                            title="Ver detalles completos">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" style="display: inline-block; vertical-align: middle;">
+                            <path d="M9 18l6-6-6-6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                        </svg>
+                        Ver Detalles
+                    </button>
+                </td>
+            </tr>
+        `;
+        
+        // Fila de detalles (oculta por defecto)
+        html += `
+            <tr id="detalles-${index}" style="display: none; background: hsl(var(--muted) / 0.2);">
+                <td colspan="6" style="padding: 24px;">
+                    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 20px;">
+                        <!-- Ventas por Método -->
+                        <div style="background: white; padding: 16px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.05);">
+                            <h4 style="margin: 0 0 12px; font-size: 15px; font-weight: 700;">💳 Desglose de Ventas</h4>
+                            <div style="display: flex; flex-direction: column; gap: 8px; font-size: 14px;">
+                                <div style="display: flex; justify-content: space-between;">
+                                    <span>Efectivo:</span>
+                                    <strong>$${formatoMoneda(cierre.ventas_efectivo || 0)}</strong>
+                                </div>
+                                <div style="display: flex; justify-content: space-between;">
+                                    <span>Tarjeta:</span>
+                                    <strong>$${formatoMoneda(cierre.ventas_transbank || 0)}</strong>
+                                </div>
+                                <div style="display: flex; justify-content: space-between;">
+                                    <span>Transferencia:</span>
+                                    <strong>$${formatoMoneda(cierre.ventas_transferencia || 0)}</strong>
+                                </div>
+                                <div style="display: flex; justify-content: space-between; padding-top: 8px; border-top: 2px solid hsl(var(--border)); margin-top: 4px;">
+                                    <strong>Total:</strong>
+                                    <strong style="color: hsl(142 76% 36%);">$${formatoMoneda(cierre.total_ventas || 0)}</strong>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <!-- Arqueo -->
+                        <div style="background: white; padding: 16px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.05);">
+                            <h4 style="margin: 0 0 12px; font-size: 15px; font-weight: 700;">🔍 Arqueo de Caja</h4>
+                            <div style="display: flex; flex-direction: column; gap: 8px; font-size: 14px;">
+                                <div style="display: flex; justify-content: space-between;">
+                                    <span>Efectivo Esperado:</span>
+                                    <strong>$${formatoMoneda(cierre.efectivo_esperado || 0)}</strong>
+                                </div>
+                                <div style="display: flex; justify-content: space-between;">
+                                    <span>Efectivo Real:</span>
+                                    <strong>$${formatoMoneda(cierre.efectivo_real || 0)}</strong>
+                                </div>
+                                <div style="display: flex; justify-content: space-between; padding-top: 8px; border-top: 2px solid hsl(var(--border)); margin-top: 4px;">
+                                    <strong>Diferencia:</strong>
+                                    <strong style="color: ${estadoColor};">${diferencia >= 0 ? '+' : ''}$${formatoMoneda(Math.abs(diferencia))}</strong>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <!-- Información Adicional -->
+                        <div style="background: white; padding: 16px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.05);">
+                            <h4 style="margin: 0 0 12px; font-size: 15px; font-weight: 700;">ℹ️ Información</h4>
+                            <div style="display: flex; flex-direction: column; gap: 8px; font-size: 14px;">
+                                <div style="display: flex; justify-content: space-between;">
+                                    <span>Cerrado por:</span>
+                                    <strong>${cierre.cerrado_por || 'N/A'}</strong>
+                                </div>
+                                <div style="display: flex; justify-content: space-between;">
+                                    <span>Hora de cierre:</span>
+                                    <strong>${cierre.cerrado_at ? new Date(cierre.cerrado_at).toLocaleTimeString('es-CL', { hour: '2-digit', minute: '2-digit' }) : 'N/A'}</strong>
+                                </div>
+                                ${cierre.notas ? `
+                                <div style="margin-top: 8px; padding-top: 8px; border-top: 1px solid hsl(var(--border));">
+                                    <span style="font-size: 12px; color: hsl(var(--muted-foreground));">${cierre.notas}</span>
+                                </div>
+                                ` : ''}
+                            </div>
+                        </div>
+                    </div>
+                </td>
+            </tr>
+        `;
+    });
+    
+    html += `
+                </tbody>
+            </table>
+        </div>
+    `;
+    
+    container.innerHTML = html;
+}
+
+/**
+ * Ver detalles de un cierre específico
+ */
+function verDetallesCierre(index) {
+    const detallesRow = document.getElementById(`detalles-${index}`);
+    const isVisible = detallesRow.style.display !== 'none';
+    
+    // Ocultar todos los detalles
+    document.querySelectorAll('[id^="detalles-"]').forEach(row => {
+        row.style.display = 'none';
+    });
+    
+    // Toggle del seleccionado
+    if (!isVisible) {
+        detallesRow.style.display = 'table-row';
     }
 }
 
