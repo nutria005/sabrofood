@@ -1982,24 +1982,27 @@ async function cargarVentas() {
         }
 
         // 🔄 CARGAR MOVIMIENTOS DE STOCK (salidas por reparto)
+        // NOTA: Integración con sistema de reparto (pedidos, carga_mercados)
+        // Si falla, continúa sin afectar el historial de ventas
         console.log('🔍 Consultando movimientos de stock desde:', fechaInicioStr);
         
-        const { data: movimientos, error: movError } = await supabaseClient
-            .from('movimientos_stock')
-            .select('*')
-            .eq('tipo', 'SALIDA')
-            .gte('created_at', fechaInicioStr)
-            .order('created_at', { ascending: false });
+        let movimientosFormateados = [];
+        
+        try {
+            const { data: movimientos, error: movError } = await supabaseClient
+                .from('movimientos_stock')
+                .select('*')
+                .eq('tipo', 'SALIDA')
+                .gte('created_at', fechaInicioStr)
+                .order('created_at', { ascending: false });
 
-        if (movError) {
-            console.error('❌ Error cargando movimientos de stock:', movError);
-        } else {
-            console.log(`📦 Movimientos encontrados:`, movimientos?.length || 0);
-            
-            if (movimientos && movimientos.length > 0) {
+            if (movError) {
+                console.warn('⚠️ No se pudieron cargar movimientos de stock:', movError.message);
+            } else if (movimientos && movimientos.length > 0) {
+                console.log(`📦 Movimientos encontrados:`, movimientos.length);
+                
                 // Obtener nombres de productos
                 const productosIds = [...new Set(movimientos.map(m => m.producto_id).filter(Boolean))];
-                console.log('🔍 Consultando nombres de productos:', productosIds);
                 
                 let nombresProductos = {};
                 if (productosIds.length > 0) {
@@ -2013,25 +2016,32 @@ async function cargarVentas() {
                     }
                 }
                 
-                // Obtener nombres de repartidores desde pedidos
+                // Intentar obtener repartidores desde sistema de reparto (opcional)
+                let repartidoresPorPedido = {};
                 const pedidosIds = [...new Set(movimientos.map(m => m.pedido_id).filter(Boolean))];
                 
-                let repartidoresPorPedido = {};
                 if (pedidosIds.length > 0) {
-                    const { data: pedidos } = await supabaseClient
-                        .from('pedidos')
-                        .select('id, chofer_asignado')
-                        .in('id', pedidosIds);
-                    
-                    if (pedidos) {
-                        repartidoresPorPedido = Object.fromEntries(
-                            pedidos.map(p => [p.id, p.chofer_asignado || 'Sin asignar'])
-                        );
+                    try {
+                        const { data: pedidos, error: pedidosError } = await supabaseClient
+                            .from('pedidos')
+                            .select('id, chofer_asignado')
+                            .in('id', pedidosIds);
+                        
+                        if (pedidosError) {
+                            console.warn('⚠️ Sistema de reparto no disponible:', pedidosError.message);
+                        } else if (pedidos) {
+                            repartidoresPorPedido = Object.fromEntries(
+                                pedidos.map(p => [p.id, p.chofer_asignado || 'Sin asignar'])
+                            );
+                            console.log('✅ Integración con sistema de reparto exitosa');
+                        }
+                    } catch (pedidosErr) {
+                        console.warn('⚠️ No se pudo conectar con sistema de reparto:', pedidosErr.message);
                     }
                 }
                 
                 // Transformar movimientos al formato de "ventas" para la tabla
-                const movimientosFormateados = movimientos.map(m => {
+                movimientosFormateados = movimientos.map(m => {
                     const nombreProducto = nombresProductos[m.producto_id] || `Producto ID: ${m.producto_id}`;
                     const esGranel = nombreProducto.toLowerCase().includes('(granel)');
                     
@@ -2044,49 +2054,34 @@ async function cargarVentas() {
                             nombre: nombreProducto,
                             cantidad: m.cantidad
                         }],
-                        total: esGranel ? m.cantidad : 0, // Si es granel, cantidad = monto en pesos
+                        total: esGranel ? m.cantidad : 0,
                         metodo_pago: 'REPARTO',
                         pedido_id: m.pedido_id,
-                        tipo_registro: 'movimiento', // Marca para diferenciar
+                        tipo_registro: 'movimiento',
                         motivo: m.motivo,
                         es_granel: esGranel
                     };
                 });
-                
-                // Combinar ventas con movimientos en un nuevo array
-                const todosLosRegistros = [...ventas, ...movimientosFormateados];
-                
-                // Reordenar por fecha
-                todosLosRegistros.sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
-                
-                // Calcular KPIs (solo con ventas reales, no movimientos)
-                calcularKPIs(ventas);
-
-                // Generar gráficos
-                generarGraficoVentasDiarias(ventas, periodo);
-                generarGraficoMetodosPago(ventas);
-                await generarGraficoTopProductos(periodo);
-
-                // Ranking de vendedores solo para admin
-                if (esAdmin) {
-                    generarTablaVendedores(ventas);
-                    const ranking = document.getElementById('rankingVendedores');
-                    if (ranking) ranking.style.display = 'block';
-                } else {
-                    const ranking = document.getElementById('rankingVendedores');
-                    if (ranking) ranking.style.display = 'none';
-                }
-
-                // Renderizar tabla de historial (con ventas Y movimientos)
-                renderTablaHistorial(todosLosRegistros);
-                return; // Salir temprano ya que procesamos todo
             }
+        } catch (movErr) {
+            console.warn('⚠️ Error al cargar movimientos de stock:', movErr.message);
+            // Continuar sin movimientos
         }
-
-        // Si NO hay movimientos, procesar solo ventas
+        
+        // Combinar ventas con movimientos (si hay)
+        const todosLosRegistros = movimientosFormateados.length > 0 
+            ? [...ventas, ...movimientosFormateados]
+            : ventas;
+        
+        // Reordenar por fecha si hay movimientos
+        if (movimientosFormateados.length > 0) {
+            todosLosRegistros.sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
+        }
+        
+        // Calcular KPIs (solo con ventas reales, no movimientos)
         calcularKPIs(ventas);
 
-        // Generar gráficos
+        // Generar gráficos (solo con ventas)
         generarGraficoVentasDiarias(ventas, periodo);
         generarGraficoMetodosPago(ventas);
         await generarGraficoTopProductos(periodo);
@@ -2101,12 +2096,28 @@ async function cargarVentas() {
             if (ranking) ranking.style.display = 'none';
         }
 
-        // Renderizar tabla de historial
-        renderTablaHistorial(ventas);
+        // Renderizar tabla de historial (con ventas Y movimientos si están disponibles)
+        renderTablaHistorial(todosLosRegistros);
 
     } catch (error) {
-        console.error('Error cargando ventas:', error);
-        mostrarNotificacion('Error cargando ventas', 'error');
+        console.error('❌ Error cargando ventas:', error);
+        console.error('Detalles del error:', error.message, error);
+        mostrarNotificacion('Error cargando ventas: ' + error.message, 'error');
+        
+        // Mostrar mensaje en la tabla
+        const tbody = document.getElementById('salesTableBody');
+        if (tbody) {
+            tbody.innerHTML = `
+                <tr>
+                    <td colspan="7" class="text-center">
+                        <p style="padding: 24px; color: hsl(var(--destructive));">
+                            ❌ Error al cargar datos: ${error.message}<br>
+                            <small>Verifica la consola para más detalles</small>
+                        </p>
+                    </td>
+                </tr>
+            `;
+        }
     }
 }
 
