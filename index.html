@@ -811,6 +811,28 @@
                 </div>
 
                 <div class="caja-content">
+                    <!-- Alerta de Cierre Automático Pendiente -->
+                    <div id="alertaCierreAutomatico" style="display: none; background: linear-gradient(135deg, hsl(0 84% 60% / 0.15), hsl(38 92% 50% / 0.15)); border: 2px solid hsl(0 84% 60%); border-radius: 12px; padding: 20px; margin-bottom: 24px; box-shadow: 0 4px 12px rgba(0,0,0,0.1);">
+                        <div style="display: flex; align-items: start; gap: 16px;">
+                            <div style="font-size: 32px; line-height: 1;">🚨</div>
+                            <div style="flex: 1;">
+                                <h3 style="margin: 0 0 8px; font-size: 18px; font-weight: 700; color: hsl(0 84% 40%);">Cierre Automático Detectado</h3>
+                                <p style="margin: 0 0 12px; color: hsl(var(--foreground)); font-size: 15px;" id="mensajeAlertaCierre">El día anterior fue cerrado automáticamente. Se requiere revisión del arqueo.</p>
+                                <div style="display: flex; gap: 12px; flex-wrap: wrap;">
+                                    <button onclick="abrirHistorialCierrePendiente()" class="btn btn-primary" style="padding: 8px 16px; font-size: 14px;">
+                                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" style="display: inline-block; vertical-align: middle;">
+                                            <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" stroke="currentColor" stroke-width="2"/>
+                                            <circle cx="12" cy="12" r="3" stroke="currentColor" stroke-width="2"/>
+                                        </svg>
+                                        Ver Cierre Pendiente
+                                    </button>
+                                    <button onclick="cerrarAlertaCierre()" class="btn btn-secondary" style="padding: 8px 16px; font-size: 14px;">Entendido</button>
+                                </div>
+                            </div>
+                            <button onclick="cerrarAlertaCierre()" style="background: none; border: none; font-size: 24px; cursor: pointer; color: hsl(var(--muted-foreground)); line-height: 1; padding: 0;">&times;</button>
+                        </div>
+                    </div>
+
                     <div class="caja-grid">
                         <!-- PANEL IZQUIERDO: Resumen de Ventas -->
                         <div class="caja-panel">
@@ -952,6 +974,34 @@
                                 <div class="arqueo-row arqueo-diferencia" id="diferenciaContainer" style="display: none;">
                                     <span id="diferenciaLabel">Diferencia:</span>
                                     <span class="arqueo-value" id="diferenciaMonto">$0</span>
+                                </div>
+                            </div>
+
+                            <!-- Cierre Automático -->
+                            <div class="panel-header" style="margin-top: 32px;">
+                                <h3>🤖 Cierre Automático</h3>
+                            </div>
+
+                            <div style="background: hsl(var(--muted) / 0.3); padding: 16px; border-radius: 8px;">
+                                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+                                    <div>
+                                        <p style="margin: 0; font-weight: 600; font-size: 14px;">Habilitar cierre automático</p>
+                                        <p style="margin: 4px 0 0; font-size: 13px; color: hsl(var(--muted-foreground));">A las 12:00 AM si no se cerró manualmente</p>
+                                    </div>
+                                    <label class="switch">
+                                        <input type="checkbox" id="toggleCierreAutomatico" onchange="toggleCierreAutomatico()" checked>
+                                        <span class="slider"></span>
+                                    </label>
+                                </div>
+                                <div style="display: flex; align-items: center; gap: 8px; padding: 12px; background: hsl(var(--info) / 0.1); border-radius: 6px; border-left: 3px solid hsl(var(--info));">
+                                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" style="flex-shrink: 0;">
+                                        <circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="2"/>
+                                        <path d="M12 16v-4M12 8h.01" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+                                    </svg>
+                                    <p style="margin: 0; font-size: 13px; color: hsl(var(--foreground));">
+                                        <strong>Recordatorio a las 20:00</strong><br>
+                                        Se mostrará una notificación para recordar cerrar la caja
+                                    </p>
                                 </div>
                             </div>
                         </div>

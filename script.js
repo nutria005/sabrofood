@@ -23,6 +23,11 @@ let chartVentasDiarias = null;
 let chartMetodosPago = null;
 let chartTopProductos = null;
 
+// Sistema de cierre automático
+let intervalVerificacionCierre = null;
+let recordatorioMostrado = false;
+let notificacionRecordatorio = null;
+
 // ===================================
 // FORZAR ACTUALIZACIÓN (CACHE BUSTING)
 // ===================================
@@ -371,6 +376,10 @@ async function handleLogin() {
         cargarProductos();
         inicializarRealtime();
         inicializarProveedores();
+        
+        // Inicializar sistema de cierre automático
+        inicializarSistemaCierreAutomatico();
+        verificarCierresAutomaticosPendientes();
         
         // Notificaciones espaciadas al iniciar
         // 1. Bienvenida (inmediata)
@@ -4285,6 +4294,397 @@ async function cerrarCajaDiaria() {
 }
 
 // ===================================
+// MÓDULO: CIERRE AUTOMÁTICO
+// ===================================
+
+/**
+ * Inicializar sistema de cierre automático
+ */
+function inicializarSistemaCierreAutomatico() {
+    // Cargar preferencia de localStorage (por defecto habilitado)
+    const habilitado = localStorage.getItem('cierre_automatico_habilitado');
+    if (habilitado === 'false') {
+        document.getElementById('toggleCierreAutomatico').checked = false;
+    }
+    
+    // Limpiar interval anterior si existe
+    if (intervalVerificacionCierre) {
+        clearInterval(intervalVerificacionCierre);
+    }
+    
+    // Verificar cada minuto si es hora de mostrar recordatorio o ejecutar cierre
+    intervalVerificacionCierre = setInterval(() => {
+        verificarHorariosCierre();
+    }, 60000); // Cada 60 segundos
+    
+    // Verificar inmediatamente al iniciar
+    verificarHorariosCierre();
+    
+    console.log('✅ Sistema de cierre automático inicializado');
+}
+
+/**
+ * Verificar si es hora de mostrar recordatorio o ejecutar cierre
+ */
+function verificarHorariosCierre() {
+    const ahora = new Date();
+    const horas = ahora.getHours();
+    const minutos = ahora.getMinutes();
+    
+    // Verificar si el cierre automático está habilitado
+    const habilitado = localStorage.getItem('cierre_automatico_habilitado') !== 'false';
+    
+    if (!habilitado) {
+        return; // No hacer nada si está deshabilitado
+    }
+    
+    // Recordatorio a las 20:00 (8:00 PM)
+    if (horas === 20 && minutos === 0 && !recordatorioMostrado) {
+        mostrarRecordatorioCierreCaja();
+        recordatorioMostrado = true;
+    }
+    
+    // Resetear flag de recordatorio al día siguiente
+    if (horas === 0 && minutos === 1) {
+        recordatorioMostrado = false;
+    }
+    
+    // Cierre automático a las 00:00 (medianoche)
+    if (horas === 0 && minutos === 0) {
+        ejecutarCierreAutomatico();
+    }
+}
+
+/**
+ * Mostrar recordatorio para cerrar la caja a las 20:00
+ */
+function mostrarRecordatorioCierreCaja() {
+    // Solo mostrar si es encargado
+    if (currentUserRole !== 'encargado') {
+        return;
+    }
+    
+    // Crear notificación persistente
+    const notif = document.createElement('div');
+    notif.id = 'recordatorioCierreCaja';
+    notif.style.cssText = `
+        position: fixed;
+        top: 20px;
+        right: 20px;
+        max-width: 400px;
+        padding: 24px;
+        background: linear-gradient(135deg, hsl(38 92% 50% / 0.95), hsl(38 92% 45% / 0.95));
+        color: white;
+        border-radius: 16px;
+        box-shadow: 0 20px 60px rgba(0,0,0,0.4);
+        z-index: 10001;
+        animation: slideInRight 0.5s ease-out, pulse 2s ease-in-out infinite;
+        backdrop-filter: blur(10px);
+    `;
+    
+    notif.innerHTML = `
+        <div style="display: flex; align-items: start; gap: 16px;">
+            <div style="font-size: 32px; animation: bell-ring 1s ease-in-out infinite;">🔔</div>
+            <div style="flex: 1;">
+                <h3 style="margin: 0 0 8px; font-size: 18px; font-weight: 700;">Recordatorio: Cerrar Caja</h3>
+                <p style="margin: 0 0 16px; font-size: 14px; opacity: 0.95;">Es hora de cerrar la caja del día. No olvides hacer el arqueo antes de irte.</p>
+                <div style="display: flex; gap: 8px;">
+                    <button onclick="irACaja(); cerrarRecordatorio();" style="padding: 8px 16px; background: white; color: hsl(38 92% 45%); border: none; border-radius: 8px; cursor: pointer; font-weight: 700; font-size: 14px;">
+                        Ir a Caja
+                    </button>
+                    <button onclick="cerrarRecordatorio();" style="padding: 8px 16px; background: rgba(255,255,255,0.2); color: white; border: 1px solid white; border-radius: 8px; cursor: pointer; font-weight: 600; font-size: 14px;">
+                        Cerrar
+                    </button>
+                </div>
+            </div>
+        </div>
+    `;
+    
+    document.body.appendChild(notif);
+    notificacionRecordatorio = notif;
+    
+    // Auto-cerrar después de 5 minutos
+    setTimeout(() => {
+        cerrarRecordatorio();
+    }, 5 * 60 * 1000);
+    
+    // Agregar animación de campana
+    const style = document.createElement('style');
+    style.textContent = `
+        @keyframes bell-ring {
+            0%, 100% { transform: rotate(0deg); }
+            10%, 30% { transform: rotate(-10deg); }
+            20%, 40% { transform: rotate(10deg); }
+        }
+        @keyframes pulse {
+            0%, 100% { transform: scale(1); }
+            50% { transform: scale(1.02); }
+        }
+    `;
+    document.head.appendChild(style);
+}
+
+/**
+ * Cerrar recordatorio de caja
+ */
+function cerrarRecordatorio() {
+    if (notificacionRecordatorio) {
+        notificacionRecordatorio.style.animation = 'slideOutRight 0.3s ease-out';
+        setTimeout(() => {
+            if (notificacionRecordatorio && notificacionRecordatorio.parentNode) {
+                notificacionRecordatorio.remove();
+                notificacionRecordatorio = null;
+            }
+        }, 300);
+    }
+}
+
+/**
+ * Ir rápido a la vista de caja
+ */
+function irACaja() {
+    cambiarVista('caja');
+}
+
+/**
+ * Ejecutar cierre automático a medianoche
+ */
+async function ejecutarCierreAutomatico() {
+    try {
+        console.log('🤖 Ejecutando cierre automático...');
+        
+        // Verificar si el cierre automático está habilitado
+        const habilitado = localStorage.getItem('cierre_automatico_habilitado') !== 'false';
+        if (!habilitado) {
+            console.log('⏸️ Cierre automático deshabilitado');
+            return;
+        }
+        
+        if (typeof supabaseClient === 'undefined' || !supabaseClient) {
+            console.warn('⚠️ Supabase no disponible para cierre automático');
+            return;
+        }
+        
+        // Obtener fecha de ayer
+        const ayer = new Date();
+        ayer.setDate(ayer.getDate() - 1);
+        const fechaAyer = ayer.toISOString().split('T')[0];
+        
+        // Verificar si ya existe un cierre para ayer
+        const { data: cierreExistente, error: errorConsulta } = await supabaseClient
+            .from('cierres_diarios')
+            .select('id')
+            .eq('fecha', fechaAyer)
+            .single();
+        
+        if (cierreExistente) {
+            console.log('✅ Ya existe cierre para ayer, saltando cierre automático');
+            return;
+        }
+        
+        // Cargar ventas de ayer
+        const inicioAyer = new Date(fechaAyer);
+        inicioAyer.setHours(0, 0, 0, 0);
+        const finAyer = new Date(fechaAyer);
+        finAyer.setHours(23, 59, 59, 999);
+        
+        const { data: ventasAyer, error: errorVentas } = await supabaseClient
+            .from('ventas')
+            .select('*')
+            .gte('fecha', inicioAyer.toISOString())
+            .lte('fecha', finAyer.toISOString());
+        
+        if (errorVentas) throw errorVentas;
+        
+        // Calcular totales de ventas
+        let totalVentas = 0;
+        let ventasEfectivo = 0;
+        let ventasTransbank = 0;
+        let ventasTransferencia = 0;
+        
+        if (ventasAyer && ventasAyer.length > 0) {
+            ventasAyer.forEach(venta => {
+                totalVentas += venta.total;
+                
+                const detallePagos = venta.detalle_pagos;
+                if (typeof detallePagos === 'string' && detallePagos.startsWith('[')) {
+                    const pagos = JSON.parse(detallePagos);
+                    pagos.forEach(pago => {
+                        if (pago.metodo === 'Efectivo') ventasEfectivo += pago.monto;
+                        else if (pago.metodo === 'Tarjeta' || pago.metodo === 'Transbank') ventasTransbank += pago.monto;
+                        else if (pago.metodo === 'Transferencia') ventasTransferencia += pago.monto;
+                    });
+                } else if (typeof detallePagos === 'string') {
+                    if (detallePagos === 'Efectivo') ventasEfectivo += venta.total;
+                    else if (detallePagos === 'Tarjeta' || detallePagos === 'Transbank') ventasTransbank += venta.total;
+                    else if (detallePagos === 'Transferencia') ventasTransferencia += venta.total;
+                }
+            });
+        }
+        
+        // Cargar gastos de ayer
+        const { data: gastosAyer, error: errorGastos } = await supabaseClient
+            .from('gastos')
+            .select('*')
+            .gte('fecha', inicioAyer.toISOString())
+            .lte('fecha', finAyer.toISOString());
+        
+        if (errorGastos) throw errorGastos;
+        
+        const totalGastos = gastosAyer ? gastosAyer.reduce((sum, g) => sum + parseFloat(g.monto), 0) : 0;
+        
+        // Cargar pagos al personal de ayer
+        const { data: pagosPersonalAyer, error: errorPagos } = await supabaseClient
+            .from('pagos_personal')
+            .select('*')
+            .gte('fecha', inicioAyer.toISOString())
+            .lte('fecha', finAyer.toISOString());
+        
+        if (errorPagos) throw errorPagos;
+        
+        const totalPagosPersonal = pagosPersonalAyer ? pagosPersonalAyer.reduce((sum, p) => sum + parseFloat(p.total_pago), 0) : 0;
+        
+        // Calcular efectivo esperado
+        const efectivoEsperado = ventasEfectivo - totalGastos - totalPagosPersonal;
+        
+        // Crear cierre automático
+        const { data: cierreNuevo, error: errorCierre } = await supabaseClient
+            .from('cierres_diarios')
+            .insert({
+                fecha: fechaAyer,
+                total_ventas: totalVentas,
+                ventas_efectivo: ventasEfectivo,
+                ventas_transferencia: ventasTransferencia,
+                ventas_transbank: ventasTransbank,
+                total_gastos: totalGastos,
+                detalle_gastos_json: {
+                    gastos_operacionales: gastosAyer || [],
+                    pagos_personal: pagosPersonalAyer || [],
+                    total_pagos_personal: totalPagosPersonal
+                },
+                efectivo_esperado: efectivoEsperado,
+                efectivo_real: null,
+                diferencia: null,
+                cerrado_por: 'Sistema Automático',
+                cerrado_at: new Date().toISOString(),
+                notas: `🤖 Cierre automático - Requiere revisión de arqueo | Gastos: $${formatoMoneda(totalGastos)} | Pagos Personal: $${formatoMoneda(totalPagosPersonal)}`,
+                cierre_automatico: true
+            })
+            .select();
+        
+        if (errorCierre) throw errorCierre;
+        
+        console.log('✅ Cierre automático ejecutado exitosamente:', cierreNuevo);
+        
+    } catch (error) {
+        console.error('❌ Error en cierre automático:', error);
+    }
+}
+
+/**
+ * Verificar si hay cierres automáticos pendientes de revisión
+ */
+async function verificarCierresAutomaticosPendientes() {
+    try {
+        // Solo para encargado
+        if (currentUserRole !== 'encargado') {
+            return;
+        }
+        
+        if (typeof supabaseClient === 'undefined' || !supabaseClient) {
+            return;
+        }
+        
+        // Buscar cierres automáticos con efectivo_real null (últimos 7 días)
+        const hace7Dias = new Date();
+        hace7Dias.setDate(hace7Dias.getDate() - 7);
+        
+        const { data: cierresPendientes, error } = await supabaseClient
+            .from('cierres_diarios')
+            .select('*')
+            .eq('cierre_automatico', true)
+            .is('efectivo_real', null)
+            .gte('fecha', hace7Dias.toISOString().split('T')[0])
+            .order('fecha', { ascending: false });
+        
+        if (error) throw error;
+        
+        if (cierresPendientes && cierresPendientes.length > 0) {
+            // Mostrar alerta de cierres pendientes
+            mostrarAlertaCierrePendiente(cierresPendientes);
+        }
+        
+    } catch (error) {
+        console.error('Error verificando cierres pendientes:', error);
+    }
+}
+
+/**
+ * Mostrar alerta de cierre automático pendiente
+ */
+function mostrarAlertaCierrePendiente(cierresPendientes) {
+    const alerta = document.getElementById('alertaCierreAutomatico');
+    const mensaje = document.getElementById('mensajeAlertaCierre');
+    
+    if (cierresPendientes.length === 1) {
+        const cierre = cierresPendientes[0];
+        const fecha = new Date(cierre.fecha);
+        const fechaTexto = fecha.toLocaleDateString('es-CL', { 
+            weekday: 'long', 
+            day: '2-digit', 
+            month: 'long' 
+        });
+        mensaje.textContent = `El día ${fechaTexto} fue cerrado automáticamente. Se requiere completar el arqueo con el efectivo real.`;
+    } else {
+        mensaje.textContent = `Hay ${cierresPendientes.length} cierres automáticos pendientes de revisión. Se requiere completar los arqueos.`;
+    }
+    
+    alerta.style.display = 'block';
+    
+    // Guardar en variable global para acceso rápido
+    window.cierresPendientesGlobal = cierresPendientes;
+}
+
+/**
+ * Cerrar alerta de cierre automático
+ */
+function cerrarAlertaCierre() {
+    document.getElementById('alertaCierreAutomatico').style.display = 'none';
+}
+
+/**
+ * Abrir historial directo al cierre pendiente
+ */
+function abrirHistorialCierrePendiente() {
+    abrirHistorialCaja();
+    cerrarAlertaCierre();
+    
+    // Cargar últimos 7 días para mostrar el cierre pendiente
+    setTimeout(() => {
+        document.getElementById('filtroRapidoHistorial').value = '7';
+        aplicarFiltroRapido();
+    }, 500);
+}
+
+/**
+ * Toggle para habilitar/deshabilitar cierre automático
+ */
+function toggleCierreAutomatico() {
+    const toggle = document.getElementById('toggleCierreAutomatico');
+    const habilitado = toggle.checked;
+    
+    localStorage.setItem('cierre_automatico_habilitado', habilitado.toString());
+    
+    if (habilitado) {
+        mostrarNotificacion('Cierre automático activado (12:00 AM)', 'success');
+        console.log('✅ Cierre automático habilitado');
+    } else {
+        mostrarNotificacion('Cierre automático desactivado', 'info');
+        console.log('⏸️ Cierre automático deshabilitado');
+    }
+}
+
+// ===================================
 // MÓDULO: HISTORIAL DE CAJA
 // ===================================
 
@@ -4572,10 +4972,18 @@ function renderTablaHistorial() {
             year: 'numeric' 
         });
         
+        // Verificar si es cierre automático pendiente
+        const esAutomatico = cierre.cierre_automatico === true;
+        const esPendiente = cierre.efectivo_real === null || cierre.efectivo_real === undefined;
+        
         const diferencia = cierre.diferencia || 0;
         let estadoIcon, estadoTexto, estadoColor;
         
-        if (diferencia === 0) {
+        if (esAutomatico && esPendiente) {
+            estadoIcon = '🤖';
+            estadoTexto = 'Pendiente';
+            estadoColor = 'hsl(38 92% 50%)';
+        } else if (diferencia === 0) {
             estadoIcon = '✅';
             estadoTexto = 'Cuadrado';
             estadoColor = 'hsl(142 76% 36%)';
@@ -4590,14 +4998,17 @@ function renderTablaHistorial() {
         }
         
         html += `
-            <tr style="border-bottom: 1px solid hsl(var(--border)); transition: background 0.2s;" 
+            <tr style="border-bottom: 1px solid hsl(var(--border)); transition: background 0.2s; ${esAutomatico && esPendiente ? 'background: hsl(38 92% 50% / 0.05);' : ''}" 
                 onmouseover="this.style.background='hsl(var(--muted) / 0.3)'" 
-                onmouseout="this.style.background='transparent'">
-                <td style="padding: 16px; font-weight: 600;">${fechaFormato}</td>
+                onmouseout="this.style.background='${esAutomatico && esPendiente ? 'hsl(38 92% 50% / 0.05)' : 'transparent'}'">
+                <td style="padding: 16px; font-weight: 600;">
+                    ${esAutomatico ? '🤖 ' : ''}${fechaFormato}
+                    ${esAutomatico && esPendiente ? '<br><span style="font-size: 11px; color: hsl(38 92% 50%); font-weight: 700;">Requiere revisión</span>' : ''}
+                </td>
                 <td style="padding: 16px; text-align: right; font-weight: 600; color: hsl(142 76% 36%);">$${formatoMoneda(cierre.total_ventas || 0)}</td>
                 <td style="padding: 16px; text-align: right; color: hsl(0 84% 60%);">$${formatoMoneda(cierre.total_gastos || 0)}</td>
                 <td style="padding: 16px; text-align: right; font-weight: 600; color: ${estadoColor};">
-                    ${diferencia >= 0 ? '+' : ''}$${formatoMoneda(Math.abs(diferencia))}
+                    ${esPendiente ? 'Pendiente' : (diferencia >= 0 ? '+' : '') + '$' + formatoMoneda(Math.abs(diferencia))}
                 </td>
                 <td style="padding: 16px; text-align: center;">
                     <span style="background: ${estadoColor}15; color: ${estadoColor}; padding: 4px 12px; border-radius: 6px; font-size: 13px; font-weight: 600;">
