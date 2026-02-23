@@ -2097,7 +2097,7 @@ async function cargarVentas() {
         }
 
         // Renderizar tabla de historial (con ventas Y movimientos si están disponibles)
-        renderTablaHistorial(todosLosRegistros);
+        renderTablaHistorialVentas(todosLosRegistros);
 
     } catch (error) {
         console.error('❌ Error cargando ventas:', error);
@@ -2449,7 +2449,7 @@ function generarTablaVendedores(ventas) {
     `;
 }
 
-function renderTablaHistorial(ventas) {
+function renderTablaHistorialVentas(ventas) {
     const tbody = document.getElementById('salesTableBody');
 
     if (ventas.length === 0) {
@@ -2541,7 +2541,7 @@ function mostrarVentasMock() {
     generarGraficoVentasDiarias(ventas, 30);
     generarGraficoMetodosPago(ventas);
     generarTablaVendedores(ventas);
-    renderTablaHistorial(ventas);
+    renderTablaHistorialVentas(ventas);
 }
 
 /**
@@ -4800,7 +4800,7 @@ async function cargarHistorialCaja() {
         
         // Renderizar gráfico y tabla
         renderChartHistorial();
-        renderTablaHistorial();
+        renderTablaHistorialCaja();
         
         console.log(`✅ ${datosHistorialCaja.length} cierres cargados`);
         
@@ -4940,9 +4940,9 @@ function renderChartHistorial() {
 }
 
 /**
- * Renderizar tabla de historial
+ * Renderizar tabla de historial de caja
  */
-function renderTablaHistorial() {
+function renderTablaHistorialCaja() {
     const container = document.getElementById('tablaHistorialCaja');
     
     if (datosHistorialCaja.length === 0) {
