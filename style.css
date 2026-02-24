@@ -3707,6 +3707,55 @@ body {
 .btn-danger:active:not(:disabled) {
   transform: translateY(0);
 }
-    font-size: 11px;
-  }
+
+/* Ventas con devolución - Indicadores visuales sutiles */
+.venta-con-devolucion {
+  background: hsl(0 84% 60% / 0.05) !important;
+}
+
+.venta-con-devolucion:hover {
+  background: hsl(0 84% 60% / 0.08) !important;
+}
+
+.badge-devolucion {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 8px;
+  font-size: 11px;
+  font-weight: 600;
+  color: hsl(0 84% 60%);
+  background: hsl(0 84% 60% / 0.1);
+  border-radius: 4px;
+  margin-left: 6px;
+  vertical-align: middle;
+}
+
+/* ========================================
+   MERMAS Y PÉRDIDAS
+   ======================================== */
+
+.mermas-history-card {
+  background: white;
+  border-radius: 12px;
+  padding: 20px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+}
+
+.btn-warning {
+  background: hsl(38 92% 50%);
+  color: white;
+  font-weight: 600;
+  transition: all 0.2s;
+}
+
+.btn-warning:hover:not(:disabled) {
+  background: hsl(38 92% 45%);
+  box-shadow: 0 4px 12px hsl(38 92% 50% / 0.3);
+  transform: translateY(-1px);
+}
+
+.btn-warning:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
 }

@@ -431,6 +431,10 @@ function aplicarPermisosRol() {
     const btnGestionarProveedores = document.getElementById('btnGestionarProveedores');
     if (btnGestionarProveedores) btnGestionarProveedores.style.display = esAdmin ? 'inline-flex' : 'none';
 
+    // Botón Registrar Merma en Inventario
+    const btnRegistrarMerma = document.getElementById('btnRegistrarMerma');
+    if (btnRegistrarMerma) btnRegistrarMerma.style.display = esAdmin ? 'inline-flex' : 'none';
+
     // Ranking de vendedores
     const rankingVendedores = document.getElementById('rankingVendedores');
     if (rankingVendedores) rankingVendedores.style.display = esAdmin ? 'block' : 'none';
@@ -1897,6 +1901,18 @@ async function cargarInventario() {
             `;
         }
     }).join('');
+
+    // Cargar historial de mermas (solo para admin)
+    if (currentUserRole === 'encargado') {
+        const historialMermas = document.getElementById('historialMermas');
+        if (historialMermas) {
+            historialMermas.style.display = 'block';
+            await cargarHistorialMermas();
+        }
+    } else {
+        const historialMermas = document.getElementById('historialMermas');
+        if (historialMermas) historialMermas.style.display = 'none';
+    }
 }
 
 function editarProducto(id) {
@@ -1979,6 +1995,28 @@ async function cargarVentas() {
                 });
 
                 console.log('📦 Items por venta cargados');
+            }
+        }
+
+        // 🔄 VERIFICAR DEVOLUCIONES
+        // Consultar qué ventas tienen devoluciones registradas
+        if (ventas.length > 0) {
+            const ventasIds = ventas.map(v => v.id);
+            const { data: devoluciones, error: devError } = await supabaseClient
+                .from('devoluciones')
+                .select('venta_id')
+                .in('venta_id', ventasIds);
+
+            if (!devError && devoluciones) {
+                // Crear set de ventas con devolución
+                const ventasConDevolucion = new Set(devoluciones.map(d => d.venta_id));
+                
+                // Marcar ventas que tienen devolución
+                ventas.forEach(venta => {
+                    venta.tiene_devolucion = ventasConDevolucion.has(venta.id);
+                });
+                
+                console.log('🔄 Devoluciones verificadas:', devoluciones.length);
             }
         }
 
@@ -2506,9 +2544,14 @@ function renderTablaHistorialVentas(ventas) {
             `;
         } else {
             // VENTA NORMAL
+            const filaClass = v.tiene_devolucion ? 'venta-con-devolucion' : '';
+            const badgeDevolucion = v.tiene_devolucion 
+                ? '<span class="badge-devolucion" title="Esta venta tiene devolución registrada">🔄 Devuelto</span>' 
+                : '';
+            
             return `
-                <tr>
-                    <td><strong>#${v.id}</strong></td>
+                <tr class="${filaClass}">
+                    <td><strong>#${v.id}</strong> ${badgeDevolucion}</td>
                     <td>${new Date(v.created_at || v.fecha).toLocaleString('es-CL', { timeZone: 'America/Santiago' })}</td>
                     <td>${v.vendedor_nombre || v.vendedor || 'Sin asignar'}</td>
                     <td>${productosTexto}</td>
@@ -7572,3 +7615,397 @@ async function verDetalleDevolucion(devolucionId) {
     }
 }
 
+
+// ============================================
+// MÓDULO: MERMAS Y PÉRDIDAS
+// ============================================
+
+let productoMermaSeleccionado = null;
+
+/**
+ * Abrir modal para registrar merma
+ */
+async function abrirModalMerma() {
+    console.log('🗑️ Abriendo modal de mermas...');
+    
+    const modal = document.getElementById('modalMerma');
+    if (!modal) {
+        console.error('❌ Modal de mermas no encontrado');
+        return;
+    }
+    
+    // Mostrar modal
+    modal.style.display = 'flex';
+    
+    // Limpiar formulario
+    document.getElementById('mermaProducto').value = '';
+    document.getElementById('mermaCantidad').value = '';
+    document.getElementById('mermaMotivo').value = '';
+    document.getElementById('mermaNotas').value = '';
+    document.getElementById('mermaNotasContainer').style.display = 'none';
+    document.getElementById('mermaResumen').style.display = 'none';
+    document.getElementById('mermaStockActual').textContent = 'Stock actual: -';
+    productoMermaSeleccionado = null;
+    
+    // Cargar productos disponibles
+    try {
+        const { data: productos, error } = await supabaseClient
+            .from('productos')
+            .select('id, nombre, stock')
+            .order('nombre');
+        
+        if (error) throw error;
+        
+        const selectProducto = document.getElementById('mermaProducto');
+        selectProducto.innerHTML = '<option value="">Seleccione un producto...</option>';
+        
+        productos.forEach(p => {
+            const option = document.createElement('option');
+            option.value = p.id;
+            option.textContent = `${p.nombre} (Stock: ${p.stock})`;
+            option.dataset.stock = p.stock;
+            option.dataset.nombre = p.nombre;
+            selectProducto.appendChild(option);
+        });
+        
+        console.log('✅ Productos cargados:', productos.length);
+        
+    } catch (error) {
+        console.error('Error cargando productos:', error);
+        mostrarNotificacion('Error al cargar productos', 'error');
+    }
+    
+    validarFormularioMerma();
+}
+
+/**
+ * Cerrar modal de mermas
+ */
+function cerrarModalMerma() {
+    const modal = document.getElementById('modalMerma');
+    if (modal) {
+        modal.style.display = 'none';
+    }
+    productoMermaSeleccionado = null;
+}
+
+/**
+ * Seleccionar producto y mostrar stock
+ */
+function seleccionarProductoMerma() {
+    const select = document.getElementById('mermaProducto');
+    const selectedOption = select.options[select.selectedIndex];
+    const stockActualElem = document.getElementById('mermaStockActual');
+    const cantidadInput = document.getElementById('mermaCantidad');
+    
+    if (selectedOption.value) {
+        const stock = parseInt(selectedOption.dataset.stock, 10);
+        const nombre = selectedOption.dataset.nombre;
+        
+        productoMermaSeleccionado = {
+            id: parseInt(selectedOption.value, 10),
+            nombre: nombre,
+            stock: stock
+        };
+        
+        stockActualElem.textContent = `Stock actual: ${stock} unidades`;
+        stockActualElem.style.color = stock > 0 ? 'hsl(142 76% 36%)' : 'hsl(var(--destructive))';
+        
+        // Configurar límite de cantidad
+        cantidadInput.max = stock;
+        
+        if (stock === 0) {
+            cantidadInput.disabled = true;
+            cantidadInput.value = '';
+            mostrarNotificacion('Este producto no tiene stock disponible', 'warning');
+        } else {
+            cantidadInput.disabled = false;
+        }
+    } else {
+        stockActualElem.textContent = 'Stock actual: -';
+        stockActualElem.style.color = 'hsl(var(--muted-foreground))';
+        productoMermaSeleccionado = null;
+        cantidadInput.disabled = true;
+        cantidadInput.value = '';
+    }
+    
+    validarFormularioMerma();
+}
+
+/**
+ * Mostrar/ocultar campo de notas según motivo
+ */
+function toggleNotasMerma() {
+    const motivo = document.getElementById('mermaMotivo').value;
+    const notasContainer = document.getElementById('mermaNotasContainer');
+    
+    if (motivo === 'Otro') {
+        notasContainer.style.display = 'block';
+    } else {
+        notasContainer.style.display = 'none';
+        document.getElementById('mermaNotas').value = '';
+    }
+    
+    validarFormularioMerma();
+}
+
+/**
+ * Validar formulario y habilitar/deshabilitar botón
+ */
+function validarFormularioMerma() {
+    const cantidad = parseInt(document.getElementById('mermaCantidad').value, 10);
+    const motivo = document.getElementById('mermaMotivo').value;
+    const notas = document.getElementById('mermaNotas').value.trim();
+    const btnConfirmar = document.getElementById('btnConfirmarMerma');
+    const resumen = document.getElementById('mermaResumen');
+    const textoResumen = document.getElementById('mermaTextoResumen');
+    
+    let valido = true;
+    
+    // Validar producto seleccionado
+    if (!productoMermaSeleccionado) {
+        valido = false;
+    }
+    
+    // Validar cantidad
+    if (!cantidad || cantidad <= 0 || (productoMermaSeleccionado && cantidad > productoMermaSeleccionado.stock)) {
+        valido = false;
+    }
+    
+    // Validar motivo
+    if (!motivo) {
+        valido = false;
+    }
+    
+    // Si motivo es "Otro", validar notas
+    if (motivo === 'Otro' && !notas) {
+        valido = false;
+    }
+    
+    // Habilitar/deshabilitar botón
+    btnConfirmar.disabled = !valido;
+    
+    // Mostrar resumen si hay producto y cantidad
+    if (productoMermaSeleccionado && cantidad > 0 && cantidad <= productoMermaSeleccionado.stock) {
+        const nuevoStock = productoMermaSeleccionado.stock - cantidad;
+        resumen.style.display = 'block';
+        textoResumen.textContent = `Se dará de baja ${cantidad} unidad(es) de "${productoMermaSeleccionado.nombre}". Stock resultante: ${nuevoStock}`;
+    } else {
+        resumen.style.display = 'none';
+    }
+}
+
+/**
+ * Confirmar y mostrar diálogo de confirmación
+ */
+function confirmarMerma() {
+    if (!productoMermaSeleccionado) return;
+    
+    const cantidad = parseInt(document.getElementById('mermaCantidad').value, 10);
+    const motivo = document.getElementById('mermaMotivo').value;
+    const notas = document.getElementById('mermaNotas').value.trim();
+    
+    const nuevoStock = productoMermaSeleccionado.stock - cantidad;
+    
+    const mensajeConfirmacion = `
+⚠️ CONFIRMAR REGISTRO DE MERMA
+
+Producto: ${productoMermaSeleccionado.nombre}
+Cantidad: ${cantidad} unidad(es)
+Motivo: ${motivo}
+${motivo === 'Otro' && notas ? `\nDetalle: ${notas}` : ''}
+
+Stock actual: ${productoMermaSeleccionado.stock}
+Stock resultante: ${nuevoStock}
+
+⚠️ Esta acción reducirá el stock automáticamente.
+¿Desea continuar?
+    `;
+    
+    if (confirm(mensajeConfirmacion)) {
+        procesarMerma({
+            producto_id: productoMermaSeleccionado.id,
+            producto_nombre: productoMermaSeleccionado.nombre,
+            cantidad: cantidad,
+            motivo: motivo === 'Otro' ? notas : motivo,
+            notas: motivo === 'Otro' ? null : (notas || null),
+            registrado_por: currentUser || 'Sistema'
+        });
+    }
+}
+
+/**
+ * Procesar merma y actualizar stock
+ */
+async function procesarMerma(datosMerma) {
+    console.log('🗑️ Procesando merma:', datosMerma);
+    
+    const btnConfirmar = document.getElementById('btnConfirmarMerma');
+    btnConfirmar.disabled = true;
+    btnConfirmar.innerHTML = '<span>Procesando...</span>';
+    
+    try {
+        // 1. Insertar registro de merma
+        const { data: merma, error: errorMerma } = await supabaseClient
+            .from('mermas')
+            .insert([datosMerma])
+            .select()
+            .single();
+        
+        if (errorMerma) throw errorMerma;
+        
+        console.log('✅ Merma registrada:', merma);
+        
+        // 2. Actualizar stock del producto
+        const { data: productoActual, error: errorProducto } = await supabaseClient
+            .from('productos')
+            .select('stock')
+            .eq('id', datosMerma.producto_id)
+            .single();
+        
+        if (errorProducto) throw errorProducto;
+        
+        const nuevoStock = productoActual.stock - datosMerma.cantidad;
+        
+        if (nuevoStock < 0) {
+            throw new Error('El stock resultante no puede ser negativo');
+        }
+        
+        const { error: errorUpdate } = await supabaseClient
+            .from('productos')
+            .update({ stock: nuevoStock })
+            .eq('id', datosMerma.producto_id);
+        
+        if (errorUpdate) throw errorUpdate;
+        
+        console.log(`✅ Stock actualizado: ${productoActual.stock} → ${nuevoStock}`);
+        
+        // 3. Cerrar modal
+        cerrarModalMerma();
+        
+        // 4. Mostrar notificación
+        mostrarNotificacion(`Merma registrada correctamente. Stock actualizado: ${nuevoStock}`, 'success');
+        
+        // 5. Recargar vistas afectadas
+        if (currentView === 'inventory') {
+            await cargarInventario();
+            await cargarHistorialMermas();
+        }
+        
+    } catch (error) {
+        console.error('❌ Error procesando merma:', error);
+        mostrarNotificacion('Error al registrar merma: ' + error.message, 'error');
+        
+        // Restaurar botón
+        btnConfirmar.disabled = false;
+        btnConfirmar.innerHTML = '<span>Registrar Merma</span>';
+    }
+}
+
+/**
+ * Cargar historial de mermas (últimos 30 días)
+ */
+async function cargarHistorialMermas() {
+    console.log('📋 Cargando historial de mermas...');
+    
+    try {
+        // Calcular fecha de inicio (últimos 30 días)
+        const fechaInicio = new Date();
+        fechaInicio.setDate(fechaInicio.getDate() - 30);
+        const fechaInicioStr = fechaInicio.toISOString();
+        
+        const { data: mermas, error } = await supabaseClient
+            .from('mermas')
+            .select('*')
+            .gte('created_at', fechaInicioStr)
+            .order('created_at', { ascending: false });
+        
+        if (error) throw error;
+        
+        console.log('✅ Mermas cargadas:', mermas.length);
+        
+        renderTablaMermas(mermas || []);
+        
+    } catch (error) {
+        console.error('❌ Error cargando mermas:', error);
+        const container = document.getElementById('tablaMermas');
+        if (container) {
+            container.innerHTML = `
+                <p style="text-align: center; color: hsl(var(--destructive)); padding: 24px;">
+                    ❌ Error al cargar mermas: ${error.message}
+                </p>
+            `;
+        }
+    }
+}
+
+/**
+ * Renderizar tabla de mermas
+ */
+function renderTablaMermas(mermas) {
+    const container = document.getElementById('tablaMermas');
+    
+    if (!container) {
+        console.error('❌ Contenedor de mermas no encontrado');
+        return;
+    }
+    
+    if (mermas.length === 0) {
+        container.innerHTML = `
+            <div style="text-align: center; padding: 48px; color: hsl(var(--muted-foreground));">
+                <svg width="64" height="64" viewBox="0 0 24 24" fill="none" style="margin-bottom: 16px; opacity: 0.3;">
+                    <path d="M10 6v4m0 4h.01M6 2l2 2m6-2l-2 2m-6 14h8a2 2 0 002-2V8l-6-6H6a2 2 0 00-2 2v12a2 2 0 002 2z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                </svg>
+                <p style="font-weight: 600; margin: 0;">No hay mermas registradas</p>
+                <p style="font-size: 14px; margin-top: 4px;">Los últimos 30 días</p>
+            </div>
+        `;
+        return;
+    }
+    
+    let html = `
+        <table class="sales-table">
+            <thead>
+                <tr>
+                    <th>ID</th>
+                    <th>Fecha</th>
+                    <th>Producto</th>
+                    <th>Cantidad</th>
+                    <th>Motivo</th>
+                    <th>Registrado Por</th>
+                </tr>
+            </thead>
+            <tbody>
+    `;
+    
+    mermas.forEach(m => {
+        const fecha = new Date(m.created_at).toLocaleString('es-CL', { 
+            timeZone: 'America/Santiago',
+            dateStyle: 'short',
+            timeStyle: 'short'
+        });
+        
+        html += `
+            <tr>
+                <td><strong>#${m.id}</strong></td>
+                <td>${fecha}</td>
+                <td>${m.producto_nombre}</td>
+                <td style="color: hsl(var(--destructive)); font-weight: 600;">-${m.cantidad}</td>
+                <td>
+                    <span style="font-size: 13px; color: hsl(var(--muted-foreground));">
+                        ${m.motivo}
+                    </span>
+                    ${m.notas ? `<br><small style="font-size: 11px;">${m.notas}</small>` : ''}
+                </td>
+                <td>${m.registrado_por}</td>
+            </tr>
+        `;
+    });
+    
+    html += `
+            </tbody>
+        </table>
+    `;
+    
+    container.innerHTML = html;
+}
