@@ -2300,14 +2300,11 @@
                 </div>
 
                 <!-- Cantidad -->
-                <div style="margin-bottom: 28px;">
-                    <label style="display: flex; align-items: center; gap: 8px; font-weight: 700; margin-bottom: 12px; font-size: 15px; color: hsl(var(--foreground));">
-                        <span style="display: flex; align-items: center; justify-content: center; width: 32px; height: 32px; background: linear-gradient(135deg, hsl(221 83% 53%) 0%, hsl(221 83% 43%) 100%); border-radius: 8px; color: white; font-size: 18px;">
-                            🔢
-                        </span>
-                        ¿Cuántas unidades dar de baja?
+                <div style="margin-bottom: 24px;">
+                    <label style="display: block; font-weight: 600; margin-bottom: 10px; font-size: 14px; color: hsl(var(--foreground));">
+                        Cantidad a dar de baja *
                     </label>
-                    <div style="background: white; border: 2px solid hsl(var(--border)); border-radius: 12px; padding: 20px; transition: all 0.2s;">
+                    <div style="background: hsl(var(--muted) / 0.3); border: 1px solid hsl(var(--border)); border-radius: 8px; padding: 12px; transition: all 0.2s;">
                         <input 
                             type="number" 
                             id="mermaCantidad" 
@@ -2317,14 +2314,10 @@
                             oninput="validarFormularioMerma()" 
                             disabled
                             required
-                            style="width: 100%; font-size: 32px; font-weight: 700; text-align: center; border: none; background: transparent; color: hsl(var(--primary)); padding: 8px;"
+                            style="width: 100%; font-size: 24px; font-weight: 700; text-align: center; border: none; background: transparent; color: hsl(var(--primary)); padding: 4px;"
                         />
-                        <div style="text-align: center; margin-top: 12px; padding-top: 12px; border-top: 1px solid hsl(var(--border));">
-                            <p id="mermaCantidadHint" style="font-size: 13px; color: hsl(var(--muted-foreground)); margin: 0; display: flex; align-items: center; justify-content: center; gap: 6px;">
-                                <svg width="16" height="16" viewBox="0 0 20 20" fill="none">
-                                    <circle cx="10" cy="10" r="8" stroke="currentColor" stroke-width="2" fill="none"/>
-                                    <path d="M10 6v4M10 14h.01" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
-                                </svg>
+                        <div style="text-align: center; margin-top: 8px; padding-top: 8px; border-top: 1px solid hsl(var(--border));">
+                            <p id="mermaCantidadHint" style="font-size: 12px; color: hsl(var(--muted-foreground)); margin: 0;">
                                 Selecciona primero un producto del buscador
                             </p>
                         </div>
@@ -2332,60 +2325,49 @@
                 </div>
 
                 <!-- Motivo -->
-                <div style="margin-bottom: 28px;">
-                    <label style="display: flex; align-items: center; gap: 8px; font-weight: 700; margin-bottom: 12px; font-size: 15px; color: hsl(var(--foreground));">
-                        <span style="display: flex; align-items: center; justify-content: center; width: 32px; height: 32px; background: linear-gradient(135deg, hsl(346 87% 43%) 0%, hsl(346 87% 33%) 100%); border-radius: 8px; color: white; font-size: 18px;">
-                            📝
-                        </span>
-                        ¿Por qué se da de baja?
+                <div style="margin-bottom: 24px;">
+                    <label style="display: block; font-weight: 600; margin-bottom: 10px; font-size: 14px; color: hsl(var(--foreground));">
+                        Motivo de la merma *
                     </label>
                     <input type="hidden" id="mermaMotivo" value="">
-                    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 12px;">
+                    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 8px;">
                         <!-- Producto vencido -->
                         <div class="merma-motivo-card" onclick="seleccionarMotivoMerma('Producto vencido', this)" data-motivo="Producto vencido">
-                            <div style="font-size: 28px; margin-bottom: 8px;">⏰</div>
                             <p style="margin: 0; font-weight: 600; font-size: 13px;">Vencido</p>
                         </div>
                         
                         <!-- Producto dañado -->
                         <div class="merma-motivo-card" onclick="seleccionarMotivoMerma('Producto dañado', this)" data-motivo="Producto dañado">
-                            <div style="font-size: 28px; margin-bottom: 8px;">💔</div>
                             <p style="margin: 0; font-weight: 600; font-size: 13px;">Dañado</p>
                         </div>
                         
                         <!-- Rotura -->
                         <div class="merma-motivo-card" onclick="seleccionarMotivoMerma('Rotura/Quiebre', this)" data-motivo="Rotura/Quiebre">
-                            <div style="font-size: 28px; margin-bottom: 8px;">💥</div>
                             <p style="margin: 0; font-weight: 600; font-size: 13px;">Rotura</p>
                         </div>
                         
                         <!-- Robo -->
                         <div class="merma-motivo-card" onclick="seleccionarMotivoMerma('Robo/Extravío', this)" data-motivo="Robo/Extravío">
-                            <div style="font-size: 28px; margin-bottom: 8px;">🚨</div>
                             <p style="margin: 0; font-weight: 600; font-size: 13px;">Robo</p>
                         </div>
                         
                         <!-- Deterioro -->
                         <div class="merma-motivo-card" onclick="seleccionarMotivoMerma('Deterioro por almacenamiento', this)" data-motivo="Deterioro por almacenamiento">
-                            <div style="font-size: 28px; margin-bottom: 8px;">📦</div>
                             <p style="margin: 0; font-weight: 600; font-size: 13px;">Deterioro</p>
                         </div>
                         
                         <!-- Muestra -->
                         <div class="merma-motivo-card" onclick="seleccionarMotivoMerma('Desecho (muestra/promoción)', this)" data-motivo="Desecho (muestra/promoción)">
-                            <div style="font-size: 28px; margin-bottom: 8px;">🎁</div>
                             <p style="margin: 0; font-weight: 600; font-size: 13px;">Muestra</p>
                         </div>
                         
                         <!-- Error -->
                         <div class="merma-motivo-card" onclick="seleccionarMotivoMerma('Error de inventario', this)" data-motivo="Error de inventario">
-                            <div style="font-size: 28px; margin-bottom: 8px;">📊</div>
                             <p style="margin: 0; font-weight: 600; font-size: 13px;">Error</p>
                         </div>
                         
                         <!-- Otro -->
                         <div class="merma-motivo-card" onclick="seleccionarMotivoMerma('Otro', this)" data-motivo="Otro">
-                            <div style="font-size: 28px; margin-bottom: 8px;">✏️</div>
                             <p style="margin: 0; font-weight: 600; font-size: 13px;">Otro</p>
                         </div>
                     </div>

@@ -7780,13 +7780,7 @@ function seleccionarProductoBuscadorMerma(id, nombre, stock) {
         cantidadInput.disabled = true;
         cantidadInput.value = '';
         if (hint) {
-            hint.innerHTML = `
-                <svg width="16" height="16" viewBox="0 0 20 20" fill="none">
-                    <path d="M10 2l8 14H2z" stroke="hsl(var(--destructive))" stroke-width="2" fill="none"/>
-                    <path d="M10 8v4M10 16h.01" stroke="hsl(var(--destructive))" stroke-width="2" stroke-linecap="round"/>
-                </svg>
-                Este producto no tiene stock disponible
-            `;
+            hint.textContent = 'Este producto no tiene stock disponible';
             hint.style.color = 'hsl(var(--destructive))';
         }
         mostrarNotificacion('Este producto no tiene stock disponible', 'warning');
@@ -7794,12 +7788,7 @@ function seleccionarProductoBuscadorMerma(id, nombre, stock) {
         cantidadInput.disabled = false;
         cantidadInput.focus();
         if (hint) {
-            hint.innerHTML = `
-                <svg width="16" height="16" viewBox="0 0 20 20" fill="none">
-                    <path d="M7 10l3 3 7-7" stroke="hsl(142 76% 36%)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-                </svg>
-                Máximo: ${stock} unidades disponibles
-            `;
+            hint.textContent = `Máximo: ${stock} unidades disponibles`;
             hint.style.color = 'hsl(142 76% 36%)';
         }
     }
@@ -7837,13 +7826,8 @@ function limpiarSeleccionMerma() {
     
     const hint = document.getElementById('mermaCantidadHint');
     if (hint) {
-        hint.innerHTML = `
-            <svg width="16" height="16" viewBox="0 0 20 20" fill="none">
-                <circle cx="10" cy="10" r="8" stroke="currentColor" stroke-width="2" fill="none"/>
-                <path d="M10 6v4M10 14h.01" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
-            </svg>
-            Selecciona primero un producto del buscador
-        `;
+        hint.textContent = 'Selecciona primero un producto del buscador';
+        hint.style.color = '';
     }
     
     // Limpiar selección de motivo
