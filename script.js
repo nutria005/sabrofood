@@ -7773,15 +7773,35 @@ function seleccionarProductoBuscadorMerma(id, nombre, stock) {
     
     // Configurar campo de cantidad
     const cantidadInput = document.getElementById('mermaCantidad');
+    const hint = document.getElementById('mermaCantidadHint');
     cantidadInput.max = stock;
     
     if (stock === 0) {
         cantidadInput.disabled = true;
         cantidadInput.value = '';
+        if (hint) {
+            hint.innerHTML = `
+                <svg width="16" height="16" viewBox="0 0 20 20" fill="none">
+                    <path d="M10 2l8 14H2z" stroke="hsl(var(--destructive))" stroke-width="2" fill="none"/>
+                    <path d="M10 8v4M10 16h.01" stroke="hsl(var(--destructive))" stroke-width="2" stroke-linecap="round"/>
+                </svg>
+                Este producto no tiene stock disponible
+            `;
+            hint.style.color = 'hsl(var(--destructive))';
+        }
         mostrarNotificacion('Este producto no tiene stock disponible', 'warning');
     } else {
         cantidadInput.disabled = false;
         cantidadInput.focus();
+        if (hint) {
+            hint.innerHTML = `
+                <svg width="16" height="16" viewBox="0 0 20 20" fill="none">
+                    <path d="M7 10l3 3 7-7" stroke="hsl(142 76% 36%)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                </svg>
+                Máximo: ${stock} unidades disponibles
+            `;
+            hint.style.color = 'hsl(142 76% 36%)';
+        }
     }
     
     validarFormularioMerma();
@@ -7808,12 +7828,29 @@ function limpiarSeleccionMerma() {
     const resultados = document.getElementById('mermaResultadosBusqueda');
     if (resultados) resultados.style.display = 'none';
     
-    // Deshabilitar cantidad
+    // Deshabilitar cantidad y resetear hint
     const cantidadInput = document.getElementById('mermaCantidad');
     if (cantidadInput) {
         cantidadInput.disabled = true;
         cantidadInput.value = '';
     }
+    
+    const hint = document.getElementById('mermaCantidadHint');
+    if (hint) {
+        hint.innerHTML = `
+            <svg width="16" height="16" viewBox="0 0 20 20" fill="none">
+                <circle cx="10" cy="10" r="8" stroke="currentColor" stroke-width="2" fill="none"/>
+                <path d="M10 6v4M10 14h.01" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+            </svg>
+            Selecciona primero un producto del buscador
+        `;
+    }
+    
+    // Limpiar selección de motivo
+    document.querySelectorAll('.merma-motivo-card').forEach(card => {
+        card.classList.remove('selected');
+    });
+    document.getElementById('mermaMotivo').value = '';
     
     validarFormularioMerma();
 }
@@ -7827,6 +7864,25 @@ function cerrarModalMerma() {
         modal.style.display = 'none';
     }
     productoMermaSeleccionado = null;
+}
+
+/**
+ * Seleccionar motivo de merma desde tarjeta
+ */
+function seleccionarMotivoMerma(motivo, elemento) {
+    // Remover selección previa
+    document.querySelectorAll('.merma-motivo-card').forEach(card => {
+        card.classList.remove('selected');
+    });
+    
+    // Seleccionar nueva tarjeta
+    elemento.classList.add('selected');
+    
+    // Actualizar input hidden
+    document.getElementById('mermaMotivo').value = motivo;
+    
+    // Mostrar/ocultar notas
+    toggleNotasMerma();
 }
 
 /**
