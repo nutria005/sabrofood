@@ -7487,12 +7487,19 @@ function renderTablaDevoluciones(devoluciones) {
                 </td>
                 <td style="padding: 12px; font-size: 13px;">${dev.procesado_por}</td>
                 <td style="padding: 12px; text-align: center;">
-                    <button class="btn-icon" onclick="verDetalleDevolucion(${dev.id})" title="Ver detalles completos">
-                        <svg width="16" height="16" viewBox="0 0 20 20" fill="none">
-                            <circle cx="10" cy="10" r="3" stroke="currentColor" stroke-width="2"/>
-                            <path d="M2 10s3-6 8-6 8 6 8 6-3 6-8 6-8-6-8-6z" stroke="currentColor" stroke-width="2"/>
-                        </svg>
-                    </button>
+                    <div style="display: flex; gap: 6px; justify-content: center;">
+                        <button class="btn-icon" onclick="verDetalleDevolucion(${dev.id})" title="Ver detalles completos">
+                            <svg width="16" height="16" viewBox="0 0 20 20" fill="none">
+                                <circle cx="10" cy="10" r="3" stroke="currentColor" stroke-width="2"/>
+                                <path d="M2 10s3-6 8-6 8 6 8 6-3 6-8 6-8-6-8-6z" stroke="currentColor" stroke-width="2"/>
+                            </svg>
+                        </button>
+                        <button class="btn-icon" onclick="eliminarDevolucion(${dev.id})" title="Eliminar devolución" style="color: hsl(var(--destructive));">
+                            <svg width="16" height="16" viewBox="0 0 20 20" fill="none">
+                                <path d="M3 5h14M8 5V3h4v2M9 9v6m2-6v6M6 5v12a2 2 0 002 2h4a2 2 0 002-2V5" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+                            </svg>
+                        </button>
+                    </div>
                 </td>
             </tr>
         `;
@@ -7505,6 +7512,50 @@ function renderTablaDevoluciones(devoluciones) {
     `;
     
     container.innerHTML = html;
+}
+
+/**
+ * Eliminar una devolución del historial
+ */
+async function eliminarDevolucion(devolucionId) {
+    // Verificar permisos (solo encargado puede eliminar)
+    if (currentUserRole !== 'encargado') {
+        mostrarNotificacion('Solo el encargado puede eliminar devoluciones', 'error');
+        return;
+    }
+    
+    // Confirmar eliminación
+    const confirmar = confirm(
+        '⚠️ ELIMINAR DEVOLUCIÓN\n\n' +
+        `¿Está seguro que desea eliminar la devolución #${devolucionId}?\n\n` +
+        '⚠️ Esta acción NO ES REVERSIBLE.\n' +
+        'Se eliminará el registro de la base de datos.\n\n' +
+        'Nota: Esta acción NO afectará el stock de productos.'
+    );
+    
+    if (!confirmar) return;
+    
+    console.log(`🗑️ Eliminando devolución #${devolucionId}...`);
+    
+    try {
+        // Eliminar de la base de datos
+        const { error } = await supabaseClient
+            .from('devoluciones')
+            .delete()
+            .eq('id', devolucionId);
+        
+        if (error) throw error;
+        
+        console.log(`✅ Devolución #${devolucionId} eliminada correctamente`);
+        mostrarNotificacion('Devolución eliminada correctamente', 'success');
+        
+        // Recargar historial
+        await cargarHistorialDevoluciones();
+        
+    } catch (error) {
+        console.error('❌ Error al eliminar devolución:', error);
+        mostrarNotificacion('Error al eliminar la devolución: ' + error.message, 'error');
+    }
 }
 
 /**
