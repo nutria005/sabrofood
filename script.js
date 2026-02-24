@@ -7524,13 +7524,36 @@ async function eliminarDevolucion(devolucionId) {
         return;
     }
     
+    // Obtener detalles de la devolución antes de eliminar
+    let devolucion;
+    try {
+        const { data, error } = await supabaseClient
+            .from('devoluciones')
+            .select('*')
+            .eq('id', devolucionId)
+            .single();
+        
+        if (error) throw error;
+        devolucion = data;
+        
+        console.log('📋 Devolución a eliminar:', devolucion);
+    } catch (error) {
+        console.error('❌ Error al obtener devolución:', error);
+        mostrarNotificacion('Error al obtener datos de la devolución', 'error');
+        return;
+    }
+    
     // Confirmar eliminación
     const confirmar = confirm(
         '⚠️ ELIMINAR DEVOLUCIÓN\n\n' +
-        `¿Está seguro que desea eliminar la devolución #${devolucionId}?\n\n` +
-        '⚠️ Esta acción NO ES REVERSIBLE.\n' +
-        'Se eliminará el registro de la base de datos.\n\n' +
-        'Nota: Esta acción NO afectará el stock de productos.'
+        `¿Está seguro que desea eliminar la devolución #${devolucionId}?\n` +
+        `Venta relacionada: #${devolucion.venta_id}\n\n` +
+        '⚠️ Esta acción NO ES REVERSIBLE.\n\n' +
+        'Se revertirán los siguientes cambios:\n' +
+        '• El stock se reducirá (se restará lo que se había devuelto)\n' +
+        '• La venta volverá a aparecer normal (sin etiqueta "Devuelto")\n' +
+        (devolucion.tipo_reembolso === 'efectivo' ? '• El gasto de reembolso en caja se eliminará\n' : '') +
+        '\n¿Desea continuar?'
     );
     
     if (!confirmar) return;
@@ -7538,7 +7561,82 @@ async function eliminarDevolucion(devolucionId) {
     console.log(`🗑️ Eliminando devolución #${devolucionId}...`);
     
     try {
-        // Eliminar de la base de datos
+        // Parsear productos devueltos
+        let productosDevueltos = [];
+        try {
+            productosDevueltos = typeof devolucion.productos_devueltos === 'string' 
+                ? JSON.parse(devolucion.productos_devueltos) 
+                : devolucion.productos_devueltos || [];
+        } catch (e) {
+            console.warn('⚠️ No se pudieron parsear productos devueltos');
+        }
+        
+        // 1. Revertir stock de productos (restar lo que se había sumado)
+        for (const producto of productosDevueltos) {
+            if (!producto.producto_id) continue;
+            
+            try {
+                // Obtener stock actual
+                const { data: prodActual, error: errorProd } = await supabaseClient
+                    .from('productos')
+                    .select('stock')
+                    .eq('id', producto.producto_id)
+                    .single();
+                
+                if (errorProd) {
+                    console.warn(`⚠️ No se pudo obtener stock del producto ${producto.producto_id}`);
+                    continue;
+                }
+                
+                // Restar cantidad devuelta (revertir el incremento que se hizo)
+                const nuevoStock = prodActual.stock - producto.cantidad;
+                
+                if (nuevoStock < 0) {
+                    console.warn(`⚠️ Advertencia: ${producto.producto_nombre} quedaría con stock negativo (${nuevoStock})`);
+                }
+                
+                const { error: errorUpdate } = await supabaseClient
+                    .from('productos')
+                    .update({ stock: nuevoStock })
+                    .eq('id', producto.producto_id);
+                
+                if (errorUpdate) {
+                    console.warn(`⚠️ No se pudo revertir stock del producto ${producto.producto_id}`);
+                } else {
+                    console.log(`✅ Stock revertido: ${producto.producto_nombre} -${producto.cantidad} = ${nuevoStock}`);
+                }
+            } catch (error) {
+                console.warn(`⚠️ Error al revertir stock del producto ${producto.producto_id}:`, error);
+            }
+        }
+        
+        // 2. Eliminar gasto asociado si fue reembolso en efectivo
+        if (devolucion.tipo_reembolso === 'efectivo') {
+            try {
+                const fechaDevolucion = new Date(devolucion.created_at);
+                const fechaInicio = new Date(fechaDevolucion.getTime() - 60000); // 1 minuto antes
+                const fechaFin = new Date(fechaDevolucion.getTime() + 60000); // 1 minuto después
+                
+                const { error: errorGasto } = await supabaseClient
+                    .from('gastos')
+                    .delete()
+                    .eq('monto', devolucion.total_devuelto)
+                    .eq('categoria', 'Devolución')
+                    .like('descripcion', `%venta #${devolucion.venta_id}%`)
+                    .gte('fecha', fechaInicio.toISOString())
+                    .lte('fecha', fechaFin.toISOString());
+                
+                if (errorGasto) {
+                    console.warn('⚠️ No se pudo eliminar el gasto asociado:', errorGasto);
+                } else {
+                    console.log('✅ Gasto de devolución eliminado de caja');
+                }
+            } catch (error) {
+                console.warn('⚠️ Error al eliminar gasto:', error);
+            }
+        }
+        
+        // 3. Eliminar la devolución de la base de datos
         const { error } = await supabaseClient
             .from('devoluciones')
             .delete()
@@ -7547,10 +7645,25 @@ async function eliminarDevolucion(devolucionId) {
         if (error) throw error;
         
         console.log(`✅ Devolución #${devolucionId} eliminada correctamente`);
-        mostrarNotificacion('Devolución eliminada correctamente', 'success');
+        mostrarNotificacion('Devolución eliminada y cambios revertidos correctamente', 'success');
         
-        // Recargar historial
+        // 4. Recargar vistas necesarias
         await cargarHistorialDevoluciones();
+        
+        // Recargar ventas para que la venta vuelva a aparecer normal
+        if (currentView === 'sales') {
+            await cargarVentas();
+        }
+        
+        // Recargar inventario si estamos en esa vista
+        if (currentView === 'inventory') {
+            await cargarInventario();
+        }
+        
+        // Recargar caja si estamos en esa vista
+        if (currentView === 'caja') {
+            await cargarDatosCaja();
+        }
         
     } catch (error) {
         console.error('❌ Error al eliminar devolución:', error);
