@@ -587,6 +587,7 @@ function cambiarVista(vista) {
         cargarInventario();
     } else if (vista === 'sales') {
         cargarVentas();
+        cargarHistorialDevoluciones(); // Cargar también historial de devoluciones
     } else if (vista === 'pos') {
         // Auto-focus en el campo de escáner
         setTimeout(() => {
@@ -7270,6 +7271,7 @@ async function procesarDevolucion(datosDevolucion) {
         // 6. Recargar ventas si estamos en esa vista
         if (currentView === 'sales') {
             await cargarVentas();
+            await cargarHistorialDevoluciones(); // Recargar también devoluciones
         }
         
         // 7. Recargar inventario si cambió stock
@@ -7285,6 +7287,288 @@ async function procesarDevolucion(datosDevolucion) {
     } catch (error) {
         console.error('❌ Error procesando devolución:', error);
         throw error;
+    }
+}
+
+/**
+ * Cargar historial de devoluciones
+ */
+async function cargarHistorialDevoluciones() {
+    try {
+        console.log('🔄 Cargando historial de devoluciones...');
+        
+        if (typeof supabaseClient === 'undefined' || !supabaseClient) {
+            console.warn('⚠️ Supabase no disponible');
+            return;
+        }
+        
+        // Obtener período actual (mismo que ventas)
+        const periodo = parseInt(document.getElementById('periodoVentas')?.value, 10) || 30;
+        const fechaInicio = new Date();
+        fechaInicio.setDate(fechaInicio.getDate() - periodo);
+        const fechaInicioStr = fechaInicio.toISOString();
+        
+        // Consultar devoluciones con JOIN a ventas
+        const { data: devoluciones, error } = await supabaseClient
+            .from('devoluciones')
+            .select(`
+                *,
+                ventas:venta_id (
+                    id,
+                    vendedor_nombre,
+                    created_at
+                )
+            `)
+            .gte('created_at', fechaInicioStr)
+            .order('created_at', { ascending: false });
+        
+        if (error) {
+            console.error('Error cargando devoluciones:', error);
+            throw error;
+        }
+        
+        console.log(`✅ ${devoluciones?.length || 0} devoluciones cargadas`);
+        
+        // Renderizar tabla
+        renderTablaDevoluciones(devoluciones || []);
+        
+    } catch (error) {
+        console.error('❌ Error al cargar historial de devoluciones:', error);
+        const container = document.getElementById('tablaDevoluciones');
+        if (container) {
+            container.innerHTML = `
+                <div style="text-align: center; padding: 40px; color: hsl(var(--destructive));">
+                    <p>❌ Error al cargar devoluciones</p>
+                    <small>${error.message}</small>
+                </div>
+            `;
+        }
+    }
+}
+
+/**
+ * Renderizar tabla de devoluciones
+ */
+function renderTablaDevoluciones(devoluciones) {
+    const container = document.getElementById('tablaDevoluciones');
+    
+    if (!container) return;
+    
+    if (devoluciones.length === 0) {
+        container.innerHTML = `
+            <div style="text-align: center; padding: 40px; color: hsl(var(--muted-foreground));">
+                <svg width="64" height="64" viewBox="0 0 24 24" fill="none" style="opacity: 0.3; margin: 0 auto 16px;">
+                    <path d="M3 10h10a8 8 0 018 8v2M3 10l6 6m-6-6l6-6" stroke="currentColor" stroke-width="2"/>
+                </svg>
+                <p>No hay devoluciones en este período</p>
+                <small>Las devoluciones procesadas aparecerán aquí</small>
+            </div>
+        `;
+        return;
+    }
+    
+    // Crear tabla
+    let html = `
+        <div style="overflow-x: auto;">
+            <table class="sales-table" style="width: 100%; border-collapse: collapse;">
+                <thead>
+                    <tr style="background: hsl(var(--muted) / 0.5); border-bottom: 2px solid hsl(var(--border));">
+                        <th style="padding: 12px; text-align: left; font-weight: 600; font-size: 13px;">ID Dev.</th>
+                        <th style="padding: 12px; text-align: left; font-weight: 600; font-size: 13px;">Fecha Devolución</th>
+                        <th style="padding: 12px; text-align: left; font-weight: 600; font-size: 13px;">Venta Original</th>
+                        <th style="padding: 12px; text-align: left; font-weight: 600; font-size: 13px;">Productos Devueltos</th>
+                        <th style="padding: 12px; text-align: right; font-weight: 600; font-size: 13px;">Total Devuelto</th>
+                        <th style="padding: 12px; text-align: left; font-weight: 600; font-size: 13px;">Motivo</th>
+                        <th style="padding: 12px; text-align: left; font-weight: 600; font-size: 13px;">Tipo Reembolso</th>
+                        <th style="padding: 12px; text-align: left; font-weight: 600; font-size: 13px;">Procesado Por</th>
+                        <th style="padding: 12px; text-align: center; font-weight: 600; font-size: 13px;">Acciones</th>
+                    </tr>
+                </thead>
+                <tbody>
+    `;
+    
+    devoluciones.forEach(dev => {
+        const fecha = new Date(dev.created_at || dev.fecha);
+        const fechaTexto = fecha.toLocaleDateString('es-CL', {
+            day: '2-digit',
+            month: 'short',
+            year: 'numeric',
+            hour: '2-digit',
+            minute: '2-digit'
+        });
+        
+        // Parsear productos devueltos
+        let productosDevueltos = [];
+        try {
+            productosDevueltos = typeof dev.productos_devueltos === 'string' 
+                ? JSON.parse(dev.productos_devueltos) 
+                : dev.productos_devueltos || [];
+        } catch (e) {
+            productosDevueltos = [];
+        }
+        
+        // Formatear lista de productos
+        const productosTexto = productosDevueltos.length > 0
+            ? productosDevueltos.map(p => `${p.producto_nombre || p.nombre} (${p.cantidad})`).join(', ')
+            : 'Sin detalles';
+        
+        // Icono y color según tipo de reembolso
+        const tipoReembolso = {
+            'efectivo': { icon: '💵', text: 'Efectivo', color: 'hsl(142 76% 36%)' },
+            'vale': { icon: '🎫', text: 'Vale', color: 'hsl(199 89% 48%)' },
+            'cambio': { icon: '🔄', text: 'Cambio', color: 'hsl(38 92% 50%)' }
+        }[dev.tipo_reembolso] || { icon: '❓', text: dev.tipo_reembolso, color: 'hsl(var(--muted-foreground))' };
+        
+        html += `
+            <tr style="border-bottom: 1px solid hsl(var(--border));">
+                <td style="padding: 12px;"><strong>#${dev.id}</strong></td>
+                <td style="padding: 12px; font-size: 13px;">${fechaTexto}</td>
+                <td style="padding: 12px;">
+                    <a href="#" onclick="verDetalleVenta(${dev.venta_id}); return false;" style="color: hsl(var(--primary)); text-decoration: none; font-weight: 600;">
+                        #${dev.venta_id}
+                    </a>
+                </td>
+                <td style="padding: 12px; font-size: 13px; max-width: 250px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;" title="${productosTexto}">
+                    ${productosTexto}
+                </td>
+                <td style="padding: 12px; text-align: right;">
+                    <strong style="color: hsl(var(--destructive)); font-size: 15px;">-$${formatoMoneda(dev.total_devuelto)}</strong>
+                </td>
+                <td style="padding: 12px; font-size: 13px; max-width: 200px;">
+                    <span title="${dev.motivo}">${dev.motivo.length > 40 ? dev.motivo.substring(0, 40) + '...' : dev.motivo}</span>
+                </td>
+                <td style="padding: 12px;">
+                    <span style="display: inline-flex; align-items: center; gap: 4px; padding: 4px 12px; background: ${tipoReembolso.color}15; color: ${tipoReembolso.color}; border-radius: 6px; font-size: 12px; font-weight: 600;">
+                        ${tipoReembolso.icon} ${tipoReembolso.text}
+                    </span>
+                </td>
+                <td style="padding: 12px; font-size: 13px;">${dev.procesado_por}</td>
+                <td style="padding: 12px; text-align: center;">
+                    <button class="btn-icon" onclick="verDetalleDevolucion(${dev.id})" title="Ver detalles completos">
+                        <svg width="16" height="16" viewBox="0 0 20 20" fill="none">
+                            <circle cx="10" cy="10" r="3" stroke="currentColor" stroke-width="2"/>
+                            <path d="M2 10s3-6 8-6 8 6 8 6-3 6-8 6-8-6-8-6z" stroke="currentColor" stroke-width="2"/>
+                        </svg>
+                    </button>
+                </td>
+            </tr>
+        `;
+    });
+    
+    html += `
+                </tbody>
+            </table>
+        </div>
+    `;
+    
+    container.innerHTML = html;
+}
+
+/**
+ * Ver detalles completos de una devolución
+ */
+async function verDetalleDevolucion(devolucionId) {
+    try {
+        const { data: devolucion, error } = await supabaseClient
+            .from('devoluciones')
+            .select(`
+                *,
+                ventas:venta_id (
+                    id,
+                    vendedor_nombre,
+                    created_at,
+                    total,
+                    metodo_pago
+                )
+            `)
+            .eq('id', devolucionId)
+            .single();
+        
+        if (error) throw error;
+        
+        // Parsear productos
+        let productosDevueltos = [];
+        try {
+            productosDevueltos = typeof devolucion.productos_devueltos === 'string' 
+                ? JSON.parse(devolucion.productos_devueltos) 
+                : devolucion.productos_devueltos || [];
+        } catch (e) {
+            productosDevueltos = [];
+        }
+        
+        const fecha = new Date(devolucion.created_at || devolucion.fecha);
+        const fechaTexto = fecha.toLocaleDateString('es-CL', {
+            weekday: 'long',
+            day: '2-digit',
+            month: 'long',
+            year: 'numeric',
+            hour: '2-digit',
+            minute: '2-digit'
+        });
+        
+        const tipoTexto = {
+            'efectivo': '💵 Reembolso en Efectivo',
+            'vale': '🎫 Vale para próxima compra',
+            'cambio': '🔄 Cambio por otro producto'
+        }[devolucion.tipo_reembolso] || devolucion.tipo_reembolso;
+        
+        const detalleHTML = `
+            <div style="background: white; border-radius: 12px; padding: 24px; max-width: 600px;">
+                <h3 style="margin: 0 0 20px; display: flex; align-items: center; gap: 8px;">
+                    🔄 Detalle de Devolución #${devolucion.id}
+                </h3>
+                
+                <div style="display: grid; gap: 16px; margin-bottom: 20px;">
+                    <div style="background: hsl(var(--muted) / 0.3); padding: 12px; border-radius: 8px;">
+                        <p style="font-size: 12px; color: hsl(var(--muted-foreground)); margin: 0;">Fecha de Devolución</p>
+                        <p style="font-weight: 600; margin: 4px 0 0;">${fechaTexto}</p>
+                    </div>
+                    
+                    <div style="background: hsl(var(--muted) / 0.3); padding: 12px; border-radius: 8px;">
+                        <p style="font-size: 12px; color: hsl(var(--muted-foreground)); margin: 0;">Venta Original</p>
+                        <p style="font-weight: 600; margin: 4px 0 0;">#${devolucion.venta_id}</p>
+                    </div>
+                    
+                    <div style="background: hsl(var(--muted) / 0.3); padding: 12px; border-radius: 8px;">
+                        <p style="font-size: 12px; color: hsl(var(--muted-foreground)); margin: 0;">Motivo</p>
+                        <p style="font-weight: 600; margin: 4px 0 0;">${devolucion.motivo}</p>
+                    </div>
+                    
+                    <div style="background: hsl(var(--muted) / 0.3); padding: 12px; border-radius: 8px;">
+                        <p style="font-size: 12px; color: hsl(var(--muted-foreground)); margin: 0;">Tipo de Reembolso</p>
+                        <p style="font-weight: 600; margin: 4px 0 0;">${tipoTexto}</p>
+                    </div>
+                    
+                    <div style="background: hsl(var(--destructive) / 0.1); padding: 12px; border-radius: 8px;">
+                        <p style="font-size: 12px; color: hsl(var(--muted-foreground)); margin: 0;">Total Devuelto</p>
+                        <p style="font-weight: 700; font-size: 24px; color: hsl(var(--destructive)); margin: 4px 0 0;">$${formatoMoneda(devolucion.total_devuelto)}</p>
+                    </div>
+                </div>
+                
+                <div style="margin-bottom: 20px;">
+                    <p style="font-weight: 600; margin: 0 0 8px;">Productos Devueltos:</p>
+                    <ul style="margin: 0; padding-left: 20px;">
+                        ${productosDevueltos.map(p => `
+                            <li>${p.producto_nombre || p.nombre} - Cantidad: ${p.cantidad} × $${formatoMoneda(p.precio_unitario)} = $${formatoMoneda(p.subtotal)}</li>
+                        `).join('')}
+                    </ul>
+                </div>
+                
+                <div style="padding: 12px; background: hsl(var(--muted) / 0.2); border-radius: 8px; font-size: 13px;">
+                    <p style="margin: 0;"><strong>Procesado por:</strong> ${devolucion.procesado_por}</p>
+                    ${devolucion.notas ? `<p style="margin: 8px 0 0;"><strong>Notas:</strong> ${devolucion.notas}</p>` : ''}
+                </div>
+            </div>
+        `;
+        
+        // Crear y mostrar modal simple con alert
+        alert(detalleHTML.replace(/<[^>]*>/g, '\n')); // Versión simplificada
+        
+        // TODO: Crear modal dedicado para mejor UX
+        
+    } catch (error) {
+        console.error('Error cargando detalle de devolución:', error);
+        mostrarNotificacion('Error al cargar detalles', 'error');
     }
 }
 
