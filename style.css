@@ -3633,6 +3633,80 @@ body {
 
   /* Reducir tamaño de fuente en encabezados */
   .inventory-table th {
+    font-size: 12px;
+  }
+}
+
+/* ===================================
+   MÓDULO: DEVOLUCIONES
+   =================================== */
+
+/* Radio cards para tipo de reembolso */
+.radio-card {
+  padding: 16px;
+  border: 2px solid hsl(var(--border));
+  border-radius: 12px;
+  background: white;
+  transition: all 0.2s ease;
+  cursor: pointer;
+  text-align: center;
+}
+
+.radio-card:hover {
+  border-color: hsl(var(--primary));
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+  transform: translateY(-2px);
+}
+
+.radio-card.selected {
+  border-color: hsl(var(--primary));
+  background: hsl(var(--primary) / 0.05);
+  box-shadow: 0 4px 16px hsl(var(--primary) / 0.2);
+}
+
+.radio-card input[type="radio"] {
+  display: none;
+}
+
+/* Producto en lista de devolución */
+.producto-devolucion-item {
+  transition: all 0.2s ease;
+}
+
+.producto-devolucion-item:hover {
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+  transform: translateY(-1px);
+}
+
+/* Botón de peligro (devolución) */
+.btn-danger {
+  background: hsl(var(--destructive));
+  color: white;
+  border: none;
+  padding: 12px 24px;
+  border-radius: 8px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 0.2s;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.btn-danger:hover:not(:disabled) {
+  background: hsl(0 84% 50%);
+  box-shadow: 0 4px 12px hsl(var(--destructive) / 0.3);
+  transform: translateY(-1px);
+}
+
+.btn-danger:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.btn-danger:active:not(:disabled) {
+  transform: translateY(0);
+}
     font-size: 11px;
   }
 }

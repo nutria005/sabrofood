@@ -2063,6 +2063,140 @@
         </div>
     </div>
 
+    <!-- MODAL: DEVOLUCIÓN DE PRODUCTOS -->
+    <div id="modalDevolucion" class="modal" style="display: none;">
+        <div class="modal-overlay" onclick="cerrarModalDevolucion()"></div>
+        <div class="modal-content" style="max-width: 800px; max-height: 90vh; overflow-y: auto;">
+            <div class="modal-header">
+                <div>
+                    <h2 style="margin: 0; display: flex; align-items: center; gap: 8px;">
+                        🔄 Procesar Devolución
+                    </h2>
+                    <p style="margin: 8px 0 0; font-size: 14px; color: hsl(var(--muted-foreground));">
+                        Selecciona los productos a devolver y el tipo de reembolso
+                    </p>
+                </div>
+                <button class="btn-close" onclick="cerrarModalDevolucion()">&times;</button>
+            </div>
+
+            <div class="modal-body">
+                <!-- Información de la venta -->
+                <div id="devolucionInfoVenta" style="background: hsl(var(--muted) / 0.3); padding: 16px; border-radius: 8px; margin-bottom: 24px;">
+                    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 12px;">
+                        <div>
+                            <p style="font-size: 12px; color: hsl(var(--muted-foreground)); margin: 0;">N° de Venta</p>
+                            <p style="font-weight: 700; margin: 4px 0 0;" id="devolucionVentaId">-</p>
+                        </div>
+                        <div>
+                            <p style="font-size: 12px; color: hsl(var(--muted-foreground)); margin: 0;">Fecha Original</p>
+                            <p style="font-weight: 600; margin: 4px 0 0;" id="devolucionFecha">-</p>
+                        </div>
+                        <div>
+                            <p style="font-size: 12px; color: hsl(var(--muted-foreground)); margin: 0;">Vendedor</p>
+                            <p style="font-weight: 600; margin: 4px 0 0;" id="devolucionVendedor">-</p>
+                        </div>
+                        <div>
+                            <p style="font-size: 12px; color: hsl(var(--muted-foreground)); margin: 0;">Total Original</p>
+                            <p style="font-weight: 700; color: hsl(var(--success)); margin: 4px 0 0;" id="devolucionTotalOriginal">-</p>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Lista de productos a devolver -->
+                <div style="margin-bottom: 24px;">
+                    <h3 style="font-size: 16px; font-weight: 700; margin: 0 0 16px;">Productos de la Venta</h3>
+                    <div id="devolucionProductosLista" style="max-height: 300px; overflow-y: auto;">
+                        <div style="text-align: center; padding: 40px; color: hsl(var(--muted-foreground));">
+                            <p>Cargando productos...</p>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Motivo de devolución -->
+                <div style="margin-bottom: 24px;">
+                    <label for="devolucionMotivo" style="display: block; font-weight: 600; margin-bottom: 8px;">
+                        Motivo de la Devolución *
+                    </label>
+                    <select id="devolucionMotivo" class="input" required style="width: 100%;">
+                        <option value="">Selecciona un motivo...</option>
+                        <option value="Producto defectuoso">🔧 Producto defectuoso / dañado</option>
+                        <option value="Error de compra">❌ Error en la compra (producto equivocado)</option>
+                        <option value="Cliente insatisfecho">😞 Cliente insatisfecho con el producto</option>
+                        <option value="Producto no sirve">🐕 Producto no sirve para mascota (alergia, rechazo)</option>
+                        <option value="Cambio de opinión">💭 Cambio de opinión del cliente</option>
+                        <option value="Duplicado">📋 Venta duplicada</option>
+                        <option value="Otro">📝 Otro motivo</option>
+                    </select>
+                </div>
+
+                <!-- Notas adicionales (si el motivo es "Otro") -->
+                <div id="devolucionNotasGroup" style="margin-bottom: 24px; display: none;">
+                    <label for="devolucionNotas" style="display: block; font-weight: 600; margin-bottom: 8px;">
+                        Especifica el motivo
+                    </label>
+                    <textarea id="devolucionNotas" class="input" rows="2" placeholder="Ej: Cliente trajo producto con empaque abierto..." style="width: 100%;"></textarea>
+                </div>
+
+                <!-- Tipo de reembolso -->
+                <div style="margin-bottom: 24px;">
+                    <label style="display: block; font-weight: 600; margin-bottom: 12px;">
+                        Tipo de Reembolso *
+                    </label>
+                    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 12px;">
+                        <div class="radio-card" onclick="seleccionarTipoReembolso('efectivo')">
+                            <input type="radio" name="tipoReembolso" value="efectivo" id="reembolsoEfectivo">
+                            <label for="reembolsoEfectivo" style="cursor: pointer; display: block;">
+                                <div style="font-size: 24px; margin-bottom: 8px;">💵</div>
+                                <div style="font-weight: 700; margin-bottom: 4px;">Efectivo</div>
+                                <div style="font-size: 12px; color: hsl(var(--muted-foreground));">Devolver dinero en efectivo</div>
+                            </label>
+                        </div>
+                        <div class="radio-card" onclick="seleccionarTipoReembolso('vale')">
+                            <input type="radio" name="tipoReembolso" value="vale" id="reembolsoVale">
+                            <label for="reembolsoVale" style="cursor: pointer; display: block;">
+                                <div style="font-size: 24px; margin-bottom: 8px;">🎫</div>
+                                <div style="font-weight: 700; margin-bottom: 4px;">Vale / Crédito</div>
+                                <div style="font-size: 12px; color: hsl(var(--muted-foreground));">Cliente recibe vale para próxima compra</div>
+                            </label>
+                        </div>
+                        <div class="radio-card" onclick="seleccionarTipoReembolso('cambio')">
+                            <input type="radio" name="tipoReembolso" value="cambio" id="reembolsoCambio">
+                            <label for="reembolsoCambio" style="cursor: pointer; display: block;">
+                                <div style="font-size: 24px; margin-bottom: 8px;">🔄</div>
+                                <div style="font-weight: 700; margin-bottom: 4px;">Cambio</div>
+                                <div style="font-size: 12px; color: hsl(var(--muted-foreground));">Cambiar por otro producto</div>
+                            </label>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Resumen del reembolso -->
+                <div id="devolucionResumen" style="background: linear-gradient(135deg, hsl(var(--destructive) / 0.1), hsl(var(--destructive) / 0.05)); border: 2px solid hsl(var(--destructive)); border-radius: 12px; padding: 20px; margin-bottom: 24px; display: none;">
+                    <div style="display: flex; justify-content: space-between; align-items: center;">
+                        <div>
+                            <p style="font-size: 14px; color: hsl(var(--muted-foreground)); margin: 0;">Total a Reembolsar</p>
+                            <p style="font-size: 28px; font-weight: 700; color: hsl(var(--destructive)); margin: 4px 0 0;" id="devolucionTotalReembolso">$0</p>
+                        </div>
+                        <div style="text-align: right;">
+                            <p style="font-size: 12px; color: hsl(var(--muted-foreground)); margin: 0;" id="devolucionCantidadItems">0 productos</p>
+                            <p style="font-size: 12px; color: hsl(var(--muted-foreground)); margin: 4px 0 0;" id="devolucionMetodoReembolso">-</p>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Botones de acción -->
+                <div style="display: flex; gap: 12px; justify-content: flex-end;">
+                    <button class="btn btn-secondary" onclick="cerrarModalDevolucion()">
+                        Cancelar
+                    </button>
+                    <button id="btnConfirmarDevolucion" class="btn btn-danger" onclick="confirmarDevolucion()" disabled>
+                        <span>Procesar Devolución</span>
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <!-- SCRIPTS -->
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>

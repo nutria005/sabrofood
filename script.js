@@ -2526,6 +2526,13 @@ function renderTablaHistorialVentas(ventas) {
                                 <rect x="6" y="14" width="12" height="8" rx="1" stroke="currentColor" stroke-width="2"/>
                             </svg>
                         </button>
+                        ${currentUserRole === 'encargado' ? `
+                        <button class="btn-icon" onclick="abrirModalDevolucion(${v.id})" title="Procesar devolución" style="color: hsl(0 84% 60%);">
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
+                                <path d="M3 10h10a8 8 0 018 8v2M3 10l6 6m-6-6l6-6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                            </svg>
+                        </button>
+                        ` : ''}
                     </td>
                 </tr>
             `;
@@ -6785,5 +6792,487 @@ async function editarSencilloInicial() {
     
     mostrarNotificacion('✅ Sencillo inicial actualizado', 'success');
     console.log(`💵 Sencillo inicial actualizado: $${formatoMoneda(sencilloInicial)}`);
+}
+
+// ===================================
+// MÓDULO: DEVOLUCIONES DE PRODUCTOS
+// ===================================
+
+// Variables globales para devoluciones
+let ventaDevolucion = null;
+let productosDevolucion = [];
+
+/**
+ * Abrir modal de devolución para una venta específica
+ */
+async function abrirModalDevolucion(ventaId) {
+    try {
+        // Verificar que sea encargado
+        if (currentUserRole !== 'encargado') {
+            mostrarNotificacion('Solo el encargado puede procesar devoluciones', 'warning');
+            return;
+        }
+        
+        console.log('🔄 Abriendo modal de devolución para venta:', ventaId);
+        
+        // Cargar detalles de la venta
+        const { data: venta, error: errorVenta } = await supabaseClient
+            .from('ventas')
+            .select('*')
+            .eq('id', ventaId)
+            .single();
+        
+        if (errorVenta) throw errorVenta;
+        
+        if (!venta) {
+            mostrarNotificacion('Venta no encontrada', 'error');
+            return;
+        }
+        
+        // Cargar items de la venta
+        const { data: items, error: errorItems } = await supabaseClient
+            .from('ventas_items')
+            .select('*')
+            .eq('venta_id', ventaId);
+        
+        if (errorItems) throw errorItems;
+        
+        if (!items || items.length === 0) {
+            mostrarNotificacion('Esta venta no tiene productos registrados', 'warning');
+            return;
+        }
+        
+        // Guardar en variables globales
+        ventaDevolucion = venta;
+        productosDevolucion = items.map(item => ({
+            ...item,
+            cantidad_devolucion: 0,
+            seleccionado: false
+        }));
+        
+        // Actualizar UI del modal
+        document.getElementById('devolucionVentaId').textContent = `#${venta.id}`;
+        document.getElementById('devolucionFecha').textContent = new Date(venta.created_at || venta.fecha).toLocaleDateString('es-CL', {
+            day: '2-digit',
+            month: 'short',
+            year: 'numeric',
+            hour: '2-digit',
+            minute: '2-digit'
+        });
+        document.getElementById('devolucionVendedor').textContent = venta.vendedor_nombre || venta.vendedor || 'Sin asignar';
+        document.getElementById('devolucionTotalOriginal').textContent = '$' + formatoMoneda(venta.total);
+        
+        // Renderizar lista de productos
+        renderProductosDevolucion();
+        
+        // Resetear formulario
+        document.getElementById('devolucionMotivo').value = '';
+        document.getElementById('devolucionNotas').value = '';
+        document.getElementById('devolucionNotasGroup').style.display = 'none';
+        document.querySelectorAll('input[name="tipoReembolso"]').forEach(radio => radio.checked = false);
+        document.querySelectorAll('.radio-card').forEach(card => card.classList.remove('selected'));
+        document.getElementById('devolucionResumen').style.display = 'none';
+        document.getElementById('btnConfirmarDevolucion').disabled = true;
+        
+        // Mostrar modal
+        const modal = document.getElementById('modalDevolucion');
+        modal.style.display = 'flex';
+        setTimeout(() => modal.classList.add('show'), 10);
+        
+    } catch (error) {
+        console.error('Error abriendo modal devolución:', error);
+        mostrarNotificacion('Error al cargar datos de la venta', 'error');
+    }
+}
+
+/**
+ * Cerrar modal de devolución
+ */
+function cerrarModalDevolucion() {
+    const modal = document.getElementById('modalDevolucion');
+    modal.classList.remove('show');
+    setTimeout(() => {
+        modal.style.display = 'none';
+        ventaDevolucion = null;
+        productosDevolucion = [];
+    }, 200);
+}
+
+/**
+ * Renderizar lista de productos disponibles para devolución
+ */
+function renderProductosDevolucion() {
+    const container = document.getElementById('devolucionProductosLista');
+    
+    if (!productosDevolucion || productosDevolucion.length === 0) {
+        container.innerHTML = `
+            <div style="text-align: center; padding: 40px; color: hsl(var(--muted-foreground));">
+                <p>No hay productos en esta venta</p>
+            </div>
+        `;
+        return;
+    }
+    
+    container.innerHTML = productosDevolucion.map((item, index) => `
+        <div class="producto-devolucion-item" style="border: 2px solid ${item.seleccionado ? 'hsl(var(--primary))' : 'hsl(var(--border))'}; border-radius: 8px; padding: 16px; margin-bottom: 12px; background: ${item.seleccionado ? 'hsl(var(--primary) / 0.05)' : 'white'}; transition: all 0.2s;">
+            <div style="display: flex; align-items: center; gap: 12px;">
+                <!-- Checkbox -->
+                <input type="checkbox" 
+                    id="producto_dev_${index}" 
+                    ${item.seleccionado ? 'checked' : ''} 
+                    onchange="toggleProductoDevolucion(${index})"
+                    style="width: 20px; height: 20px; cursor: pointer;">
+                
+                <!-- Info del producto -->
+                <div style="flex: 1;">
+                    <label for="producto_dev_${index}" style="cursor: pointer; display: block;">
+                        <p style="font-weight: 700; margin: 0;">${item.producto_nombre}</p>
+                        <p style="font-size: 13px; color: hsl(var(--muted-foreground)); margin: 4px 0 0;">
+                            Cantidad vendida: ${item.cantidad} × $${formatoMoneda(item.precio_unitario)} = $${formatoMoneda(item.subtotal)}
+                        </p>
+                    </label>
+                </div>
+                
+                <!-- Cantidad a devolver -->
+                <div style="display: flex; align-items: center; gap: 8px;">
+                    <label style="font-size: 13px; color: hsl(var(--muted-foreground));">Devolver:</label>
+                    <input type="number" 
+                        id="cantidad_dev_${index}"
+                        min="1" 
+                        max="${item.cantidad}" 
+                        value="${item.cantidad_devolucion || item.cantidad}"
+                        ${!item.seleccionado ? 'disabled' : ''}
+                        onchange="actualizarCantidadDevolucion(${index})"
+                        style="width: 70px; padding: 8px; border: 1px solid hsl(var(--border)); border-radius: 6px; text-align: center; font-weight: 700;">
+                </div>
+            </div>
+        </div>
+    `).join('');
+}
+
+/**
+ * Toggle selección de producto para devolución
+ */
+function toggleProductoDevolucion(index) {
+    productosDevolucion[index].seleccionado = !productosDevolucion[index].seleccionado;
+    
+    if (productosDevolucion[index].seleccionado) {
+        productosDevolucion[index].cantidad_devolucion = productosDevolucion[index].cantidad;
+    } else {
+        productosDevolucion[index].cantidad_devolucion = 0;
+    }
+    
+    renderProductosDevolucion();
+    calcularTotalDevolucion();
+}
+
+/**
+ * Actualizar cantidad a devolver de un producto
+ */
+function actualizarCantidadDevolucion(index) {
+    const input = document.getElementById(`cantidad_dev_${index}`);
+    let cantidad = parseInt(input.value);
+    
+    if (isNaN(cantidad) || cantidad < 1) {
+        cantidad = 1;
+    }
+    
+    if (cantidad > productosDevolucion[index].cantidad) {
+        cantidad = productosDevolucion[index].cantidad;
+    }
+    
+    productosDevolucion[index].cantidad_devolucion = cantidad;
+    input.value = cantidad;
+    
+    calcularTotalDevolucion();
+}
+
+/**
+ * Calcular total de la devolución
+ */
+function calcularTotalDevolucion() {
+    const productosSeleccionados = productosDevolucion.filter(p => p.seleccionado);
+    
+    if (productosSeleccionados.length === 0) {
+        document.getElementById('devolucionResumen').style.display = 'none';
+        document.getElementById('btnConfirmarDevolucion').disabled = true;
+        return;
+    }
+    
+    const totalReembolso = productosSeleccionados.reduce((sum, item) => {
+        return sum + (item.precio_unitario * item.cantidad_devolucion);
+    }, 0);
+    
+    const cantidadItems = productosSeleccionados.reduce((sum, item) => sum + item.cantidad_devolucion, 0);
+    
+    // Actualizar UI
+    document.getElementById('devolucionTotalReembolso').textContent = '$' + formatoMoneda(totalReembolso);
+    document.getElementById('devolucionCantidadItems').textContent = `${cantidadItems} producto${cantidadItems > 1 ? 's' : ''}`;
+    
+    // Mostrar resumen
+    document.getElementById('devolucionResumen').style.display = 'block';
+    
+    // Validar si puede confirmar
+    validarFormularioDevolucion();
+}
+
+/**
+ * Toggle para mostrar notas si motivo es "Otro"
+ */
+function toggleNotasDevolucion() {
+    const motivo = document.getElementById('devolucionMotivo').value;
+    const notasGroup = document.getElementById('devolucionNotasGroup');
+    
+    if (motivo === 'Otro') {
+        notasGroup.style.display = 'block';
+    } else {
+        notasGroup.style.display = 'none';
+        document.getElementById('devolucionNotas').value = '';
+    }
+    
+    validarFormularioDevolucion();
+}
+
+// Agregar listener al select de motivo
+document.addEventListener('DOMContentLoaded', () => {
+    const selectMotivo = document.getElementById('devolucionMotivo');
+    if (selectMotivo) {
+        selectMotivo.addEventListener('change', toggleNotasDevolucion);
+    }
+});
+
+/**
+ * Seleccionar tipo de reembolso
+ */
+function seleccionarTipoReembolso(tipo) {
+    // Marcar radio
+    document.getElementById(`reembolso${tipo.charAt(0).toUpperCase() + tipo.slice(1)}`).checked = true;
+    
+    // Actualizar estilos de cards
+    document.querySelectorAll('.radio-card').forEach(card => card.classList.remove('selected'));
+    document.querySelector(`input[value="${tipo}"]`).closest('.radio-card').classList.add('selected');
+    
+    // Actualizar texto en resumen
+    const textos = {
+        'efectivo': '💵 Reembolso en efectivo',
+        'vale': '🎫 Vale para próxima compra',
+        'cambio': '🔄 Cambio por otro producto'
+    };
+    document.getElementById('devolucionMetodoReembolso').textContent = textos[tipo];
+    
+    validarFormularioDevolucion();
+}
+
+/**
+ * Validar que todos los campos estén completos
+ */
+function validarFormularioDevolucion() {
+    const motivo = document.getElementById('devolucionMotivo').value;
+    const tipoReembolso = document.querySelector('input[name="tipoReembolso"]:checked');
+    const productosSeleccionados = productosDevolucion.filter(p => p.seleccionado);
+    
+    let valido = true;
+    
+    // Validar productos seleccionados
+    if (productosSeleccionados.length === 0) {
+        valido = false;
+    }
+    
+    // Validar motivo
+    if (!motivo) {
+        valido = false;
+    }
+    
+    // Si motivo es "Otro", validar notas
+    if (motivo === 'Otro') {
+        const notas = document.getElementById('devolucionNotas').value.trim();
+        if (!notas) {
+            valido = false;
+        }
+    }
+    
+    // Validar tipo de reembolso
+    if (!tipoReembolso) {
+        valido = false;
+    }
+    
+    document.getElementById('btnConfirmarDevolucion').disabled = !valido;
+}
+
+/**
+ * Confirmar y procesar la devolución
+ */
+async function confirmarDevolucion() {
+    try {
+        const motivo = document.getElementById('devolucionMotivo').value;
+        const notas = document.getElementById('devolucionNotas').value.trim();
+        const tipoReembolso = document.querySelector('input[name="tipoReembolso"]:checked').value;
+        const productosSeleccionados = productosDevolucion.filter(p => p.seleccionado);
+        
+        if (productosSeleccionados.length === 0) {
+            mostrarNotificacion('Selecciona al menos un producto', 'warning');
+            return;
+        }
+        
+        // Calcular total
+        const totalReembolso = productosSeleccionados.reduce((sum, item) => {
+            return sum + (item.precio_unitario * item.cantidad_devolucion);
+        }, 0);
+        
+        // Confirmar con el usuario
+        const motivoFinal = motivo === 'Otro' ? notas : motivo;
+        const tipoTexto = {
+            'efectivo': 'Devolución en Efectivo',
+            'vale': 'Vale para próxima compra',
+            'cambio': 'Cambio por otro producto'
+        }[tipoReembolso];
+        
+        const confirmMsg = `¿Confirmar devolución de venta #${ventaDevolucion.id}?
+
+📦 Productos: ${productosSeleccionados.length}
+💰 Total a reembolsar: $${formatoMoneda(totalReembolso)}
+📋 Motivo: ${motivoFinal}
+🔄 Tipo: ${tipoTexto}
+
+⚠️ Esta acción:
+• Restaurará el stock de los productos
+• ${tipoReembolso === 'efectivo' ? 'Restará efectivo de la caja del día' : 'Registrará el ' + tipoTexto.toLowerCase()}
+• Quedará registrada en el historial`;
+        
+        if (!confirm(confirmMsg)) return;
+        
+        // Deshabilitar botón
+        const btnConfirmar = document.getElementById('btnConfirmarDevolucion');
+        btnConfirmar.disabled = true;
+        btnConfirmar.innerHTML = '<span>Procesando...</span>';
+        
+        // Procesar devolución
+        await procesarDevolucion({
+            ventaId: ventaDevolucion.id,
+            productos: productosSeleccionados.map(p => ({
+                producto_id: p.producto_id,
+                producto_nombre: p.producto_nombre,
+                cantidad: p.cantidad_devolucion,
+                precio_unitario: p.precio_unitario,
+                subtotal: p.precio_unitario * p.cantidad_devolucion
+            })),
+            totalReembolso,
+            motivo: motivoFinal,
+            tipoReembolso,
+            procesadoPor: currentUser
+        });
+        
+        btnConfirmar.innerHTML = '<span>Procesar Devolución</span>';
+        
+    } catch (error) {
+        console.error('Error confirmando devolución:', error);
+        mostrarNotificacion('Error al procesar devolución', 'error');
+        document.getElementById('btnConfirmarDevolucion').disabled = false;
+        document.getElementById('btnConfirmarDevolucion').innerHTML = '<span>Procesar Devolución</span>';
+    }
+}
+
+/**
+ * Procesar devolución en backend
+ */
+async function procesarDevolucion(datosDevolucion) {
+    try {
+        console.log('🔄 Procesando devolución:', datosDevolucion);
+        
+        // 1. Registrar devolución en tabla
+        const { data: devolucion, error: errorDevolucion } = await supabaseClient
+            .from('devoluciones')
+            .insert({
+                venta_id: datosDevolucion.ventaId,
+                productos_devueltos: datosDevolucion.productos,
+                total_devuelto: datosDevolucion.totalReembolso,
+                motivo: datosDevolucion.motivo,
+                tipo_reembolso: datosDevolucion.tipoReembolso,
+                procesado_por: datosDevolucion.procesadoPor,
+                notas: `Devolución procesada. Productos: ${datosDevolucion.productos.map(p => `${p.producto_nombre} (${p.cantidad})`).join(', ')}`
+            })
+            .select()
+            .single();
+        
+        if (errorDevolucion) throw errorDevolucion;
+        
+        console.log('✅ Devolución registrada:', devolucion);
+        
+        // 2. Restaurar stock de productos
+        for (const producto of datosDevolucion.productos) {
+            if (!producto.producto_id) continue;
+            
+            // Obtener stock actual
+            const { data: prodActual, error: errorProd } = await supabaseClient
+                .from('productos')
+                .select('stock')
+                .eq('id', producto.producto_id)
+                .single();
+            
+            if (errorProd) {
+                console.warn(`⚠️ No se pudo obtener stock del producto ${producto.producto_id}`);
+                continue;
+            }
+            
+            // Sumar cantidad devuelta
+            const nuevoStock = prodActual.stock + producto.cantidad;
+            
+            const { error: errorUpdate } = await supabaseClient
+                .from('productos')
+                .update({ stock: nuevoStock })
+                .eq('id', producto.producto_id);
+            
+            if (errorUpdate) {
+                console.warn(`⚠️ No se pudo actualizar stock del producto ${producto.producto_id}`);
+            } else {
+                console.log(`✅ Stock restaurado: ${producto.producto_nombre} +${producto.cantidad} = ${nuevoStock}`);
+            }
+        }
+        
+        // 3. Registrar en gastos si es reembolso en efectivo (para ajustar caja)
+        if (datosDevolucion.tipoReembolso === 'efectivo') {
+            const { error: errorGasto } = await supabaseClient
+                .from('gastos')
+                .insert({
+                    monto: datosDevolucion.totalReembolso,
+                    descripcion: `Devolución venta #${datosDevolucion.ventaId}`,
+                    categoria: 'Devolución',
+                    asignado_a: datosDevolucion.procesadoPor,
+                    registrado_por: datosDevolucion.procesadoPor,
+                    fecha: new Date().toISOString()
+                });
+            
+            if (errorGasto) {
+                console.warn('⚠️ No se pudo registrar gasto de devolución:', errorGasto);
+            } else {
+                console.log('✅ Gasto de devolución registrado en caja');
+            }
+        }
+        
+        // 4. Mostrar éxito
+        mostrarNotificacion(`✅ Devolución procesada exitosamente - $${formatoMoneda(datosDevolucion.totalReembolso)}`, 'success');
+        
+        // 5. Cerrar modal
+        cerrarModalDevolucion();
+        
+        // 6. Recargar ventas si estamos en esa vista
+        if (currentView === 'sales') {
+            await cargarVentas();
+        }
+        
+        // 7. Recargar inventario si cambió stock
+        if (currentView === 'inventory') {
+            await cargarInventario();
+        }
+        
+        // 8. Recargar caja si es la vista actual
+        if (currentView === 'caja') {
+            await cargarDatosCaja();
+        }
+        
+    } catch (error) {
+        console.error('❌ Error procesando devolución:', error);
+        throw error;
+    }
 }
 
