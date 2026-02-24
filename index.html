@@ -2241,44 +2241,91 @@
 
     <!-- MODAL: Registrar Merma/Pérdida -->
     <div id="modalMerma" class="modal" style="display: none;">
-        <div class="modal-content" style="max-width: 500px;">
+        <div class="modal-overlay" onclick="cerrarModalMerma()"></div>
+        <div class="modal-content" style="max-width: 600px; max-height: 90vh; overflow-y: auto;">
             <div class="modal-header">
-                <h2 style="margin: 0; font-size: 20px; font-weight: 600;">📦 Registrar Merma o Pérdida</h2>
-                <button class="btn-close" onclick="cerrarModalMerma()" aria-label="Cerrar">
-                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
-                        <path d="M18 6L6 18M6 6l12 12" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
-                    </svg>
-                </button>
+                <div>
+                    <h2 style="margin: 0; display: flex; align-items: center; gap: 8px; font-size: 20px; font-weight: 700;">
+                        📦 Registrar Merma o Pérdida
+                    </h2>
+                    <p style="margin: 8px 0 0; font-size: 14px; color: hsl(var(--muted-foreground));">
+                        Dar de baja productos dañados, vencidos o perdidos
+                    </p>
+                </div>
+                <button class="btn-close" onclick="cerrarModalMerma()">&times;</button>
             </div>
 
             <div class="modal-body" style="padding: 24px;">
-                <!-- Seleccionar Producto -->
-                <div style="margin-bottom: 20px;">
-                    <label for="mermaProducto" style="display: block; font-weight: 500; margin-bottom: 8px;">Producto *</label>
-                    <select id="mermaProducto" class="input" onchange="seleccionarProductoMerma()" required>
-                        <option value="">Seleccione un producto...</option>
-                    </select>
-                    <p id="mermaStockActual" style="font-size: 12px; color: hsl(var(--muted-foreground)); margin-top: 4px;">Stock actual: -</p>
+                <!-- Buscador Inteligente de Producto -->
+                <div style="margin-bottom: 24px;">
+                    <label for="mermaBuscadorProducto" style="display: block; font-weight: 600; margin-bottom: 8px; font-size: 14px;">
+                        🔍 Buscar Producto *
+                    </label>
+                    <div style="position: relative;">
+                        <input 
+                            type="text" 
+                            id="mermaBuscadorProducto" 
+                            class="input" 
+                            placeholder="Escribe para buscar..." 
+                            oninput="buscarProductoMerma()"
+                            onfocus="mostrarResultadosBusqueda()"
+                            autocomplete="off"
+                            style="padding-right: 40px;"
+                        />
+                        <svg width="20" height="20" viewBox="0 0 20 20" fill="none" style="position: absolute; right: 12px; top: 50%; transform: translateY(-50%); opacity: 0.4; pointer-events: none;">
+                            <circle cx="8" cy="8" r="6" stroke="currentColor" stroke-width="2"/>
+                            <path d="M12 12l6 6" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+                        </svg>
+                    </div>
+                    
+                    <!-- Resultados de búsqueda -->
+                    <div id="mermaResultadosBusqueda" style="display: none; position: relative; margin-top: 8px; background: white; border: 1px solid hsl(var(--border)); border-radius: 8px; max-height: 250px; overflow-y: auto; box-shadow: 0 4px 12px rgba(0,0,0,0.1); z-index: 10;">
+                        <!-- Aquí se llenarán los resultados -->
+                    </div>
+                    
+                    <!-- Producto seleccionado -->
+                    <div id="mermaProductoSeleccionado" style="display: none; margin-top: 12px; padding: 12px; background: hsl(var(--primary) / 0.05); border: 2px solid hsl(var(--primary) / 0.2); border-radius: 8px;">
+                        <div style="display: flex; justify-content: space-between; align-items: center;">
+                            <div>
+                                <p style="margin: 0; font-weight: 600; font-size: 14px;" id="mermaProductoNombre">-</p>
+                                <p id="mermaStockActual" style="font-size: 12px; color: hsl(var(--muted-foreground)); margin: 4px 0 0;">Stock actual: -</p>
+                            </div>
+                            <button onclick="limpiarSeleccionMerma()" style="background: none; border: none; cursor: pointer; color: hsl(var(--destructive)); padding: 4px;" title="Cambiar producto">
+                                <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
+                                    <path d="M15 5L5 15M5 5l10 10" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+                                </svg>
+                            </button>
+                        </div>
+                    </div>
                 </div>
 
                 <!-- Cantidad -->
-                <div style="margin-bottom: 20px;">
-                    <label for="mermaCantidad" style="display: block; font-weight: 500; margin-bottom: 8px;">Cantidad a dar de baja *</label>
+                <div style="margin-bottom: 24px;">
+                    <label for="mermaCantidad" style="display: block; font-weight: 600; margin-bottom: 8px; font-size: 14px;">
+                        🔢 Cantidad a dar de baja *
+                    </label>
                     <input 
                         type="number" 
                         id="mermaCantidad" 
                         class="input" 
                         min="1" 
-                        placeholder="Ingrese cantidad..." 
+                        placeholder="Ej: 5" 
                         oninput="validarFormularioMerma()" 
+                        disabled
                         required
+                        style="font-size: 16px; font-weight: 600;"
                     />
+                    <p style="font-size: 12px; color: hsl(var(--muted-foreground)); margin-top: 4px;">
+                        💡 Selecciona primero un producto
+                    </p>
                 </div>
 
                 <!-- Motivo -->
-                <div style="margin-bottom: 20px;">
-                    <label for="mermaMotivo" style="display: block; font-weight: 500; margin-bottom: 8px;">Motivo *</label>
-                    <select id="mermaMotivo" class="input" onchange="toggleNotasMerma()" required>
+                <div style="margin-bottom: 24px;">
+                    <label for="mermaMotivo" style="display: block; font-weight: 600; margin-bottom: 8px; font-size: 14px;">
+                        📝 Motivo de la Merma *
+                    </label>
+                    <select id="mermaMotivo" class="input" onchange="toggleNotasMerma()" required style="font-size: 14px;">
                         <option value="">Seleccione un motivo...</option>
                         <option value="Producto vencido">Producto vencido</option>
                         <option value="Producto dañado">Producto dañado</option>
@@ -2292,30 +2339,44 @@
                 </div>
 
                 <!-- Notas (opcional, visible si motivo es "Otro") -->
-                <div id="mermaNotasContainer" style="margin-bottom: 20px; display: none;">
-                    <label for="mermaNotas" style="display: block; font-weight: 500; margin-bottom: 8px;">Especifique el motivo *</label>
+                <div id="mermaNotasContainer" style="margin-bottom: 24px; display: none;">
+                    <label for="mermaNotas" style="display: block; font-weight: 600; margin-bottom: 8px; font-size: 14px;">
+                        ✏️ Especifique el motivo *
+                    </label>
                     <textarea 
                         id="mermaNotas" 
                         class="input" 
                         rows="3" 
-                        placeholder="Describa el motivo de la merma..." 
+                        placeholder="Describa detalladamente el motivo de la merma..." 
                         oninput="validarFormularioMerma()"
+                        style="resize: vertical;"
                     ></textarea>
                 </div>
 
                 <!-- Resumen -->
-                <div id="mermaResumen" style="background: hsl(var(--muted)); padding: 16px; border-radius: 8px; margin-top: 20px; display: none;">
-                    <p style="margin: 0 0 8px 0; font-weight: 600; color: hsl(var(--destructive));">⚠️ Atención</p>
-                    <p id="mermaTextoResumen" style="margin: 0; font-size: 14px; color: hsl(var(--foreground));">-</p>
+                <div id="mermaResumen" style="background: linear-gradient(135deg, hsl(var(--destructive) / 0.05) 0%, hsl(var(--destructive) / 0.1) 100%); border: 2px solid hsl(var(--destructive) / 0.2); padding: 20px; border-radius: 12px; margin-top: 24px; display: none;">
+                    <div style="display: flex; align-items: start; gap: 12px;">
+                        <div style="font-size: 32px; line-height: 1;">⚠️</div>
+                        <div style="flex: 1;">
+                            <p style="margin: 0 0 8px 0; font-weight: 700; color: hsl(var(--destructive)); font-size: 15px;">Confirmar Baja de Stock</p>
+                            <p id="mermaTextoResumen" style="margin: 0; font-size: 14px; color: hsl(var(--foreground)); line-height: 1.5;">-</p>
+                        </div>
+                    </div>
                 </div>
             </div>
 
             <!-- Botones de acción -->
-            <div style="display: flex; gap: 12px; justify-content: flex-end; padding: 0 24px 24px;">
+            <div style="display: flex; gap: 12px; justify-content: flex-end; padding: 0 24px 24px; border-top: 1px solid hsl(var(--border)); padding-top: 20px; margin-top: 8px;">
                 <button class="btn btn-secondary" onclick="cerrarModalMerma()">
+                    <svg width="16" height="16" viewBox="0 0 20 20" fill="none" style="margin-right: 6px;">
+                        <path d="M15 5L5 15M5 5l10 10" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+                    </svg>
                     Cancelar
                 </button>
                 <button id="btnConfirmarMerma" class="btn btn-danger" onclick="confirmarMerma()" disabled>
+                    <svg width="16" height="16" viewBox="0 0 20 20" fill="none" style="margin-right: 6px;">
+                        <path d="M10 6v4m0 4h.01M6 2l2 2m6-2l-2 2m-6 14h8a2 2 0 002-2V8l-6-6H6a2 2 0 00-2 2v12a2 2 0 002 2z" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+                    </svg>
                     <span>Registrar Merma</span>
                 </button>
             </div>

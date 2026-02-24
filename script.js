@@ -7621,6 +7621,7 @@ async function verDetalleDevolucion(devolucionId) {
 // ============================================
 
 let productoMermaSeleccionado = null;
+let productosDisponiblesMerma = [];
 
 /**
  * Abrir modal para registrar merma
@@ -7638,41 +7639,180 @@ async function abrirModalMerma() {
     modal.style.display = 'flex';
     
     // Limpiar formulario
-    document.getElementById('mermaProducto').value = '';
+    limpiarSeleccionMerma();
+    document.getElementById('mermaBuscadorProducto').value = '';
     document.getElementById('mermaCantidad').value = '';
     document.getElementById('mermaMotivo').value = '';
     document.getElementById('mermaNotas').value = '';
     document.getElementById('mermaNotasContainer').style.display = 'none';
     document.getElementById('mermaResumen').style.display = 'none';
-    document.getElementById('mermaStockActual').textContent = 'Stock actual: -';
+    document.getElementById('mermaResultadosBusqueda').style.display = 'none';
+    document.getElementById('mermaCantidad').disabled = true;
     productoMermaSeleccionado = null;
     
     // Cargar productos disponibles
     try {
         const { data: productos, error } = await supabaseClient
             .from('productos')
-            .select('id, nombre, stock')
+            .select('id, nombre, stock, categoria')
             .order('nombre');
         
         if (error) throw error;
         
-        const selectProducto = document.getElementById('mermaProducto');
-        selectProducto.innerHTML = '<option value="">Seleccione un producto...</option>';
-        
-        productos.forEach(p => {
-            const option = document.createElement('option');
-            option.value = p.id;
-            option.textContent = `${p.nombre} (Stock: ${p.stock})`;
-            option.dataset.stock = p.stock;
-            option.dataset.nombre = p.nombre;
-            selectProducto.appendChild(option);
-        });
-        
-        console.log('✅ Productos cargados:', productos.length);
+        productosDisponiblesMerma = productos || [];
+        console.log('✅ Productos cargados para búsqueda:', productosDisponiblesMerma.length);
         
     } catch (error) {
         console.error('Error cargando productos:', error);
         mostrarNotificacion('Error al cargar productos', 'error');
+        productosDisponiblesMerma = [];
+    }
+    
+    // Focus en el buscador
+    setTimeout(() => {
+        document.getElementById('mermaBuscadorProducto')?.focus();
+    }, 100);
+    
+    validarFormularioMerma();
+}
+
+/**
+ * Buscar productos en tiempo real
+ */
+function buscarProductoMerma() {
+    const input = document.getElementById('mermaBuscadorProducto');
+    const resultadosDiv = document.getElementById('mermaResultadosBusqueda');
+    const query = input.value.toLowerCase().trim();
+    
+    // Si no hay query, ocultar resultados
+    if (query.length === 0) {
+        resultadosDiv.style.display = 'none';
+        return;
+    }
+    
+    // Filtrar productos que coincidan
+    const resultados = productosDisponiblesMerma.filter(p => {
+        const nombreMatch = p.nombre.toLowerCase().includes(query);
+        const categoriaMatch = p.categoria && p.categoria.toLowerCase().includes(query);
+        return nombreMatch || categoriaMatch;
+    }).slice(0, 8); // Máximo 8 resultados
+    
+    // Mostrar resultados
+    if (resultados.length === 0) {
+        resultadosDiv.innerHTML = `
+            <div style="padding: 16px; text-align: center; color: hsl(var(--muted-foreground));">
+                <p style="margin: 0; font-size: 14px;">No se encontraron productos</p>
+            </div>
+        `;
+        resultadosDiv.style.display = 'block';
+    } else {
+        let html = '';
+        resultados.forEach((p, index) => {
+            const stockColor = p.stock === 0 ? 'hsl(var(--destructive))' : p.stock <= 5 ? 'hsl(38 92% 50%)' : 'hsl(142 76% 36%)';
+            const stockIcon = p.stock === 0 ? '❌' : p.stock <= 5 ? '⚠️' : '✅';
+            
+            html += `
+                <div 
+                    onclick="seleccionarProductoBuscadorMerma(${p.id}, '${p.nombre.replace(/'/g, "\\'")}', ${p.stock})" 
+                    style="padding: 12px 16px; cursor: pointer; border-bottom: 1px solid hsl(var(--border)); transition: background 0.2s;"
+                    onmouseover="this.style.background='hsl(var(--muted) / 0.5)'"
+                    onmouseout="this.style.background='transparent'"
+                >
+                    <div style="display: flex; justify-content: space-between; align-items: center;">
+                        <div style="flex: 1;">
+                            <p style="margin: 0; font-weight: 600; font-size: 14px;">${escapeHtml(p.nombre)}</p>
+                            ${p.categoria ? `<p style="margin: 4px 0 0; font-size: 12px; color: hsl(var(--muted-foreground));">${escapeHtml(p.categoria)}</p>` : ''}
+                        </div>
+                        <div style="text-align: right; margin-left: 12px;">
+                            <p style="margin: 0; font-weight: 700; color: ${stockColor}; font-size: 14px;">${stockIcon} ${p.stock}</p>
+                            <p style="margin: 2px 0 0; font-size: 11px; color: hsl(var(--muted-foreground));">Stock</p>
+                        </div>
+                    </div>
+                </div>
+            `;
+        });
+        
+        resultadosDiv.innerHTML = html;
+        resultadosDiv.style.display = 'block';
+    }
+}
+
+/**
+ * Mostrar resultados al hacer focus
+ */
+function mostrarResultadosBusqueda() {
+    const input = document.getElementById('mermaBuscadorProducto');
+    if (input.value.trim().length > 0) {
+        buscarProductoMerma();
+    }
+}
+
+/**
+ * Seleccionar producto desde el buscador
+ */
+function seleccionarProductoBuscadorMerma(id, nombre, stock) {
+    productoMermaSeleccionado = {
+        id: id,
+        nombre: nombre,
+        stock: stock
+    };
+    
+    // Ocultar buscador y resultados
+    document.getElementById('mermaBuscadorProducto').style.display = 'none';
+    document.getElementById('mermaResultadosBusqueda').style.display = 'none';
+    
+    // Mostrar producto seleccionado
+    const seleccionadoDiv = document.getElementById('mermaProductoSeleccionado');
+    document.getElementById('mermaProductoNombre').textContent = nombre;
+    
+    const stockActualElem = document.getElementById('mermaStockActual');
+    stockActualElem.textContent = `Stock actual: ${stock} unidades`;
+    stockActualElem.style.color = stock > 0 ? 'hsl(142 76% 36%)' : 'hsl(var(--destructive))';
+    
+    seleccionadoDiv.style.display = 'block';
+    
+    // Configurar campo de cantidad
+    const cantidadInput = document.getElementById('mermaCantidad');
+    cantidadInput.max = stock;
+    
+    if (stock === 0) {
+        cantidadInput.disabled = true;
+        cantidadInput.value = '';
+        mostrarNotificacion('Este producto no tiene stock disponible', 'warning');
+    } else {
+        cantidadInput.disabled = false;
+        cantidadInput.focus();
+    }
+    
+    validarFormularioMerma();
+}
+
+/**
+ * Limpiar selección y volver al buscador
+ */
+function limpiarSeleccionMerma() {
+    productoMermaSeleccionado = null;
+    
+    // Mostrar buscador
+    const buscador = document.getElementById('mermaBuscadorProducto');
+    if (buscador) {
+        buscador.style.display = 'block';
+        buscador.value = '';
+    }
+    
+    // Ocultar producto seleccionado
+    const seleccionado = document.getElementById('mermaProductoSeleccionado');
+    if (seleccionado) seleccionado.style.display = 'none';
+    
+    // Ocultar resultados
+    const resultados = document.getElementById('mermaResultadosBusqueda');
+    if (resultados) resultados.style.display = 'none';
+    
+    // Deshabilitar cantidad
+    const cantidadInput = document.getElementById('mermaCantidad');
+    if (cantidadInput) {
+        cantidadInput.disabled = true;
+        cantidadInput.value = '';
     }
     
     validarFormularioMerma();
@@ -7687,49 +7827,6 @@ function cerrarModalMerma() {
         modal.style.display = 'none';
     }
     productoMermaSeleccionado = null;
-}
-
-/**
- * Seleccionar producto y mostrar stock
- */
-function seleccionarProductoMerma() {
-    const select = document.getElementById('mermaProducto');
-    const selectedOption = select.options[select.selectedIndex];
-    const stockActualElem = document.getElementById('mermaStockActual');
-    const cantidadInput = document.getElementById('mermaCantidad');
-    
-    if (selectedOption.value) {
-        const stock = parseInt(selectedOption.dataset.stock, 10);
-        const nombre = selectedOption.dataset.nombre;
-        
-        productoMermaSeleccionado = {
-            id: parseInt(selectedOption.value, 10),
-            nombre: nombre,
-            stock: stock
-        };
-        
-        stockActualElem.textContent = `Stock actual: ${stock} unidades`;
-        stockActualElem.style.color = stock > 0 ? 'hsl(142 76% 36%)' : 'hsl(var(--destructive))';
-        
-        // Configurar límite de cantidad
-        cantidadInput.max = stock;
-        
-        if (stock === 0) {
-            cantidadInput.disabled = true;
-            cantidadInput.value = '';
-            mostrarNotificacion('Este producto no tiene stock disponible', 'warning');
-        } else {
-            cantidadInput.disabled = false;
-        }
-    } else {
-        stockActualElem.textContent = 'Stock actual: -';
-        stockActualElem.style.color = 'hsl(var(--muted-foreground))';
-        productoMermaSeleccionado = null;
-        cantidadInput.disabled = true;
-        cantidadInput.value = '';
-    }
-    
-    validarFormularioMerma();
 }
 
 /**
