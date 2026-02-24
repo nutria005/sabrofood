@@ -2117,7 +2117,7 @@
                     <label for="devolucionMotivo" style="display: block; font-weight: 600; margin-bottom: 8px;">
                         Motivo de la Devolución *
                     </label>
-                    <select id="devolucionMotivo" class="input" required style="width: 100%;">
+                    <select id="devolucionMotivo" class="input" required style="width: 100%;" onchange="toggleNotasDevolucion()">
                         <option value="">Selecciona un motivo...</option>
                         <option value="Producto defectuoso">🔧 Producto defectuoso / dañado</option>
                         <option value="Error de compra">❌ Error en la compra (producto equivocado)</option>

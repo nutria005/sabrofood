@@ -6850,34 +6850,54 @@ async function abrirModalDevolucion(ventaId) {
             seleccionado: false
         }));
         
-        // Actualizar UI del modal
-        document.getElementById('devolucionVentaId').textContent = `#${venta.id}`;
-        document.getElementById('devolucionFecha').textContent = new Date(venta.created_at || venta.fecha).toLocaleDateString('es-CL', {
-            day: '2-digit',
-            month: 'short',
-            year: 'numeric',
-            hour: '2-digit',
-            minute: '2-digit'
-        });
-        document.getElementById('devolucionVendedor').textContent = venta.vendedor_nombre || venta.vendedor || 'Sin asignar';
-        document.getElementById('devolucionTotalOriginal').textContent = '$' + formatoMoneda(venta.total);
-        
-        // Renderizar lista de productos
-        renderProductosDevolucion();
-        
-        // Resetear formulario
-        document.getElementById('devolucionMotivo').value = '';
-        document.getElementById('devolucionNotas').value = '';
-        document.getElementById('devolucionNotasGroup').style.display = 'none';
-        document.querySelectorAll('input[name="tipoReembolso"]').forEach(radio => radio.checked = false);
-        document.querySelectorAll('.radio-card').forEach(card => card.classList.remove('selected'));
-        document.getElementById('devolucionResumen').style.display = 'none';
-        document.getElementById('btnConfirmarDevolucion').disabled = true;
-        
-        // Mostrar modal
+        // Mostrar modal PRIMERO
         const modal = document.getElementById('modalDevolucion');
+        if (!modal) {
+            console.error('❌ Modal de devolución no encontrado en el DOM');
+            mostrarNotificacion('Error: Modal no disponible', 'error');
+            return;
+        }
+        
         modal.style.display = 'flex';
         setTimeout(() => modal.classList.add('show'), 10);
+        
+        // LUEGO actualizar UI del modal (después de que sea visible)
+        setTimeout(() => {
+            const ventaIdElem = document.getElementById('devolucionVentaId');
+            const fechaElem = document.getElementById('devolucionFecha');
+            const vendedorElem = document.getElementById('devolucionVendedor');
+            const totalElem = document.getElementById('devolucionTotalOriginal');
+            
+            if (ventaIdElem) ventaIdElem.textContent = `#${venta.id}`;
+            if (fechaElem) fechaElem.textContent = new Date(venta.created_at || venta.fecha).toLocaleDateString('es-CL', {
+                day: '2-digit',
+                month: 'short',
+                year: 'numeric',
+                hour: '2-digit',
+                minute: '2-digit'
+            });
+            if (vendedorElem) vendedorElem.textContent = venta.vendedor_nombre || venta.vendedor || 'Sin asignar';
+            if (totalElem) totalElem.textContent = '$' + formatoMoneda(venta.total);
+            
+            // Renderizar lista de productos
+            renderProductosDevolucion();
+            
+            // Resetear formulario
+            const motivoElem = document.getElementById('devolucionMotivo');
+            const notasElem = document.getElementById('devolucionNotas');
+            const notasGroupElem = document.getElementById('devolucionNotasGroup');
+            const resumenElem = document.getElementById('devolucionResumen');
+            const btnConfirmar = document.getElementById('btnConfirmarDevolucion');
+            
+            if (motivoElem) motivoElem.value = '';
+            if (notasElem) notasElem.value = '';
+            if (notasGroupElem) notasGroupElem.style.display = 'none';
+            if (resumenElem) resumenElem.style.display = 'none';
+            if (btnConfirmar) btnConfirmar.disabled = true;
+            
+            document.querySelectorAll('input[name="tipoReembolso"]').forEach(radio => radio.checked = false);
+            document.querySelectorAll('.radio-card').forEach(card => card.classList.remove('selected'));
+        }, 50);
         
     } catch (error) {
         console.error('Error abriendo modal devolución:', error);
@@ -7032,14 +7052,6 @@ function toggleNotasDevolucion() {
     
     validarFormularioDevolucion();
 }
-
-// Agregar listener al select de motivo
-document.addEventListener('DOMContentLoaded', () => {
-    const selectMotivo = document.getElementById('devolucionMotivo');
-    if (selectMotivo) {
-        selectMotivo.addEventListener('change', toggleNotasDevolucion);
-    }
-});
 
 /**
  * Seleccionar tipo de reembolso
