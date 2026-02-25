@@ -1717,6 +1717,9 @@ async function cargarInventario() {
         await cargarProductos();
     }
 
+    // Actualizar selects de filtros
+    actualizarSelectCategorias();
+
     // Actualizar encabezados de tabla según rol
     actualizarEncabezadosInventario();
 
@@ -1773,6 +1776,18 @@ async function cargarInventario() {
                     p.proveedor === proveedorSeleccionado
                 );
             }
+        }
+    }
+
+    // Aplicar filtro adicional por categoría si está seleccionado
+    const filtroCategoriaSelect = document.getElementById('filtroCategoria');
+    if (filtroCategoriaSelect) {
+        const categoriaSeleccionada = filtroCategoriaSelect.value;
+        if (categoriaSeleccionada) {
+            // Filtrar por categoría específica
+            productosFiltrados = productosFiltrados.filter(p => 
+                p.categoria === categoriaSeleccionada
+            );
         }
     }
 
@@ -3494,6 +3509,7 @@ function abrirModalEditar(producto) {
 
     // Actualizar dropdown de proveedores con lista dinámica
     actualizarSelectProveedores();
+    actualizarSelectCategorias();
 
     // Cambiar título y botones según modo
     const titulo = document.getElementById('tituloModalProducto');
@@ -5599,6 +5615,7 @@ function inicializarProveedores() {
     
     // Actualizar todos los select de la aplicación
     actualizarSelectProveedores();
+    actualizarSelectCategorias();
     
     console.log('✅ Proveedores inicializados:', proveedoresActuales.length);
 }
@@ -5629,6 +5646,30 @@ function actualizarSelectProveedores() {
         `;
         filtroProveedor.value = valorActual;
     }
+
+/**
+ * Actualizar el select de categorías en el inventario
+ */
+function actualizarSelectCategorias() {
+    if (productos.length === 0) return;
+    
+    // Obtener todas las categorías únicas de los productos
+    const categoriasUnicas = [...new Set(productos.map(p => p.categoria).filter(c => c && c.trim() !== ''))]
+        .sort((a, b) => a.localeCompare(b, 'es', { sensitivity: 'base' }));
+    
+    const opcionesCategorias = categoriasUnicas.map(c => `<option value="${c}">${c}</option>`).join('');
+    
+    // Select de filtro de inventario
+    const filtroCategoria = document.getElementById('filtroCategoria');
+    if (filtroCategoria) {
+        const valorActual = filtroCategoria.value;
+        filtroCategoria.innerHTML = `
+            <option value="">Todas las categorías</option>
+            ${opcionesCategorias}
+        `;
+        filtroCategoria.value = valorActual;
+    }
+}
     
     // Select del modal de editar producto
     const editProveedor = document.getElementById('editProveedor');

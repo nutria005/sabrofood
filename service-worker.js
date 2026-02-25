@@ -1,8 +1,8 @@
 // Sabrofood PWA Service Worker
-// Versión: 1.0.13
+// Versión: 1.0.14
 // Fecha: 25-02-2026
 
-const CACHE_VERSION = 'sabrofood-v1.0.13-20260225';
+const CACHE_VERSION = 'sabrofood-v1.0.14-20260225';
 const CACHE_NAME = `${CACHE_VERSION}-static`;
 const DATA_CACHE = `${CACHE_VERSION}-data`;
 

@@ -422,30 +422,20 @@
                     </div>
 
                     <div style="margin: 10px 0; padding: 10px; background: white; border-radius: 8px; display: flex; justify-content: space-between; align-items: center;">
-                        <div>
-                            <label for="filtroProveedor" style="margin-right: 10px; font-weight: 500;">Filtrar por Proveedor:</label>
-                            <select id="filtroProveedor" onchange="filtrarInventario()" style="padding: 8px; border: 1px solid #ddd; border-radius: 4px; min-width: 200px;">
-                                <option value="">Todos los proveedores</option>
-                                <option value="Sin proveedor">Sin proveedor</option>
-                                <option value="Befoods">Befoods</option>
-                                <option value="Cruce">Cruce</option>
-                                <option value="Argentinos">Argentinos</option>
-                                <option value="Mya Spa">Mya Spa</option>
-                                <option value="Chile Dog">Chile Dog</option>
-                                <option value="Brit Care">Brit Care</option>
-                                <option value="Bravery">Bravery</option>
-                                <option value="Dragpharma">Dragpharma</option>
-                                <option value="Fit formula">Fit formula</option>
-                                <option value="Farmacia">Farmacia</option>
-                                <option value="Belcando & Leonardo">Belcando & Leonardo</option>
-                                <option value="Wampy">Wampy</option>
-                                <option value="Josera">Josera</option>
-                                <option value="Acomer">Acomer</option>
-                                <option value="Dockneddy">Dockneddy</option>
-                                <option value="Topk9">Topk9</option>
-                                <option value="Cova">Cova</option>
-                                <option value="Purina">Purina</option>
-                            </select>
+                        <div style="display: flex; gap: 20px; align-items: center;">
+                            <div>
+                                <label for="filtroProveedor" style="margin-right: 10px; font-weight: 500;">Filtrar por Proveedor:</label>
+                                <select id="filtroProveedor" onchange="filtrarInventario()" style="padding: 8px; border: 1px solid #ddd; border-radius: 4px; min-width: 200px;">
+                                    <option value="">Todos los proveedores</option>
+                                    <option value="Sin proveedor">Sin proveedor</option>
+                                </select>
+                            </div>
+                            <div>
+                                <label for="filtroCategoria" style="margin-right: 10px; font-weight: 500;">Filtrar por Categoría:</label>
+                                <select id="filtroCategoria" onchange="filtrarInventario()" style="padding: 8px; border: 1px solid #ddd; border-radius: 4px; min-width: 200px;">
+                                    <option value="">Todas las categorías</option>
+                                </select>
+                            </div>
                         </div>
                         <div style="display: flex; gap: 10px;">
                             <button id="btnRegistrarMerma" class="btn btn-warning" onclick="abrirModalMerma()" style="display: none;">
