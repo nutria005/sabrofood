@@ -433,6 +433,7 @@ async function handleLogin() {
         inicializarRealtime();
         inicializarProveedores();
         inicializarCategorias();
+        inicializarMarcas();
         
         // Inicializar sistema de cierre automático
         inicializarSistemaCierreAutomatico();
@@ -491,6 +492,10 @@ function aplicarPermisosRol() {
     // Botón Gestionar Categorías en Inventario
     const btnGestionarCategorias = document.getElementById('btnGestionarCategorias');
     if (btnGestionarCategorias) btnGestionarCategorias.style.display = esAdmin ? 'inline-flex' : 'none';
+
+    // Botón Gestionar Marcas en Inventario
+    const btnGestionarMarcas = document.getElementById('btnGestionarMarcas');
+    if (btnGestionarMarcas) btnGestionarMarcas.style.display = esAdmin ? 'inline-flex' : 'none';
 
     // Botón Registrar Merma en Inventario
     const btnRegistrarMerma = document.getElementById('btnRegistrarMerma');
@@ -1725,6 +1730,81 @@ function confirmarAbrirSaco() {
 let filtroInventarioActivo = 'todos'; // Variable global para mantener el filtro activo
 
 /**
+ * Extraer marca del nombre del producto
+ * Usa la lista dinámica de marcas guardadas en localStorage
+ */
+function extraerMarcaDeProducto(nombre) {
+    if (!nombre) return null;
+    
+    // Asegurar que las marcas estén inicializadas
+    if (marcasActuales.length === 0) {
+        inicializarMarcas();
+    }
+    
+    const nombreLower = nombre.toLowerCase();
+    
+    // Buscar marcas ordenadas por longitud (primero las más largas)
+    const marcasOrdenadas = [...marcasActuales].sort((a, b) => b.length - a.length);
+    
+    for (const marca of marcasOrdenadas) {
+        const marcaLower = marca.toLowerCase();
+        if (nombreLower.includes(marcaLower)) {
+            return marca;
+        }
+    }
+    
+    // No se encontró marca reconocida
+    return null;
+}
+
+/**
+ * Actualizar select de marcas con marcas únicas de productos
+ * SINCRONIZADO con el modal de gestión de marcas
+ */
+function actualizarSelectMarcas() {
+    const selectMarca = document.getElementById('filtroMarca');
+    if (!selectMarca) {
+        console.warn('⚠️ No se encontró el select de filtro por marca');
+        return;
+    }
+    
+    // IMPORTANTE: Guardar la selección actual antes de repoblar
+    const valorActual = selectMarca.value;
+    
+    console.log('🏷️ Actualizando select de marcas...');
+    console.log('🏷️ Valor seleccionado actualmente:', valorActual);
+    
+    // Asegurar que las marcas estén inicializadas
+    if (marcasActuales.length === 0) {
+        inicializarMarcas();
+    }
+    
+    console.log('🏷️ Marcas disponibles (sincronizado con modal):', marcasActuales);
+    
+    // Convertir a array y ordenar alfabéticamente
+    const marcasOrdenadas = [...marcasActuales].sort((a, b) => 
+        a.localeCompare(b, 'es', { sensitivity: 'base' })
+    );
+    
+    // Limpiar y repoblar el select
+    selectMarca.innerHTML = '<option value="">Todas las marcas</option>';
+    marcasOrdenadas.forEach(marca => {
+        const option = document.createElement('option');
+        option.value = marca;
+        option.textContent = marca;
+        selectMarca.appendChild(option);
+    });
+    
+    // RESTAURAR la selección anterior
+    if (valorActual) {
+        selectMarca.value = valorActual;
+        console.log('✅ Valor restaurado:', selectMarca.value);
+    }
+    
+    console.log(`✅ ${marcasOrdenadas.length} marcas agregadas al filtro (sincronizado)`);
+}
+
+/**
  * Filtrar y ordenar inventario por estado
  */
 function filtrarInventario(filtro) {
@@ -1774,6 +1854,8 @@ function actualizarEncabezadosInventario() {
 }
 
 async function cargarInventario() {
+    console.log('📦 === CARGAR INVENTARIO EJECUTADO ===');
+    
     if (productos.length === 0) {
         await cargarProductos();
     }
@@ -1781,6 +1863,17 @@ async function cargarInventario() {
     // Actualizar selects de filtros
     actualizarSelectProveedores();
     actualizarSelectCategorias();
+    actualizarSelectMarcas();
+    
+    // Log de valores de filtros
+    const filtroProveedor = document.getElementById('filtroProveedor')?.value || '';
+    const filtroCategoria = document.getElementById('filtroCategoria')?.value || '';
+    const filtroMarca = document.getElementById('filtroMarca')?.value || '';
+    console.log('📂 Filtros activos:', { 
+        proveedor: filtroProveedor, 
+        categoria: filtroCategoria, 
+        marca: filtroMarca 
+    });
 
     // Actualizar encabezados de tabla según rol
     actualizarEncabezadosInventario();
@@ -1850,6 +1943,22 @@ async function cargarInventario() {
             productosFiltrados = productosFiltrados.filter(p => 
                 p.categoria === categoriaSeleccionada
             );
+        }
+    }
+
+    // Aplicar filtro adicional por MARCA si está seleccionado
+    const filtroMarcaSelect = document.getElementById('filtroMarca');
+    if (filtroMarcaSelect) {
+        const marcaSeleccionada = filtroMarcaSelect.value;
+        if (marcaSeleccionada) {
+            console.log('🏷️ Filtrando por marca:', marcaSeleccionada);
+            // Filtrar por marca específica
+            const antesFiltro = productosFiltrados.length;
+            productosFiltrados = productosFiltrados.filter(p => {
+                const marcaProducto = extraerMarcaDeProducto(p.nombre);
+                return marcaProducto === marcaSeleccionada;
+            });
+            console.log(`🏷️ Productos después del filtro de marca: ${productosFiltrados.length} (antes: ${antesFiltro})`);
         }
     }
 
@@ -6183,6 +6292,228 @@ function eliminarCategoria(nombreCategoria) {
         actualizarSelectCategorias();
         renderizarListaCategorias();
         mostrarNotificacion('Categoría eliminada exitosamente', 'success');
+    }
+}
+
+// ===================================
+// GESTIÓN DE MARCAS (Solo Encargado)
+// ===================================
+
+let marcasActuales = [];
+let marcaEditando = null;
+
+/**
+ * Inicializar marcas desde localStorage
+ * FUSIONA marcas guardadas con las base (sin duplicar)
+ */
+function inicializarMarcas() {
+    // Marcas base (siempre deben estar)
+    const marcasBase = [
+        'Master', 'Dog Chow', 'Cat Chow', 'Bravery', 'Champion', 'Pedigree',
+        'Whiskas', 'Brit Care', 'Brit', 'Pro Plan', 'Royal Canin', '9 Lives',
+        'Excellent', 'Felix', 'Friskies', 'Balanced', 'Raza', 'Ganador',
+        'Mimaskot', 'Sabrosano', 'Eukanuba', 'IAMS', 'Nutrience', 'Canbo',
+        'Bravecto', 'Nexgard', 'Simparica', 'Frontline', 'Advantage', 'Apoquel'
+    ];
+
+    const marcasGuardadas = localStorage.getItem('marcas_sabrofood');
+    
+    if (marcasGuardadas) {
+        try {
+            const guardadas = JSON.parse(marcasGuardadas);
+            
+            // Fusionar: primero las guardadas, luego agregar las que falten de la base
+            marcasActuales = [...guardadas];
+            
+            // Agregar marcas base que no estén en guardadas
+            marcasBase.forEach(marca => {
+                if (!marcasActuales.includes(marca)) {
+                    marcasActuales.push(marca);
+                }
+            });
+            
+            guardarMarcasEnStorage();
+            
+        } catch (e) {
+            console.error('Error al parsear marcas guardadas:', e);
+            marcasActuales = marcasBase;
+        }
+    } else {
+        // Primera vez: usar marcas base
+        marcasActuales = marcasBase;
+        guardarMarcasEnStorage();
+    }
+    
+    console.log('✅ Marcas inicializadas:', marcasActuales.length);
+}
+
+/**
+ * Guardar marcas en localStorage
+ */
+function guardarMarcasEnStorage() {
+    localStorage.setItem('marcas_sabrofood', JSON.stringify(marcasActuales));
+}
+
+/**
+ * Abrir modal de gestión de marcas
+ */
+function abrirModalMarcas() {
+    if (currentUserRole !== 'encargado') {
+        mostrarNotificacion('Solo el encargado puede gestionar marcas', 'warning');
+        return;
+    }
+    
+    // Re-inicializar marcas para asegurar que estén cargadas
+    if (marcasActuales.length === 0) {
+        inicializarMarcas();
+    }
+    
+    renderizarListaMarcas();
+    
+    const modal = document.getElementById('modalMarcas');
+    modal.style.display = 'flex';
+    modal.classList.add('show');
+}
+
+/**
+ * Cerrar modal de gestión de marcas
+ */
+function cerrarModalMarcas() {
+    const modal = document.getElementById('modalMarcas');
+    modal.style.display = 'none';
+    modal.classList.remove('show');
+    
+    // Limpiar formulario
+    document.getElementById('inputNombreMarca').value = '';
+    cancelarEditarMarca();
+}
+
+/**
+ * Renderizar lista de marcas
+ */
+function renderizarListaMarcas() {
+    const lista = document.getElementById('listaMarcas');
+    
+    if (!marcasActuales || marcasActuales.length === 0) {
+        lista.innerHTML = `
+            <div style="text-align: center; padding: 40px; color: #666;">
+                <p>No hay marcas registradas</p>
+                <p style="font-size: 14px; margin-top: 10px;">Agrega la primera marca usando el formulario arriba</p>
+            </div>
+        `;
+        return;
+    }
+    
+    const marcasOrdenadas = [...marcasActuales].sort((a, b) => a.localeCompare(b, 'es', { sensitivity: 'base' }));
+    
+    const html = marcasOrdenadas.map((marca, index) => `
+        <div style="display: flex; align-items: center; justify-content: space-between; padding: 12px 15px; background: white; border: 1px solid #e0e0e0; border-radius: 6px; margin-bottom: 8px;">
+            <div style="flex: 1;">
+                <strong style="font-size: 15px;">${marca}</strong>
+            </div>
+            <div style="display: flex; gap: 8px;">
+                <button class="btn btn-sm btn-primary" onclick="editarMarca('${marca.replace(/'/g, "\\'")}')">
+                    ✏️ Editar
+                </button>
+                <button class="btn btn-sm btn-danger" onclick="eliminarMarca('${marca.replace(/'/g, "\\'")}')">
+                    🗑️ Eliminar
+                </button>
+            </div>
+        </div>
+    `).join('');
+    
+    lista.innerHTML = html;
+}
+
+/**
+ * Guardar nueva marca o editar existente
+ */
+function guardarMarca() {
+    const input = document.getElementById('inputNombreMarca');
+    const nombreMarca = input.value.trim();
+    
+    if (!nombreMarca) {
+        mostrarNotificacion('Debes ingresar un nombre de marca', 'warning');
+        input.focus();
+        return;
+    }
+    
+    // Modo editar
+    if (marcaEditando !== null) {
+        const index = marcasActuales.indexOf(marcaEditando);
+        
+        // Validar que no exista otra marca con ese nombre
+        if (nombreMarca !== marcaEditando && marcasActuales.includes(nombreMarca)) {
+            mostrarNotificacion('Ya existe una marca con ese nombre', 'warning');
+            return;
+        }
+        
+        if (index !== -1) {
+            marcasActuales[index] = nombreMarca;
+            mostrarNotificacion('Marca actualizada exitosamente', 'success');
+        }
+    } 
+    // Modo agregar
+    else {
+        // Validar que no exista
+        if (marcasActuales.includes(nombreMarca)) {
+            mostrarNotificacion('Esa marca ya existe', 'warning');
+            return;
+        }
+        
+        marcasActuales.push(nombreMarca);
+        mostrarNotificacion('Marca agregada exitosamente', 'success');
+    }
+    
+    guardarMarcasEnStorage();
+    actualizarSelectMarcas(); // Actualizar filtro de marcas
+    renderizarListaMarcas();
+    
+    // Limpiar formulario
+    input.value = '';
+    cancelarEditarMarca();
+}
+
+/**
+ * Editar marca existente
+ */
+function editarMarca(nombreMarca) {
+    marcaEditando = nombreMarca;
+    
+    document.getElementById('inputNombreMarca').value = nombreMarca;
+    document.getElementById('tituloFormMarca').textContent = '✏️ Editar Marca';
+    document.getElementById('textoBotonMarca').textContent = 'Guardar';
+    document.getElementById('btnCancelarEditMarca').style.display = 'inline-block';
+    document.getElementById('inputNombreMarca').focus();
+}
+
+/**
+ * Cancelar edición de marca
+ */
+function cancelarEditarMarca() {
+    marcaEditando = null;
+    
+    document.getElementById('inputNombreMarca').value = '';
+    document.getElementById('tituloFormMarca').textContent = '➕ Agregar Marca';
+    document.getElementById('textoBotonMarca').textContent = 'Agregar';
+    document.getElementById('btnCancelarEditMarca').style.display = 'none';
+}
+
+/**
+ * Eliminar marca
+ */
+function eliminarMarca(nombreMarca) {
+    if (!confirm(`¿Estás seguro de eliminar la marca "${nombreMarca}"?\n\nEsta acción no afectará los productos existentes.`)) {
+        return;
+    }
+    
+    const index = marcasActuales.indexOf(nombreMarca);
+    if (index !== -1) {
+        marcasActuales.splice(index, 1);
+        guardarMarcasEnStorage();
+        actualizarSelectMarcas();
+        renderizarListaMarcas();
+        mostrarNotificacion('Marca eliminada exitosamente', 'success');
     }
 }
 

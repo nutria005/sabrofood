@@ -421,47 +421,75 @@
                         </div>
                     </div>
 
-                    <div style="margin: 10px 0; padding: 10px; background: white; border-radius: 8px; display: flex; justify-content: space-between; align-items: center;">
-                        <div style="display: flex; gap: 20px; align-items: center;">
+                    <div style="margin: 10px 0; padding: 15px; background: white; border-radius: 8px; box-shadow: 0 1px 3px rgba(0,0,0,0.1);">
+                        <!-- Filtros reorganizados en grid -->
+                        <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 15px; margin-bottom: 15px;">
                             <div>
-                                <label for="filtroProveedor" style="margin-right: 10px; font-weight: 500;">Filtrar por Proveedor:</label>
-                                <select id="filtroProveedor" onchange="filtrarInventario()" style="padding: 8px; border: 1px solid #ddd; border-radius: 4px; min-width: 200px;">
+                                <label for="filtroProveedor" style="display: block; margin-bottom: 6px; font-weight: 500; color: #374151; font-size: 14px;">
+                                    📦 Proveedor
+                                </label>
+                                <select id="filtroProveedor" onchange="cargarInventario()" style="width: 100%; padding: 8px 12px; border: 1px solid #d1d5db; border-radius: 6px; font-size: 14px; background: white;">
                                     <option value="">Todos los proveedores</option>
                                     <option value="Sin proveedor">Sin proveedor</option>
                                 </select>
                             </div>
                             <div>
-                                <label for="filtroCategoria" style="margin-right: 10px; font-weight: 500;">Filtrar por Categoría:</label>
-                                <select id="filtroCategoria" onchange="filtrarInventario()" style="padding: 8px; border: 1px solid #ddd; border-radius: 4px; min-width: 200px;">
+                                <label for="filtroCategoria" style="display: block; margin-bottom: 6px; font-weight: 500; color: #374151; font-size: 14px;">
+                                    📂 Categoría
+                                </label>
+                                <select id="filtroCategoria" onchange="cargarInventario()" style="width: 100%; padding: 8px 12px; border: 1px solid #d1d5db; border-radius: 6px; font-size: 14px; background: white;">
                                     <option value="">Todas las categorías</option>
                                 </select>
                             </div>
+                            <div>
+                                <label for="filtroMarca" style="display: block; margin-bottom: 6px; font-weight: 500; color: #374151; font-size: 14px;">
+                                    🏷️ Marca
+                                </label>
+                                <select id="filtroMarca" onchange="cargarInventario()" style="width: 100%; padding: 8px 12px; border: 1px solid #d1d5db; border-radius: 6px; font-size: 14px; background: white;">
+                                    <option value="">Todas las marcas</option>
+                                </select>
+                            </div>
                         </div>
-                        <div style="display: flex; gap: 10px;">
-                            <button id="btnRegistrarMerma" class="btn btn-warning" onclick="abrirModalMerma()" style="display: none;">
-                                <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
-                                    <path d="M10 6v4m0 4h.01M6 2l2 2m6-2l-2 2m-6 14h8a2 2 0 002-2V8l-6-6H6a2 2 0 00-2 2v12a2 2 0 002 2z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-                                </svg>
-                                <span>Registrar Merma</span>
-                            </button>
-                            <button id="btnCrearProducto" class="btn btn-success" onclick="abrirModalCrearProducto()" style="display: none;">
-                                <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
-                                    <path d="M10 5v10M5 10h10" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
-                                </svg>
-                                <span>Crear Producto</span>
-                            </button>
-                            <button id="btnGestionarProveedores" class="btn btn-primary" onclick="abrirModalProveedores()" style="display: none;">
-                                <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
-                                    <path d="M17 18.5V16c0-1.1-.9-2-2-2H5c-1.1 0-2 .9-2 2v2.5M15 7.5a3 3 0 11-6 0 3 3 0 016 0zM6 7.5a3 3 0 11-6 0 3 3 0 016 0z" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
-                                </svg>
-                                <span>Gestionar Proveedores</span>
-                            </button>
-                            <button id="btnGestionarCategorias" class="btn btn-primary" onclick="abrirModalCategorias()" style="display: none;">
-                                <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
-                                    <path d="M3 4h14M3 10h14M3 16h14" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
-                                </svg>
-                                <span>Gestionar Categorías</span>
-                            </button>
+                        
+                        <!-- Botones reorganizados en dos secciones -->
+                        <div style="display: flex; gap: 20px; justify-content: space-between; align-items: flex-start;">
+                            <!-- Botones de acción principal -->
+                            <div style="display: flex; gap: 10px;">
+                                <button id="btnRegistrarMerma" class="btn btn-warning" onclick="abrirModalMerma()" style="display: none;">
+                                    <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
+                                        <path d="M10 6v4m0 4h.01M6 2l2 2m6-2l-2 2m-6 14h8a2 2 0 002-2V8l-6-6H6a2 2 0 00-2 2v12a2 2 0 002 2z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                                    </svg>
+                                    <span>Registrar Merma</span>
+                                </button>
+                                <button id="btnCrearProducto" class="btn btn-success" onclick="abrirModalCrearProducto()" style="display: none;">
+                                    <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
+                                        <path d="M10 5v10M5 10h10" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+                                    </svg>
+                                    <span>Crear Producto</span>
+                                </button>
+                            </div>
+                            
+                            <!-- Botones de gestión de filtros -->
+                            <div style="display: flex; gap: 10px; flex-wrap: wrap;">
+                                <button id="btnGestionarProveedores" class="btn btn-primary" onclick="abrirModalProveedores()" style="display: none;">
+                                    <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
+                                        <path d="M17 18.5V16c0-1.1-.9-2-2-2H5c-1.1 0-2 .9-2 2v2.5M15 7.5a3 3 0 11-6 0 3 3 0 016 0zM6 7.5a3 3 0 11-6 0 3 3 0 016 0z" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+                                    </svg>
+                                    <span>Proveedores</span>
+                                </button>
+                                <button id="btnGestionarCategorias" class="btn btn-primary" onclick="abrirModalCategorias()" style="display: none;">
+                                    <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
+                                        <path d="M3 4h14M3 10h14M3 16h14" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+                                    </svg>
+                                    <span>Categorías</span>
+                                </button>
+                                <button id="btnGestionarMarcas" class="btn btn-primary" onclick="abrirModalMarcas()" style="display: none;">
+                                    <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
+                                        <path d="M7 7h.01M7 3h5c2.2 0 4 1.8 4 4v10H4V7c0-2.2 1.8-4 4-4zM7 7a2 2 0 100-4 2 2 0 000 4z" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+                                    </svg>
+                                    <span>Marcas</span>
+                                </button>
+                            </div>
                         </div>
                     </div>
 
@@ -1981,6 +2009,52 @@
             </div>
             <div class="modal-footer">
                 <button class="btn btn-secondary" onclick="cerrarModalCategorias()">Cerrar</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- MODAL: Gestionar Marcas (Solo Encargado) -->
+    <div id="modalMarcas" class="modal">
+        <div class="modal-overlay" onclick="cerrarModalMarcas()"></div>
+        <div class="modal-content" style="max-width: 800px;">
+            <div class="modal-header">
+                <h3>🏷️ Gestionar Marcas</h3>
+                <button class="btn-close" onclick="cerrarModalMarcas()">
+                    <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
+                        <path d="M15 5L5 15M5 5l10 10" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+                    </svg>
+                </button>
+            </div>
+            <div class="modal-body">
+                <!-- Formulario para agregar/editar marca -->
+                <div style="background: #f8f9fa; padding: 15px; border-radius: 8px; margin-bottom: 20px;">
+                    <h4 style="margin: 0 0 15px 0; font-size: 16px;">
+                        <span id="tituloFormMarca">➕ Agregar Marca</span>
+                    </h4>
+                    <div style="display: flex; gap: 10px; align-items: flex-end;">
+                        <div style="flex: 1;">
+                            <label for="inputNombreMarca" style="display: block; margin-bottom: 5px; font-weight: 500;">Nombre de la Marca</label>
+                            <input type="text" id="inputNombreMarca" placeholder="Ej: Master, Dog Chow, Bravery, etc." style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px;">
+                        </div>
+                        <button id="btnGuardarMarca" class="btn btn-success" onclick="guardarMarca()">
+                            <span id="textoBotonMarca">Agregar</span>
+                        </button>
+                        <button id="btnCancelarEditMarca" class="btn btn-secondary" onclick="cancelarEditarMarca()" style="display: none;">
+                            Cancelar
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Lista de marcas -->
+                <div>
+                    <h4 style="margin: 0 0 15px 0; font-size: 16px;">📋 Lista de Marcas</h4>
+                    <div id="listaMarcas" style="max-height: 400px; overflow-y: auto;">
+                        <!-- Se carga dinámicamente -->
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" onclick="cerrarModalMarcas()">Cerrar</button>
             </div>
         </div>
     </div>
