@@ -456,6 +456,12 @@
                                 </svg>
                                 <span>Gestionar Proveedores</span>
                             </button>
+                            <button id="btnGestionarCategorias" class="btn btn-primary" onclick="abrirModalCategorias()" style="display: none;">
+                                <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
+                                    <path d="M3 4h14M3 10h14M3 16h14" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+                                </svg>
+                                <span>Gestionar Categorías</span>
+                            </button>
                         </div>
                     </div>
 
@@ -1929,6 +1935,52 @@
             </div>
             <div class="modal-footer">
                 <button class="btn btn-secondary" onclick="cerrarModalEditarPagosPersonal()">Cerrar</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- MODAL: Gestionar Categorías (Solo Encargado) -->
+    <div id="modalCategorias" class="modal">
+        <div class="modal-overlay" onclick="cerrarModalCategorias()"></div>
+        <div class="modal-content" style="max-width: 800px;">
+            <div class="modal-header">
+                <h3>📂 Gestionar Categorías</h3>
+                <button class="btn-close" onclick="cerrarModalCategorias()">
+                    <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
+                        <path d="M15 5L5 15M5 5l10 10" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+                    </svg>
+                </button>
+            </div>
+            <div class="modal-body">
+                <!-- Formulario para agregar/editar categoría -->
+                <div style="background: #f8f9fa; padding: 15px; border-radius: 8px; margin-bottom: 20px;">
+                    <h4 style="margin: 0 0 15px 0; font-size: 16px;">
+                        <span id="tituloFormCategoria">➕ Agregar Categoría</span>
+                    </h4>
+                    <div style="display: flex; gap: 10px; align-items: flex-end;">
+                        <div style="flex: 1;">
+                            <label for="inputNombreCategoria" style="display: block; margin-bottom: 5px; font-weight: 500;">Nombre de la Categoría</label>
+                            <input type="text" id="inputNombreCategoria" placeholder="Ej: Gato Adulto, Perro Senior, etc." style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px;">
+                        </div>
+                        <button id="btnGuardarCategoria" class="btn btn-success" onclick="guardarCategoria()">
+                            <span id="textoBotonCategoria">Agregar</span>
+                        </button>
+                        <button id="btnCancelarEditCategoria" class="btn btn-secondary" onclick="cancelarEditarCategoria()" style="display: none;">
+                            Cancelar
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Lista de categorías -->
+                <div>
+                    <h4 style="margin: 0 0 15px 0; font-size: 16px;">📋 Lista de Categorías</h4>
+                    <div id="listaCategorias" style="max-height: 400px; overflow-y: auto;">
+                        <!-- Se carga dinámicamente -->
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" onclick="cerrarModalCategorias()">Cerrar</button>
             </div>
         </div>
     </div>

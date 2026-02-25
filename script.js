@@ -129,6 +129,32 @@ function inicializarRealtime() {
                 actualizarProductoEnTiempoReal(payload.new);
             }
         )
+        .on(
+            'postgres_changes',
+            {
+                event: 'INSERT',
+                schema: 'public',
+                table: 'productos'
+            },
+            (payload) => {
+                // Producto nuevo creado
+                console.log('✨ Nuevo producto detectado:', payload.new.nombre);
+                recargarVistaInventarioSiActiva();
+            }
+        )
+        .on(
+            'postgres_changes',
+            {
+                event: 'DELETE',
+                schema: 'public',
+                table: 'productos'
+            },
+            (payload) => {
+                // Producto eliminado
+                console.log('🗑️ Producto eliminado detectado');
+                recargarVistaInventarioSiActiva();
+            }
+        )
         .subscribe((status) => {
             if (status === 'SUBSCRIBED') {
                 // Espaciar notificación de Realtime (1.5 segundos después de login)
@@ -137,6 +163,33 @@ function inicializarRealtime() {
                 }, 1500);
             }
         });
+}
+
+// Debounce para recargas de inventario (evitar múltiples recargas seguidas)
+let timeoutRecargaInventario = null;
+
+/**
+ * Recargar vista de inventario si está activa
+ */
+function recargarVistaInventarioSiActiva() {
+    // Verificar si estamos en la pestaña de inventario
+    const inventarioSection = document.getElementById('inventario');
+    if (inventarioSection && inventarioSection.style.display !== 'none') {
+        // Cancelar recarga anterior si existe
+        if (timeoutRecargaInventario) {
+            clearTimeout(timeoutRecargaInventario);
+        }
+        
+        // Esperar 500ms antes de recargar (por si hay múltiples cambios)
+        timeoutRecargaInventario = setTimeout(() => {
+            console.log('🔄 Recargando inventario...');
+            // Recargar productos y actualizar inventario
+            cargarProductos().then(() => {
+                cargarInventario();
+            });
+            timeoutRecargaInventario = null;
+        }, 500);
+    }
 }
 
 /**
@@ -149,7 +202,10 @@ function actualizarProductoEnTiempoReal(productoActualizado) {
         productos[index] = productoActualizado;
     }
 
-    // Actualizar visualmente en la grilla de productos
+    // Si estamos en inventario, recargar la tabla
+    recargarVistaInventarioSiActiva();
+
+    // Actualizar visualmente en la grilla de productos (Punto de Venta)
     const productCard = document.querySelector(`[data-producto-id="${productoActualizado.id}"]`);
     if (productCard) {
         const stockElement = productCard.querySelector('.product-stock');
@@ -376,6 +432,7 @@ async function handleLogin() {
         cargarProductos();
         inicializarRealtime();
         inicializarProveedores();
+        inicializarCategorias();
         
         // Inicializar sistema de cierre automático
         inicializarSistemaCierreAutomatico();
@@ -430,6 +487,10 @@ function aplicarPermisosRol() {
     // Botón Gestionar Proveedores en Inventario
     const btnGestionarProveedores = document.getElementById('btnGestionarProveedores');
     if (btnGestionarProveedores) btnGestionarProveedores.style.display = esAdmin ? 'inline-flex' : 'none';
+
+    // Botón Gestionar Categorías en Inventario
+    const btnGestionarCategorias = document.getElementById('btnGestionarCategorias');
+    if (btnGestionarCategorias) btnGestionarCategorias.style.display = esAdmin ? 'inline-flex' : 'none';
 
     // Botón Registrar Merma en Inventario
     const btnRegistrarMerma = document.getElementById('btnRegistrarMerma');
@@ -1718,6 +1779,7 @@ async function cargarInventario() {
     }
 
     // Actualizar selects de filtros
+    actualizarSelectProveedores();
     actualizarSelectCategorias();
 
     // Actualizar encabezados de tabla según rol
@@ -3510,6 +3572,11 @@ function abrirModalEditar(producto) {
     // Actualizar dropdown de proveedores con lista dinámica
     actualizarSelectProveedores();
     actualizarSelectCategorias();
+    
+    // Inicializar categorías si no están cargadas
+    if (categoriasActuales.length === 0) {
+        inicializarCategorias();
+    }
 
     // Cambiar título y botones según modo
     const titulo = document.getElementById('tituloModalProducto');
@@ -5617,6 +5684,11 @@ function inicializarProveedores() {
     actualizarSelectProveedores();
     actualizarSelectCategorias();
     
+    // Inicializar categorías si no están cargadas
+    if (categoriasActuales.length === 0) {
+        inicializarCategorias();
+    }
+    
     console.log('✅ Proveedores inicializados:', proveedoresActuales.length);
 }
 
@@ -5631,6 +5703,11 @@ function guardarProveedoresEnStorage() {
  * Actualizar todos los select de proveedores en la aplicación
  */
 function actualizarSelectProveedores() {
+    // Asegurar que los proveedores estén inicializados
+    if (proveedoresActuales.length === 0) {
+        inicializarProveedores();
+    }
+    
     // Ordenar alfabéticamente para mejor UX
     const proveedoresOrdenados = [...proveedoresActuales].sort((a, b) => a.localeCompare(b, 'es', { sensitivity: 'base' }));
     const opcionesProveedor = proveedoresOrdenados.map(p => `<option value="${p}">${p}</option>`).join('');
@@ -5646,30 +5723,6 @@ function actualizarSelectProveedores() {
         `;
         filtroProveedor.value = valorActual;
     }
-
-/**
- * Actualizar el select de categorías en el inventario
- */
-function actualizarSelectCategorias() {
-    if (productos.length === 0) return;
-    
-    // Obtener todas las categorías únicas de los productos
-    const categoriasUnicas = [...new Set(productos.map(p => p.categoria).filter(c => c && c.trim() !== ''))]
-        .sort((a, b) => a.localeCompare(b, 'es', { sensitivity: 'base' }));
-    
-    const opcionesCategorias = categoriasUnicas.map(c => `<option value="${c}">${c}</option>`).join('');
-    
-    // Select de filtro de inventario
-    const filtroCategoria = document.getElementById('filtroCategoria');
-    if (filtroCategoria) {
-        const valorActual = filtroCategoria.value;
-        filtroCategoria.innerHTML = `
-            <option value="">Todas las categorías</option>
-            ${opcionesCategorias}
-        `;
-        filtroCategoria.value = valorActual;
-    }
-}
     
     // Select del modal de editar producto
     const editProveedor = document.getElementById('editProveedor');
@@ -5691,6 +5744,53 @@ function actualizarSelectCategorias() {
             ${opcionesProveedor}
         `;
         nuevoProveedor.value = valorActualNuevo;
+    }
+}
+
+/**
+ * Actualizar el select de categorías en el inventario
+ */
+function actualizarSelectCategorias() {
+    // Asegurar que las categorías estén inicializadas
+    if (categoriasActuales.length === 0) {
+        inicializarCategorias();
+    }
+    
+    // Ordenar alfabéticamente
+    const categoriasOrdenadas = [...categoriasActuales].sort((a, b) => a.localeCompare(b, 'es', { sensitivity: 'base' }));
+    const opcionesCategorias = categoriasOrdenadas.map(c => `<option value="${c}">${c}</option>`).join('');
+    
+    // Select de filtro de inventario
+    const filtroCategoria = document.getElementById('filtroCategoria');
+    if (filtroCategoria) {
+        const valorActual = filtroCategoria.value;
+        filtroCategoria.innerHTML = `
+            <option value="">Todas las categorías</option>
+            ${opcionesCategorias}
+        `;
+        filtroCategoria.value = valorActual;
+    }
+    
+    // Select del modal de editar producto
+    const editCategoria = document.getElementById('editCategoria');
+    if (editCategoria) {
+        const valorActualEdit = editCategoria.value;
+        editCategoria.innerHTML = `
+            <option value="">Seleccionar categoría</option>
+            ${opcionesCategorias}
+        `;
+        editCategoria.value = valorActualEdit;
+    }
+    
+    // Select del modal de nuevo producto
+    const nuevoCategoria = document.getElementById('nuevoCategoria');
+    if (nuevoCategoria) {
+        const valorActualNuevo = nuevoCategoria.value;
+        nuevoCategoria.innerHTML = `
+            <option value="">Seleccionar categoría</option>
+            ${opcionesCategorias}
+        `;
+        nuevoCategoria.value = valorActualNuevo;
     }
 }
 
@@ -5860,6 +5960,229 @@ function eliminarProveedor(nombreProveedor) {
         actualizarSelectProveedores();
         renderizarListaProveedores();
         mostrarNotificacion('Proveedor eliminado exitosamente', 'success');
+    }
+}
+
+// ===================================
+// GESTIÓN DE CATEGORÍAS (Encargado)
+// ===================================
+
+let categoriasActuales = [];
+let categoriaEditando = null;
+
+/**
+ * Inicializar categorías desde localStorage
+ * FUSIONA categorías guardadas con las base (sin duplicar)
+ */
+function inicializarCategorias() {
+    // Categorías base (siempre deben estar)
+    const categoriasBase = [
+        'Perro Adulto', 'Cachorro', 'Senior', 'Gato Adulto', 'Gato Kitten',
+        'Gatito', 'Arena', 'Snacks', 'Accesorios', 'Otros',
+        'Super Premium Gato', 'Super Premium Perro', 'Veterinario Gato', 'Veterinario Perro'
+    ];
+
+    const categoriasGuardadas = localStorage.getItem('categorias_sabrofood');
+    
+    if (categoriasGuardadas) {
+        try {
+            const guardadas = JSON.parse(categoriasGuardadas);
+            
+            // Fusionar: primero las guardadas, luego agregar las que falten de la base
+            categoriasActuales = [...guardadas];
+            
+            // Agregar categorías base que no estén en guardadas
+            categoriasBase.forEach(cat => {
+                if (!categoriasActuales.includes(cat)) {
+                    categoriasActuales.push(cat);
+                }
+            });
+            
+            guardarCategoriasEnStorage();
+            
+        } catch (e) {
+            console.error('Error al parsear categorías guardadas:', e);
+            categoriasActuales = categoriasBase;
+        }
+    } else {
+        // Primera vez: usar categorías base
+        categoriasActuales = categoriasBase;
+        guardarCategoriasEnStorage();
+    }
+    
+    // Actualizar todos los select de la aplicación
+    actualizarSelectCategorias();
+    
+    console.log('✅ Categorías inicializadas:', categoriasActuales.length);
+}
+
+/**
+ * Guardar categorías en localStorage
+ */
+function guardarCategoriasEnStorage() {
+    localStorage.setItem('categorias_sabrofood', JSON.stringify(categoriasActuales));
+}
+
+/**
+ * Abrir modal de gestión de categorías
+ */
+function abrirModalCategorias() {
+    if (currentUserRole !== 'encargado') {
+        mostrarNotificacion('Solo el encargado puede gestionar categorías', 'warning');
+        return;
+    }
+    
+    // Re-inicializar categorías para asegurar que estén cargadas
+    if (categoriasActuales.length === 0) {
+        inicializarCategorias();
+    }
+    
+    renderizarListaCategorias();
+    
+    const modal = document.getElementById('modalCategorias');
+    modal.style.display = 'flex';
+    modal.classList.add('show');
+}
+
+/**
+ * Cerrar modal de gestión de categorías
+ */
+function cerrarModalCategorias() {
+    const modal = document.getElementById('modalCategorias');
+    modal.style.display = 'none';
+    modal.classList.remove('show');
+    
+    // Limpiar formulario
+    document.getElementById('inputNombreCategoria').value = '';
+    cancelarEditarCategoria();
+}
+
+/**
+ * Renderizar lista de categorías
+ */
+function renderizarListaCategorias() {
+    const lista = document.getElementById('listaCategorias');
+    
+    if (!categoriasActuales || categoriasActuales.length === 0) {
+        lista.innerHTML = `
+            <div style="text-align: center; padding: 40px; color: #666;">
+                <p>No hay categorías registradas</p>
+                <p style="font-size: 14px; margin-top: 10px;">Agrega la primera categoría usando el formulario arriba</p>
+            </div>
+        `;
+        return;
+    }
+    
+    const categoriasOrdenadas = [...categoriasActuales].sort((a, b) => a.localeCompare(b, 'es', { sensitivity: 'base' }));
+    
+    const html = categoriasOrdenadas.map((categoria, index) => `
+        <div style="display: flex; align-items: center; justify-content: space-between; padding: 12px 15px; background: white; border: 1px solid #e0e0e0; border-radius: 6px; margin-bottom: 8px;">
+            <div style="flex: 1;">
+                <strong style="font-size: 15px;">${categoria}</strong>
+            </div>
+            <div style="display: flex; gap: 8px;">
+                <button class="btn btn-sm btn-primary" onclick="editarCategoria('${categoria.replace(/'/g, "\\'")}')">
+                    ✏️ Editar
+                </button>
+                <button class="btn btn-sm btn-danger" onclick="eliminarCategoria('${categoria.replace(/'/g, "\\'")}')">
+                    🗑️ Eliminar
+                </button>
+            </div>
+        </div>
+    `).join('');
+    
+    lista.innerHTML = html;
+}
+
+/**
+ * Guardar nueva categoría o editar existente
+ */
+function guardarCategoria() {
+    const input = document.getElementById('inputNombreCategoria');
+    const nombreCategoria = input.value.trim();
+    
+    if (!nombreCategoria) {
+        mostrarNotificacion('Debes ingresar un nombre de categoría', 'warning');
+        input.focus();
+        return;
+    }
+    
+    // Modo editar
+    if (categoriaEditando !== null) {
+        const index = categoriasActuales.indexOf(categoriaEditando);
+        
+        // Validar que no exista otra categoría con ese nombre
+        if (nombreCategoria !== categoriaEditando && categoriasActuales.includes(nombreCategoria)) {
+            mostrarNotificacion('Ya existe una categoría con ese nombre', 'warning');
+            return;
+        }
+        
+        if (index !== -1) {
+            categoriasActuales[index] = nombreCategoria;
+            mostrarNotificacion('Categoría actualizada exitosamente', 'success');
+        }
+    } 
+    // Modo agregar
+    else {
+        // Validar que no exista
+        if (categoriasActuales.includes(nombreCategoria)) {
+            mostrarNotificacion('Esa categoría ya existe', 'warning');
+            return;
+        }
+        
+        categoriasActuales.push(nombreCategoria);
+        mostrarNotificacion('Categoría agregada exitosamente', 'success');
+    }
+    
+    guardarCategoriasEnStorage();
+    actualizarSelectCategorias();
+    renderizarListaCategorias();
+    
+    // Limpiar formulario
+    input.value = '';
+    cancelarEditarCategoria();
+}
+
+/**
+ * Editar categoría existente
+ */
+function editarCategoria(nombreCategoria) {
+    categoriaEditando = nombreCategoria;
+    
+    document.getElementById('inputNombreCategoria').value = nombreCategoria;
+    document.getElementById('tituloFormCategoria').textContent = '✏️ Editar Categoría';
+    document.getElementById('textoBotonCategoria').textContent = 'Guardar';
+    document.getElementById('btnCancelarEditCategoria').style.display = 'inline-block';
+    document.getElementById('inputNombreCategoria').focus();
+}
+
+/**
+ * Cancelar edición de categoría
+ */
+function cancelarEditarCategoria() {
+    categoriaEditando = null;
+    
+    document.getElementById('inputNombreCategoria').value = '';
+    document.getElementById('tituloFormCategoria').textContent = '➕ Agregar Categoría';
+    document.getElementById('textoBotonCategoria').textContent = 'Agregar';
+    document.getElementById('btnCancelarEditCategoria').style.display = 'none';
+}
+
+/**
+ * Eliminar categoría
+ */
+function eliminarCategoria(nombreCategoria) {
+    if (!confirm(`¿Estás seguro de eliminar la categoría "${nombreCategoria}"?\n\nEsta acción no afectará los productos existentes.`)) {
+        return;
+    }
+    
+    const index = categoriasActuales.indexOf(nombreCategoria);
+    if (index !== -1) {
+        categoriasActuales.splice(index, 1);
+        guardarCategoriasEnStorage();
+        actualizarSelectCategorias();
+        renderizarListaCategorias();
+        mostrarNotificacion('Categoría eliminada exitosamente', 'success');
     }
 }
 
