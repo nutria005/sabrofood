@@ -1752,11 +1752,8 @@ async function cargarInventario() {
             break;
         case 'todos':
         default:
-            // Sin filtro, ordenar por categoría y nombre
-            productosFiltrados.sort((a, b) => {
-                const categoriaCompare = (a.categoria || '').localeCompare(b.categoria || '');
-                return categoriaCompare !== 0 ? categoriaCompare : a.nombre.localeCompare(b.nombre);
-            });
+            // Sin filtro, ordenar alfabéticamente por nombre (A-Z)
+            productosFiltrados.sort((a, b) => a.nombre.localeCompare(b.nombre));
             break;
     }
 
@@ -5618,7 +5615,7 @@ function guardarProveedoresEnStorage() {
  */
 function actualizarSelectProveedores() {
     // Ordenar alfabéticamente para mejor UX
-    const proveedoresOrdenados = [...proveedoresActuales].sort();
+    const proveedoresOrdenados = [...proveedoresActuales].sort((a, b) => a.localeCompare(b, 'es', { sensitivity: 'base' }));
     const opcionesProveedor = proveedoresOrdenados.map(p => `<option value="${p}">${p}</option>`).join('');
     
     // Select de filtro de inventario
@@ -5709,7 +5706,7 @@ function renderizarListaProveedores() {
         return;
     }
     
-    const proveedoresOrdenados = [...proveedoresActuales].sort();
+    const proveedoresOrdenados = [...proveedoresActuales].sort((a, b) => a.localeCompare(b, 'es', { sensitivity: 'base' }));
     
     const html = proveedoresOrdenados.map((proveedor, index) => `
         <div style="display: flex; align-items: center; justify-content: space-between; padding: 12px 15px; background: white; border: 1px solid #e0e0e0; border-radius: 6px; margin-bottom: 8px;">
