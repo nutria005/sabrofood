@@ -449,10 +449,17 @@ async function cargarHistorialSacos() {
         hoy.setHours(0, 0, 0, 0);
         const inicioHoy = hoy.toISOString();
 
-        // Cargar solicitudes completadas hoy
+        // Cargar solicitudes completadas hoy CON datos del producto (JOIN)
         const { data, error } = await supabaseClient
             .from('solicitudes_reposicion')
-            .select('*')
+            .select(`
+                *,
+                productos:producto_id (
+                    id,
+                    nombre,
+                    categoria
+                )
+            `)
             .eq('estado', 'completada')
             .gte('fecha_completado', inicioHoy)
             .order('fecha_completado', { ascending: false });
@@ -469,11 +476,12 @@ async function cargarHistorialSacos() {
         }
 
         const html = data.map(sol => {
-            const producto = productosConStock.find(p => p.id === sol.producto_id) || {};
+            // Usar datos del JOIN directo
+            const producto = sol.productos || {};
             return `
                 <div class="historial-item">
                     <div class="historial-info">
-                        <strong>${producto.nombre || 'Producto'}</strong>
+                        <strong>${producto.nombre || 'Producto desconocido'}</strong>
                         <span class="badge badge-${producto.categoria?.toLowerCase() || 'info'}" style="font-size: 0.7rem;">${producto.categoria || 'N/A'}</span>
                     </div>
                     <div class="historial-meta">
