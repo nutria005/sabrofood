@@ -71,6 +71,13 @@
                 <p>Sistema de Punto de Venta</p>
             </div>
             <div class="login-body">
+                <p class="login-intro">Inicia tu turno en menos de 10 segundos.</p>
+                <div class="login-steps" aria-hidden="true">
+                    <span class="login-step">1. Selecciona vendedor</span>
+                    <span class="login-step">2. Ingresa contraseña</span>
+                    <span class="login-step">3. Presiona Iniciar</span>
+                </div>
+
                 <div class="form-group">
                     <label for="loginUsername">Vendedor</label>
                     <select id="loginUsername" class="form-select">
@@ -86,24 +93,38 @@
                         <option value="Jonathan J.">Jonathan J.</option>
                         <option value="Admin">Admin (Encargado)</option>
                     </select>
+                    <small class="input-helper">Elige tu nombre para cargar tus permisos y datos.</small>
                 </div>
 
                 <div class="form-group">
                     <label for="loginPassword">Contraseña</label>
-                    <input
-                        type="password"
-                        id="loginPassword"
-                        class="form-input"
-                        placeholder="Ingresa tu contraseña"
-                        onkeypress="if(event.key==='Enter') handleLogin()"
-                    >
+                    <div class="password-field">
+                        <input
+                            type="password"
+                            id="loginPassword"
+                            class="form-input"
+                            placeholder="Ingresa tu contraseña"
+                            onkeypress="if(event.key==='Enter') handleLogin()"
+                        >
+                        <button
+                            type="button"
+                            id="toggleLoginPasswordBtn"
+                            class="btn-password-toggle"
+                            onclick="toggleLoginPasswordVisibility()"
+                            aria-label="Mostrar contraseña"
+                        >
+                            Mostrar
+                        </button>
+                    </div>
+                    <small class="input-helper">Tip: presiona Enter para ingresar más rápido.</small>
                 </div>
 
-                <div class="form-group" style="margin-bottom: 20px;">
+                <div class="form-group login-options" style="margin-bottom: 20px;">
                     <label class="checkbox-label">
                         <input type="checkbox" id="rememberDevice">
                         <span>Recordar en este dispositivo</span>
                     </label>
+                    <span class="login-safe-tip">Solo en equipos de confianza</span>
                 </div>
 
                 <button id="loginBtn" class="btn btn-primary btn-block" onclick="handleLogin()">
@@ -119,7 +140,7 @@
                     onclick="forzarActualizacion()"
                     class="btn-link btn-force-update"
                 >
-                    🔄 ¿No ves tus productos? Haz clic aquí
+                    <span>🔄 ¿No ves tus productos? Haz clic aquí</span>
                 </button>
             </div>
         </div>
@@ -131,8 +152,11 @@
         <aside class="sidebar">
             <div class="sidebar-header">
                 <div class="sidebar-logo">
-                    <span class="logo-icon">�</span>
-                    <span class="logo-text">Sabrofood</span>
+                    <div class="logo-badge" aria-hidden="true">S</div>
+                    <div class="logo-branding">
+                        <span class="logo-text">Sabrofood</span>
+                        <span class="logo-subtitle">Sistema de Venta</span>
+                    </div>
                 </div>
             </div>
 

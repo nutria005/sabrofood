@@ -211,6 +211,13 @@ function actualizarProductoEnTiempoReal(productoActualizado) {
         const stockElement = productCard.querySelector('.product-stock');
         const stock = productoActualizado.stock || 0;
 
+        // Si por cambios de plantilla no existe el nodo de stock, evitar error en tiempo real
+        if (!stockElement) {
+            console.warn('⚠️ product-stock no encontrado para producto:', productoActualizado.id);
+            actualizarStockEnCarrito(productoActualizado);
+            return;
+        }
+
         // Actualizar número de stock
         if (stock === 0) {
             stockElement.textContent = 'Sin stock';
@@ -336,6 +343,24 @@ function desconectarRealtime() {
 // ===================================
 // AUTENTICACIÓN
 // ===================================
+
+function toggleLoginPasswordVisibility() {
+    const passwordInput = document.getElementById('loginPassword');
+    const toggleBtn = document.getElementById('toggleLoginPasswordBtn');
+
+    if (!passwordInput || !toggleBtn) return;
+
+    const showingPassword = passwordInput.type === 'text';
+    passwordInput.type = showingPassword ? 'password' : 'text';
+
+    toggleBtn.textContent = showingPassword ? 'Mostrar' : 'Ocultar';
+    toggleBtn.setAttribute(
+        'aria-label',
+        showingPassword ? 'Mostrar contraseña' : 'Ocultar contraseña'
+    );
+
+    passwordInput.focus();
+}
 
 async function handleLogin() {
     const username = document.getElementById('loginUsername').value;
@@ -657,7 +682,9 @@ function cambiarVista(vista) {
         cargarInventario();
     } else if (vista === 'sales') {
         cargarVentas();
-        cargarHistorialDevoluciones(); // Cargar también historial de devoluciones
+        if (currentUserRole === 'encargado') {
+            cargarHistorialDevoluciones(); // Solo encargado puede ver historial de devoluciones
+        }
     } else if (vista === 'pos') {
         // Auto-focus en el campo de escáner
         setTimeout(() => {
@@ -2141,7 +2168,8 @@ async function cargarVentas() {
             query = query.eq('vendedor_nombre', currentUser);
         }
 
-        const { data: ventas, error } = await query.order('created_at', { ascending: false });
+        const { data, error } = await query.order('created_at', { ascending: false });
+        const ventas = data || [];
 
         if (error) {
             console.error('Error:', error);
@@ -2182,13 +2210,14 @@ async function cargarVentas() {
         }
 
         // 🔄 VERIFICAR DEVOLUCIONES
-        // Consultar qué ventas tienen devoluciones registradas
+        // Consultar qué ventas tienen devoluciones registradas (solo no eliminadas)
         if (ventas.length > 0) {
             const ventasIds = ventas.map(v => v.id);
             const { data: devoluciones, error: devError } = await supabaseClient
                 .from('devoluciones')
                 .select('venta_id')
-                .in('venta_id', ventasIds);
+                .in('venta_id', ventasIds)
+                .is('deleted_at', null);
 
             if (!devError && devoluciones) {
                 // Crear set de ventas con devolución
@@ -2318,6 +2347,12 @@ async function cargarVentas() {
             if (ranking) ranking.style.display = 'none';
         }
 
+        // Historial de devoluciones solo para admin
+        const historialDevoluciones = document.getElementById('historialDevoluciones');
+        if (historialDevoluciones) {
+            historialDevoluciones.style.display = esAdmin ? 'block' : 'none';
+        }
+
         // Renderizar tabla de historial (con ventas Y movimientos si están disponibles)
         renderTablaHistorialVentas(todosLosRegistros);
 
@@ -2345,6 +2380,9 @@ async function cargarVentas() {
 
 function actualizarVentas() {
     cargarVentas();
+    if (currentUserRole === 'encargado') {
+        cargarHistorialDevoluciones();
+    }
 }
 
 function calcularKPIs(ventas) {
@@ -2357,7 +2395,9 @@ function calcularKPIs(ventas) {
 
     // Ventas hoy (comparar por fecha exacta)
     const ventasHoy = ventas.filter(v => {
-        const ventaFecha = v.fecha.split('T')[0]; // Extraer solo YYYY-MM-DD
+        const fechaBase = v.created_at || v.fecha;
+        if (!fechaBase) return false;
+        const ventaFecha = new Date(fechaBase).toISOString().split('T')[0];
         return ventaFecha === fechaHoy;
     });
     const totalHoy = ventasHoy.reduce((sum, v) => sum + v.total, 0);
@@ -2517,9 +2557,19 @@ function generarGraficoMetodosPago(ventas) {
 
 async function generarGraficoTopProductos(periodo) {
     try {
+        const ctx = document.getElementById('chartTopProductos');
+
+        if (!ctx) {
+            return;
+        }
+
         // If Supabase is not available, skip this chart
         if (typeof supabaseClient === 'undefined' || !supabaseClient) {
             console.log('⚠️ Supabase no disponible, omitiendo gráfico de top productos');
+            if (chartTopProductos) {
+                chartTopProductos.destroy();
+                chartTopProductos = null;
+            }
             return;
         }
 
@@ -2535,6 +2585,10 @@ async function generarGraficoTopProductos(periodo) {
 
         if (!ventas || ventas.length === 0) {
             console.log('ℹ️ No hay ventas en el período para productos');
+            if (chartTopProductos) {
+                chartTopProductos.destroy();
+                chartTopProductos = null;
+            }
             return;
         }
 
@@ -2548,6 +2602,10 @@ async function generarGraficoTopProductos(periodo) {
 
         if (itemsError || !items || items.length === 0) {
             console.warn('⚠️ No hay items de ventas en el período');
+            if (chartTopProductos) {
+                chartTopProductos.destroy();
+                chartTopProductos = null;
+            }
             return;
         }
 
@@ -2571,8 +2629,6 @@ async function generarGraficoTopProductos(periodo) {
             console.warn('⚠️ Chart.js no disponible, omitiendo gráfico de top productos');
             return;
         }
-
-        const ctx = document.getElementById('chartTopProductos');
 
         if (chartTopProductos) {
             chartTopProductos.destroy();
@@ -2608,6 +2664,10 @@ async function generarGraficoTopProductos(periodo) {
 
     } catch (error) {
         console.error('Error generando top productos:', error);
+        if (chartTopProductos) {
+            chartTopProductos.destroy();
+            chartTopProductos = null;
+        }
     }
 }
 
@@ -2784,6 +2844,16 @@ function mostrarVentasMock() {
 async function verDetalleVenta(id) {
     const modal = document.getElementById('modalDetalleVenta');
     const content = document.getElementById('detalleVentaContent');
+    const title = modal?.querySelector('.modal-header h3');
+    const printButton = modal?.querySelector('.modal-footer .btn.btn-primary');
+
+    if (title) {
+        title.textContent = '🧾 Detalle de Venta';
+    }
+
+    if (printButton) {
+        printButton.style.display = 'inline-flex';
+    }
 
     // Mostrar modal con loading
     modal.style.display = 'flex';
@@ -7538,6 +7608,19 @@ async function editarSencilloInicial() {
 let ventaDevolucion = null;
 let productosDevolucion = [];
 
+function esProductoGranelDevolucion(producto) {
+    if (!producto) return false;
+
+    if (producto.es_granel === true || producto.esGranel === true) {
+        return true;
+    }
+
+    const nombre = (producto.producto_nombre || producto.nombre || '').toString().toLowerCase();
+    const categoria = (producto.categoria || '').toString().toLowerCase();
+
+    return nombre.includes('granel') || categoria.includes('granel');
+}
+
 /**
  * Abrir modal de devolución para una venta específica
  */
@@ -7883,7 +7966,7 @@ async function confirmarDevolucion() {
 🔄 Tipo: ${tipoTexto}
 
 ⚠️ Esta acción:
-• Restaurará el stock de los productos
+    • Restaurará stock solo de productos con control de stock (no granel)
 • ${tipoReembolso === 'efectivo' ? 'Restará efectivo de la caja del día' : 'Registrará el ' + tipoTexto.toLowerCase()}
 • Quedará registrada en el historial`;
         
@@ -7902,7 +7985,8 @@ async function confirmarDevolucion() {
                 producto_nombre: p.producto_nombre,
                 cantidad: p.cantidad_devolucion,
                 precio_unitario: p.precio_unitario,
-                subtotal: p.precio_unitario * p.cantidad_devolucion
+                subtotal: p.precio_unitario * p.cantidad_devolucion,
+                es_granel: esProductoGranelDevolucion(p)
             })),
             totalReembolso,
             motivo: motivoFinal,
@@ -7946,9 +8030,14 @@ async function procesarDevolucion(datosDevolucion) {
         
         console.log('✅ Devolución registrada:', devolucion);
         
-        // 2. Restaurar stock de productos
+        // 2. Restaurar stock de productos (excepto granel)
         for (const producto of datosDevolucion.productos) {
             if (!producto.producto_id) continue;
+
+            if (esProductoGranelDevolucion(producto)) {
+                console.log(`ℹ️ Producto granel sin control de stock: ${producto.producto_nombre}`);
+                continue;
+            }
             
             // Obtener stock actual
             const { data: prodActual, error: errorProd } = await supabaseClient
@@ -8031,6 +8120,20 @@ async function procesarDevolucion(datosDevolucion) {
 async function cargarHistorialDevoluciones() {
     try {
         console.log('🔄 Cargando historial de devoluciones...');
+
+        const seccionDevoluciones = document.getElementById('historialDevoluciones');
+
+        // Solo encargado puede ver esta sección
+        if (currentUserRole !== 'encargado') {
+            if (seccionDevoluciones) {
+                seccionDevoluciones.style.display = 'none';
+            }
+            return;
+        }
+
+        if (seccionDevoluciones) {
+            seccionDevoluciones.style.display = 'block';
+        }
         
         if (typeof supabaseClient === 'undefined' || !supabaseClient) {
             console.warn('⚠️ Supabase no disponible');
@@ -8043,7 +8146,7 @@ async function cargarHistorialDevoluciones() {
         fechaInicio.setDate(fechaInicio.getDate() - periodo);
         const fechaInicioStr = fechaInicio.toISOString();
         
-        // Consultar devoluciones con JOIN a ventas
+        // Consultar devoluciones con JOIN a ventas (solo no eliminadas)
         const { data: devoluciones, error } = await supabaseClient
             .from('devoluciones')
             .select(`
@@ -8054,6 +8157,7 @@ async function cargarHistorialDevoluciones() {
                     created_at
                 )
             `)
+            .is('deleted_at', null)
             .gte('created_at', fechaInicioStr)
             .order('created_at', { ascending: false });
         
@@ -8086,6 +8190,7 @@ async function cargarHistorialDevoluciones() {
  */
 function renderTablaDevoluciones(devoluciones) {
     const container = document.getElementById('tablaDevoluciones');
+    const esAdmin = currentUserRole === 'encargado';
     
     if (!container) return;
     
@@ -8186,11 +8291,13 @@ function renderTablaDevoluciones(devoluciones) {
                                 <path d="M2 10s3-6 8-6 8 6 8 6-3 6-8 6-8-6-8-6z" stroke="currentColor" stroke-width="2"/>
                             </svg>
                         </button>
+                        ${esAdmin ? `
                         <button class="btn-icon" onclick="eliminarDevolucion(${dev.id})" title="Eliminar devolución" style="color: hsl(var(--destructive));">
                             <svg width="16" height="16" viewBox="0 0 20 20" fill="none">
                                 <path d="M3 5h14M8 5V3h4v2M9 9v6m2-6v6M6 5v12a2 2 0 002 2h4a2 2 0 002-2V5" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
                             </svg>
                         </button>
+                        ` : ''}
                     </div>
                 </td>
             </tr>
@@ -8223,6 +8330,7 @@ async function eliminarDevolucion(devolucionId) {
             .from('devoluciones')
             .select('*')
             .eq('id', devolucionId)
+            .is('deleted_at', null)
             .single();
         
         if (error) throw error;
@@ -8262,47 +8370,100 @@ async function eliminarDevolucion(devolucionId) {
         } catch (e) {
             console.warn('⚠️ No se pudieron parsear productos devueltos');
         }
-        
-        // 1. Revertir stock de productos (restar lo que se había sumado)
+
+        // 1) VALIDAR si se puede revertir stock antes de tocar nada (excepto granel)
+        const bloqueosReversion = [];
+        const stockActualPorProducto = new Map();
+        let modoExcepcionalSinReversionStock = false;
+
         for (const producto of productosDevueltos) {
             if (!producto.producto_id) continue;
-            
-            try {
-                // Obtener stock actual
-                const { data: prodActual, error: errorProd } = await supabaseClient
-                    .from('productos')
-                    .select('stock')
-                    .eq('id', producto.producto_id)
-                    .single();
-                
-                if (errorProd) {
-                    console.warn(`⚠️ No se pudo obtener stock del producto ${producto.producto_id}`);
+
+            if (esProductoGranelDevolucion(producto)) {
+                continue;
+            }
+
+            const { data: prodActual, error: errorProd } = await supabaseClient
+                .from('productos')
+                .select('id, nombre, stock')
+                .eq('id', producto.producto_id)
+                .single();
+
+            if (errorProd || !prodActual) {
+                bloqueosReversion.push(`${producto.producto_nombre || `ID ${producto.producto_id}`}: no se pudo leer stock actual`);
+                continue;
+            }
+
+            const stockActual = Number(prodActual.stock || 0);
+            const cantidadARevertir = Number(producto.cantidad || 0);
+            const stockResultante = stockActual - cantidadARevertir;
+
+            stockActualPorProducto.set(producto.producto_id, {
+                nombre: prodActual.nombre || producto.producto_nombre || `ID ${producto.producto_id}`,
+                stockActual,
+                cantidadARevertir,
+                stockResultante
+            });
+
+            if (stockResultante < 0) {
+                bloqueosReversion.push(
+                    `${prodActual.nombre || producto.producto_nombre || `ID ${producto.producto_id}`}: ` +
+                    `stock actual ${stockActual}, se necesita revertir ${cantidadARevertir}`
+                );
+            }
+        }
+
+        if (bloqueosReversion.length > 0) {
+            console.warn('⛔ No se puede eliminar la devolución por falta de stock para revertir:', bloqueosReversion);
+            const confirmarExcepcional = confirm(
+                '⚠️ No hay stock suficiente para revertir esta devolución.\n\n' +
+                'Puedes usar MODO EXCEPCIONAL para:\n' +
+                '• Eliminar el registro de devolución\n' +
+                '• Eliminar el gasto de caja (si fue efectivo)\n' +
+                '• NO tocar stock de productos\n\n' +
+                '¿Quieres continuar en modo excepcional?'
+            );
+
+            if (!confirmarExcepcional) {
+                mostrarNotificacion(
+                    'No se eliminó: faltan unidades para revertir stock. Revisa consola para detalle.',
+                    'warning'
+                );
+                return;
+            }
+
+            modoExcepcionalSinReversionStock = true;
+            console.warn('⚠️ Eliminación en modo excepcional: sin reversión de stock');
+        }
+        
+        // 2. Revertir stock de productos (restar lo que se había sumado, excepto granel)
+        if (!modoExcepcionalSinReversionStock) {
+            for (const producto of productosDevueltos) {
+                if (!producto.producto_id) continue;
+
+                if (esProductoGranelDevolucion(producto)) {
                     continue;
                 }
-                
-                // Restar cantidad devuelta (revertir el incremento que se hizo)
-                const nuevoStock = prodActual.stock - producto.cantidad;
-                
-                if (nuevoStock < 0) {
-                    console.warn(`⚠️ Advertencia: ${producto.producto_nombre} quedaría con stock negativo (${nuevoStock})`);
-                }
-                
+
+                const stockInfo = stockActualPorProducto.get(producto.producto_id);
+                if (!stockInfo) continue;
+
                 const { error: errorUpdate } = await supabaseClient
                     .from('productos')
-                    .update({ stock: nuevoStock })
+                    .update({ stock: stockInfo.stockResultante })
                     .eq('id', producto.producto_id);
-                
+
                 if (errorUpdate) {
-                    console.warn(`⚠️ No se pudo revertir stock del producto ${producto.producto_id}`);
-                } else {
-                    console.log(`✅ Stock revertido: ${producto.producto_nombre} -${producto.cantidad} = ${nuevoStock}`);
+                    throw new Error(
+                        `No se pudo revertir stock de ${stockInfo.nombre}: ${errorUpdate.message || 'error de base de datos'}`
+                    );
                 }
-            } catch (error) {
-                console.warn(`⚠️ Error al revertir stock del producto ${producto.producto_id}:`, error);
+
+                console.log(`✅ Stock revertido: ${stockInfo.nombre} -${stockInfo.cantidadARevertir} = ${stockInfo.stockResultante}`);
             }
         }
         
-        // 2. Eliminar gasto asociado si fue reembolso en efectivo
+        // 3. Eliminar gasto asociado si fue reembolso en efectivo
         if (devolucion.tipo_reembolso === 'efectivo') {
             try {
                 const fechaDevolucion = new Date(devolucion.created_at);
@@ -8328,23 +8489,30 @@ async function eliminarDevolucion(devolucionId) {
             }
         }
         
-        // 3. Eliminar la devolución de la base de datos
-        const { error } = await supabaseClient
-            .from('devoluciones')
-            .delete()
-            .eq('id', devolucionId);
+        // 4. Marcar la devolución como eliminada (soft delete usando RPC)
+        const { data: result, error } = await supabaseClient
+            .rpc('eliminar_devolucion', { p_devolucion_id: devolucionId });
         
         if (error) throw error;
+
+        if (!result || !result.success) {
+            throw new Error(result?.message || 'No se pudo marcar la devolución como eliminada.');
+        }
         
         console.log(`✅ Devolución #${devolucionId} eliminada correctamente`);
-        mostrarNotificacion('Devolución eliminada y cambios revertidos correctamente', 'success');
+        if (modoExcepcionalSinReversionStock) {
+            mostrarNotificacion('Devolución eliminada en modo excepcional (sin reversión de stock)', 'warning');
+        } else {
+            mostrarNotificacion('Devolución eliminada y cambios revertidos correctamente', 'success');
+        }
         
-        // 4. Recargar vistas necesarias
-        await cargarHistorialDevoluciones();
-        
-        // Recargar ventas para que la venta vuelva a aparecer normal
+        // 5. Recargar vistas necesarias (primero ventas, luego devoluciones)
+        // para que desaparezca de inmediato el badge "Devuelto" en historial de transacciones
         if (currentView === 'sales') {
             await cargarVentas();
+            await cargarHistorialDevoluciones();
+        } else {
+            await cargarHistorialDevoluciones();
         }
         
         // Recargar inventario si estamos en esa vista
@@ -8381,6 +8549,7 @@ async function verDetalleDevolucion(devolucionId) {
                 )
             `)
             .eq('id', devolucionId)
+            .is('deleted_at', null)
             .single();
         
         if (error) throw error;
@@ -8459,11 +8628,27 @@ async function verDetalleDevolucion(devolucionId) {
                 </div>
             </div>
         `;
-        
-        // Crear y mostrar modal simple con alert
-        alert(detalleHTML.replace(/<[^>]*>/g, '\n')); // Versión simplificada
-        
-        // TODO: Crear modal dedicado para mejor UX
+
+        const modal = document.getElementById('modalDetalleVenta');
+        const content = document.getElementById('detalleVentaContent');
+        const title = modal?.querySelector('.modal-header h3');
+        const printButton = modal?.querySelector('.modal-footer .btn.btn-primary');
+
+        if (!modal || !content) {
+            throw new Error('Modal de detalle no disponible');
+        }
+
+        if (title) {
+            title.textContent = `🔄 Detalle de Devolución #${devolucion.id}`;
+        }
+
+        if (printButton) {
+            printButton.style.display = 'none';
+        }
+
+        content.innerHTML = detalleHTML;
+        modal.style.display = 'flex';
+        modal.classList.add('show');
         
     } catch (error) {
         console.error('Error cargando detalle de devolución:', error);

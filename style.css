@@ -89,22 +89,48 @@ body {
    =================================== */
 
 .login-container {
+  position: relative;
   display: flex;
   align-items: center;
   justify-content: center;
   min-height: 100vh;
   background: linear-gradient(135deg, hsl(var(--primary)) 0%, hsl(217 91% 45%) 100%);
   padding: 20px;
+  overflow: hidden;
+}
+
+.login-container::before,
+.login-container::after {
+  content: '';
+  position: absolute;
+  width: 420px;
+  height: 420px;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgb(255 255 255 / 0.15) 0%, rgb(255 255 255 / 0) 70%);
+  pointer-events: none;
+}
+
+.login-container::before {
+  top: -120px;
+  left: -120px;
+}
+
+.login-container::after {
+  bottom: -150px;
+  right: -120px;
 }
 
 .login-card {
+  position: relative;
+  z-index: 1;
   background: hsl(var(--card));
-  border-radius: 16px;
+  border-radius: 20px;
   box-shadow: var(--shadow-xl);
   width: 100%;
-  max-width: 420px;
+  max-width: 440px;
   overflow: hidden;
   animation: slideUp 0.4s ease-out;
+  border: 1px solid rgb(255 255 255 / 0.3);
 }
 
 @keyframes slideUp {
@@ -121,7 +147,7 @@ body {
 .login-header {
   background: linear-gradient(135deg, hsl(var(--primary)) 0%, hsl(217 91% 45%) 100%);
   color: white;
-  padding: 40px 30px;
+  padding: 34px 30px;
   text-align: center;
 }
 
@@ -148,11 +174,104 @@ body {
 
 .login-header p {
   opacity: 0.9;
-  font-size: 15px;
+  font-size: 14px;
 }
 
 .login-body {
-  padding: 32px 30px;
+  padding: 26px 30px 28px;
+}
+
+.login-intro {
+  font-size: 14px;
+  color: hsl(var(--muted-foreground));
+  margin-bottom: 14px;
+  text-align: center;
+  font-weight: 500;
+}
+
+.login-steps {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 20px;
+}
+
+.login-step {
+  background: hsl(var(--primary) / 0.08);
+  color: hsl(var(--primary));
+  border: 1px solid hsl(var(--primary) / 0.2);
+  border-radius: 999px;
+  padding: 6px 10px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.2px;
+}
+
+.password-field {
+  position: relative;
+}
+
+.login-body .form-input,
+.login-body .form-select {
+  min-height: 46px;
+}
+
+.password-field .form-input {
+  padding-right: 96px;
+}
+
+.btn-password-toggle {
+  position: absolute;
+  top: 50%;
+  right: 8px;
+  transform: translateY(-50%);
+  border: none;
+  border-radius: 8px;
+  background: hsl(var(--secondary));
+  color: hsl(var(--secondary-foreground));
+  padding: 7px 12px;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.btn-password-toggle:hover {
+  background: hsl(var(--primary) / 0.12);
+  color: hsl(var(--primary));
+}
+
+.login-options {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.login-safe-tip {
+  font-size: 12px;
+  font-weight: 600;
+  color: hsl(var(--muted-foreground));
+}
+
+.login-body #loginBtn {
+  min-height: 48px;
+  font-size: 16px;
+}
+
+@media (max-width: 520px) {
+  .login-body {
+    padding: 22px 20px 24px;
+  }
+
+  .login-header {
+    padding: 28px 20px;
+  }
+
+  .login-step {
+    font-size: 10px;
+  }
 }
 
 /* ===================================
@@ -194,27 +313,58 @@ body {
 }
 
 .sidebar-header {
-  padding: 24px 20px;
+  padding: 18px 16px;
   border-bottom: 1px solid hsl(var(--border));
+  background: linear-gradient(180deg, hsl(var(--card)) 0%, hsl(var(--muted) / 0.25) 100%);
 }
 
 .sidebar-logo {
   display: flex;
   align-items: center;
   gap: 12px;
-  font-weight: 700;
-  font-size: 18px;
+  padding: 10px 8px;
+  border-radius: 12px;
+  border: 1px solid hsl(var(--border));
+  background: hsl(var(--card));
 }
 
-.logo-icon {
-  font-size: 28px;
+.logo-badge {
+  width: 42px;
+  height: 42px;
+  border-radius: 12px;
+  border: 1px solid hsl(var(--primary) / 0.35);
+  background: linear-gradient(135deg, hsl(var(--primary) / 0.15) 0%, hsl(var(--primary) / 0.05) 100%);
+  color: hsl(var(--primary));
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 24px;
+  font-weight: 800;
+  line-height: 1;
+  font-family: 'Inter', serif;
+}
+
+.logo-branding {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
 }
 
 .logo-text {
-  background: linear-gradient(135deg, hsl(var(--primary)) 0%, hsl(217 91% 45%) 100%);
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
-  background-clip: text;
+  color: hsl(var(--foreground));
+  font-size: 22px;
+  font-weight: 800;
+  letter-spacing: -0.3px;
+  line-height: 1.05;
+}
+
+.logo-subtitle {
+  margin-top: 2px;
+  font-size: 11px;
+  letter-spacing: 0.7px;
+  text-transform: uppercase;
+  color: hsl(var(--muted-foreground));
+  font-weight: 600;
 }
 
 .sidebar-nav {
@@ -2023,6 +2173,101 @@ body {
     }
 }
 
+/* ===================================
+   SALES VIEW TUNING
+   =================================== */
+
+#salesView .view-header {
+  margin-bottom: 18px;
+}
+
+#salesView .view-actions {
+  align-items: center;
+  gap: 10px;
+}
+
+#salesView #periodoVentas {
+  min-width: 180px !important;
+  min-height: 42px;
+}
+
+#salesView .sales-content {
+  gap: 20px;
+}
+
+#salesView .kpi-grid {
+  gap: 18px !important;
+  margin-bottom: 0 !important;
+}
+
+#salesView .kpi-card {
+  padding: 18px !important;
+  border-radius: 14px !important;
+}
+
+#salesView .charts-grid {
+  gap: 18px !important;
+  margin-bottom: 0 !important;
+}
+
+#salesView .chart-card {
+  padding: 18px !important;
+  border-radius: 14px !important;
+}
+
+#salesView #rankingVendedores,
+#salesView #historialTransacciones,
+#salesView #historialDevoluciones {
+  margin-bottom: 0 !important;
+  padding: 18px !important;
+  border-radius: 14px !important;
+}
+
+#salesView #tablaVendedores {
+  margin-top: 4px;
+}
+
+#salesView .sales-table-container {
+  margin-top: 6px;
+  border-radius: 10px;
+}
+
+#salesView .sales-table th {
+  padding: 14px 12px;
+}
+
+#salesView .sales-table td {
+  padding: 13px 12px;
+  vertical-align: top;
+}
+
+#salesView #tablaDevoluciones > div {
+  border: 1px solid hsl(var(--border));
+  border-radius: 10px;
+}
+
+@media (max-width: 1024px) {
+  #salesView .charts-grid {
+    grid-template-columns: 1fr !important;
+  }
+}
+
+@media (max-width: 768px) {
+  #salesView .kpi-card,
+  #salesView .chart-card,
+  #salesView #rankingVendedores,
+  #salesView #historialTransacciones,
+  #salesView #historialDevoluciones {
+    padding: 14px !important;
+  }
+
+  #salesView .sales-table th,
+  #salesView .sales-table td {
+    padding: 10px 8px;
+    font-size: 13px;
+  }
+}
+
 
 /* =============================================
    BOTÓN DE ACTUALIZACIÓN FORZADA
@@ -2050,9 +2295,13 @@ body {
 }
 
 .btn-force-update {
-    margin-top: 12px;
+  margin-top: 14px;
     width: 100%;
     text-align: center;
+  border: 1px dashed hsl(var(--border));
+  border-radius: 10px;
+  background: hsl(var(--muted) / 0.45);
+  padding: 10px 12px;
 }
 
 /* ===================================

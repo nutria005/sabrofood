@@ -68,9 +68,8 @@ function mostrarBotonInstalar() {
         styles.textContent = `
             .pwa-install-btn {
                 position: fixed;
-                bottom: 20px;
-                left: 50%;
-                transform: translateX(-50%);
+                bottom: 24px;
+                right: 24px;
                 display: flex;
                 align-items: center;
                 gap: 10px;
@@ -90,7 +89,7 @@ function mostrarBotonInstalar() {
             }
 
             .pwa-install-btn:hover {
-                transform: translateX(-50%) translateY(-3px);
+                transform: translateY(-3px);
                 box-shadow: 0 12px 32px rgba(66, 180, 230, 0.5);
             }
 
@@ -125,19 +124,26 @@ function mostrarBotonInstalar() {
             @keyframes slideUpFade {
                 from {
                     opacity: 0;
-                    transform: translateX(-50%) translateY(100px);
+                    transform: translateY(100px);
                 }
                 to {
                     opacity: 1;
-                    transform: translateX(-50%) translateY(0);
+                    transform: translateY(0);
                 }
             }
 
             @media (max-width: 768px) {
                 .pwa-install-btn {
                     bottom: 100px; /* Evitar botón flotante del carrito */
+                    left: 50%;
+                    right: auto;
+                    transform: translateX(-50%);
                     font-size: 14px;
                     padding: 12px 20px;
+                }
+
+                .pwa-install-btn:hover {
+                    transform: translateX(-50%) translateY(-3px);
                 }
             }
         `;
