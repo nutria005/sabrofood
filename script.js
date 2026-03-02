@@ -768,18 +768,41 @@ async function cargarProductos() {
             return;
         }
 
-        const { data, error } = await supabaseClient
-            .from('productos')
-            .select('*')
-            .order('nombre', { ascending: true})
-            .limit(5000);
+        // Cargar TODOS los productos con paginación (límite Supabase: 1000 por request)
+        let todosLosProductos = [];
+        let offset = 0;
+        const pageSize = 1000;
+        let hayMasProductos = true;
 
-        if (error) {
-            console.error('Error Supabase:', error.message);
-            mostrarNotificacion('Error al cargar productos: ' + error.message, 'error');
-            mostrarProductosMock();
-            return;
+        while (hayMasProductos) {
+            const { data, error } = await supabaseClient
+                .from('productos')
+                .select('*')
+                .order('nombre', { ascending: true})
+                .range(offset, offset + pageSize - 1);
+
+            if (error) {
+                console.error('Error Supabase:', error.message);
+                mostrarNotificacion('Error al cargar productos: ' + error.message, 'error');
+                mostrarProductosMock();
+                return;
+            }
+
+            if (!data || data.length === 0) {
+                hayMasProductos = false;
+            } else {
+                todosLosProductos = todosLosProductos.concat(data);
+                console.log(`📦 Cargados ${data.length} productos (offset: ${offset}, total acumulado: ${todosLosProductos.length})`);
+                
+                if (data.length < pageSize) {
+                    hayMasProductos = false;
+                }
+                offset += pageSize;
+            }
         }
+
+        const data = todosLosProductos;
+        console.log('✅ TOTAL PRODUCTOS CARGADOS:', todosLosProductos.length);
 
         if (!data || data.length === 0) {
             mostrarNotificacion('No hay productos activos', 'warning');
