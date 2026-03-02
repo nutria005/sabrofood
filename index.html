@@ -92,6 +92,7 @@
                         <option value="Emil">Emil</option>
                         <option value="Jonathan J.">Jonathan J.</option>
                         <option value="Remplazo 1">Remplazo 1</option>
+                        <option value="Remplazo 2">Remplazo 2</option>
                         <option value="Admin">Admin (Encargado)</option>
                     </select>
                     <small class="input-helper">Elige tu nombre para cargar tus permisos y datos.</small>
@@ -1739,7 +1740,6 @@
                     <div class="form-group" style="background: hsl(var(--muted)/0.3); padding: 12px; border-radius: 8px; margin-bottom: 12px;">
                         <label style="display: flex; align-items: center; gap: 8px; margin-bottom: 8px; font-size: 14px; font-weight: 600;">
                             🧮 Calculadora
-                            <button onclick="limpiarCalculadoraGranel()" class="btn-secondary" style="margin-left: auto; padding: 4px 10px; font-size: 11px;">C</button>
                         </label>
                         
                         <!-- Display de la calculadora -->
@@ -1768,8 +1768,9 @@
                             <button onclick="agregarOperacionCalc('-')" class="btn-calc-op">−</button>
                             
                             <!-- Fila 4 -->
-                            <button onclick="agregarNumeroCalc('0')" class="btn-calc" style="grid-column: span 2;">0</button>
-                            <button onclick="calcularResultado()" class="btn-calc-igual">=</button>
+                            <button onclick="limpiarCalculadoraGranel()" class="btn-calc-op" style="background: hsl(0 84% 60%); color: white; border-color: hsl(0 84% 50%);">C</button>
+                            <button onclick="agregarNumeroCalc('0')" class="btn-calc">0</button>
+                            <button onclick="borrarUltimoDigitoCalc()" class="btn-calc-op" title="Borrar último dígito">←</button>
                             <button onclick="agregarOperacionCalc('+')" class="btn-calc-op">+</button>
                         </div>
                         
@@ -1867,11 +1868,11 @@
                 </button>
             </div>
             <div class="modal-body">
-                <div class="form-group">
+                <div class="form-group" id="editNombreGroup">
                     <label>Producto</label>
                     <input type="text" id="editNombre" class="form-input" placeholder="Nombre del producto">
                 </div>
-                <div class="form-group">
+                <div class="form-group" id="editProveedorGroup">
                     <label>Proveedor (opcional)</label>
                     <select id="editProveedor" class="form-select">
                         <option value="">Sin proveedor</option>
@@ -1895,7 +1896,7 @@
                         <option value="Purina">Purina</option>
                     </select>
                 </div>
-                <div class="form-group">
+                <div class="form-group" id="editCategoriaGroup">
                     <label>Categoría</label>
                     <select id="editCategoria" class="form-select">
                         <option value="">Seleccionar categoría</option>
@@ -1910,11 +1911,11 @@
                         <option value="Otros">Otros</option>
                     </select>
                 </div>
-                <div class="form-group">
+                <div class="form-group" id="editPrecioGroup">
                     <label>Precio</label>
                     <input type="number" id="editPrecio" class="form-input" placeholder="Nuevo precio" step="1">
                 </div>
-                <div class="form-group">
+                <div class="form-group" id="editStockGroup">
                     <label>Stock Actual</label>
                     <input type="number" id="editStock" class="form-input" placeholder="Nuevo stock" step="0.1">
                 </div>
@@ -1925,7 +1926,7 @@
                         🚨 Se activará alerta cuando el stock sea menor a este valor
                     </small>
                 </div>
-                <div class="form-group">
+                <div class="form-group" id="editCodigoBarrasGroup">
                     <label>Código de Barras</label>
                     <input type="text" id="editCodigoBarras" class="form-input" placeholder="Código de barras (opcional)">
                 </div>

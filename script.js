@@ -901,14 +901,17 @@ function renderProductos() {
                     <div class="product-name">${producto.nombre}</div>
                     ${stockText ? `<span class="product-stock ${stockClass}">${stockText}</span>` : ''}
                 </div>
-                <div class="product-category">${producto.marca || producto.categoria || 'General'}</div>
-                <div class="product-price">$${formatoMoneda(producto.precio || 0)}</div>
-                ${esGranel ? 
-                    `<div style="padding: 12px; text-align: center; color: hsl(var(--muted-foreground)); font-size: 13px;">
-                        Usa el botón 🌾 Granel
-                    </div>` : 
-                    `<button class="btn-add-product" onclick="agregarAlCarrito(${producto.id})">+ Agregar</button>`
-                }
+                <div class="product-footer">
+                    <div class="product-price">$${formatoMoneda(producto.precio || 0)}</div>
+                    ${esGranel ? 
+                        `<button class="btn-add-product btn-granel" disabled title="Usa el botón 🌾 Granel">
+                            🌾
+                        </button>` : 
+                        `<button class="btn-add-product" onclick="agregarAlCarrito(${producto.id})">
+                            +
+                        </button>`
+                    }
+                </div>
             </div>
         `;
     }).join('');
@@ -4039,7 +4042,24 @@ function limpiarCalculadoraGranel() {
     }
 }
 
+function borrarUltimoDigitoCalc() {
+    const display = document.getElementById('displayCalculadora');
+    
+    if (displayCalc.length > 1) {
+        displayCalc = displayCalc.slice(0, -1);
+    } else {
+        displayCalc = '0';
+    }
+    
+    display.textContent = displayCalc;
+}
+
 function aplicarCalculadora() {
+    // Si hay una operación pendiente, calcularla primero
+    if (valorAnterior !== null && !nuevoNumero) {
+        calcularResultado();
+    }
+    
     const resultado = parseFloat(displayCalc);
     
     if (isNaN(resultado) || resultado <= 0) {
@@ -4170,23 +4190,43 @@ function abrirModalEditar(producto) {
         document.getElementById('editStockMinimo').value = producto.stock_minimo_sacos || '';
     }
 
-    // Campo de stock mínimo (solo para encargado)
+    // Configurar visibilidad de campos según rol
     const stockMinimoGroup = document.getElementById('editStockMinimoGroup');
-    if (esEncargado) {
-        stockMinimoGroup.style.display = 'block';
-    } else {
-        stockMinimoGroup.style.display = 'none';
-    }
+    const nombreGroup = document.getElementById('editNombreGroup');
+    const proveedorGroup = document.getElementById('editProveedorGroup');
+    const categoriaGroup = document.getElementById('editCategoriaGroup');
+    const precioGroup = document.getElementById('editPrecioGroup');
+    const codigoBarrasGroup = document.getElementById('editCodigoBarrasGroup');
 
-    // Si es vendedor, solo puede editar el stock (no crear)
     if (!esEncargado && !modoCrear) {
+        // VENDEDOR: Solo mostrar nombre (readonly) y campo de stock
+        titulo.textContent = '📦 Actualizar Stock - ' + producto.nombre;
+        
+        // Ocultar campos que no puede editar
+        proveedorGroup.style.display = 'none';
+        categoriaGroup.style.display = 'none';
+        precioGroup.style.display = 'none';
+        codigoBarrasGroup.style.display = 'none';
+        stockMinimoGroup.style.display = 'none';
+        
+        // Mostrar nombre como referencia (readonly)
+        nombreGroup.style.display = 'block';
         document.getElementById('editNombre').setAttribute('readonly', 'readonly');
-        document.getElementById('editProveedor').setAttribute('disabled', 'disabled');
-        document.getElementById('editCategoria').setAttribute('disabled', 'disabled');
-        document.getElementById('editPrecio').setAttribute('readonly', 'readonly');
-        document.getElementById('editCodigoBarras').setAttribute('readonly', 'readonly');
-    } else if (esEncargado) {
+        document.getElementById('editNombre').style.backgroundColor = 'hsl(var(--muted))';
+        document.getElementById('editNombre').style.cursor = 'not-allowed';
+    } else {
+        // ENCARGADO: Mostrar todos los campos
+        nombreGroup.style.display = 'block';
+        proveedorGroup.style.display = 'block';
+        categoriaGroup.style.display = 'block';
+        precioGroup.style.display = 'block';
+        codigoBarrasGroup.style.display = 'block';
+        stockMinimoGroup.style.display = 'block';
+        
+        // Quitar readonly de todos los campos
         document.getElementById('editNombre').removeAttribute('readonly');
+        document.getElementById('editNombre').style.backgroundColor = '';
+        document.getElementById('editNombre').style.cursor = '';
         document.getElementById('editProveedor').removeAttribute('disabled');
         document.getElementById('editCategoria').removeAttribute('disabled');
         document.getElementById('editPrecio').removeAttribute('readonly');
