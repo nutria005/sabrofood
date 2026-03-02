@@ -2,7 +2,7 @@
 // ===============================
 
 // Versión de la aplicación
-const APP_VERSION = '1.1.0-20260119';
+const APP_VERSION = '1.2.0-20260302';
 
 // Estado global
 let currentUser = '';
