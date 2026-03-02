@@ -771,7 +771,8 @@ async function cargarProductos() {
         const { data, error } = await supabaseClient
             .from('productos')
             .select('*')
-            .order('nombre', { ascending: true});
+            .order('nombre', { ascending: true})
+            .limit(5000);
 
         if (error) {
             console.error('Error Supabase:', error.message);
@@ -3802,7 +3803,8 @@ async function cargarProductosGranel() {
             .select('*')
             .eq('tipo', 'granel')
             .eq('activo', true)
-            .order('nombre');
+            .order('nombre')
+            .limit(5000);
 
         if (error) throw error;
 
@@ -7210,7 +7212,8 @@ async function cargarProductosSinCodigo() {
             .from('productos')
             .select('*')
             .or('codigo_barras.is.null,codigo_barras.eq.')
-            .order('nombre');
+            .order('nombre')
+            .limit(5000);
 
         if (error) throw error;
 
