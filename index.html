@@ -91,6 +91,7 @@
                         <option value="Diego Jr.">Diego Jr. (Hijo)</option>
                         <option value="Emil">Emil</option>
                         <option value="Jonathan J.">Jonathan J.</option>
+                        <option value="Remplazo 1">Remplazo 1</option>
                         <option value="Admin">Admin (Encargado)</option>
                     </select>
                     <small class="input-helper">Elige tu nombre para cargar tus permisos y datos.</small>
@@ -378,13 +379,6 @@
                         <p class="view-subtitle">Control de stock y productos</p>
                     </div>
                     <div class="view-actions">
-                        <button id="btnAdminPreciosInventario" class="btn btn-primary" onclick="abrirModalAdminPrecios()" style="display: none;">
-                            <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
-                                <path d="M12 2v20M17 5H9.5a3.5 3.5 0 000 7h5a3.5 3.5 0 010 7H6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-                            </svg>
-                            <span>Administrar Precios</span>
-                        </button>
-
                         <button class="btn-logout-header" onclick="handleLogout()" title="Cerrar sesión">
                             <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                                 <path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4"/>
@@ -441,6 +435,18 @@
                             <div class="stat-content">
                                 <p class="stat-label">Sin Stock</p>
                                 <p class="stat-value" id="sinStock">0</p>
+                            </div>
+                        </div>
+                        <div class="stat-card stat-card-clickable" onclick="filtrarInventario('sinprecio')" data-filtro="sinprecio" title="Ver productos sin precio asignado">
+                            <div class="stat-icon bg-purple">
+                                <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
+                                    <path d="M12 2v20M17 5H9.5a3.5 3.5 0 000 7h5a3.5 3.5 0 010 7H6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                                    <line x1="2" y1="2" x2="22" y2="22" stroke="currentColor" stroke-width="2"/>
+                                </svg>
+                            </div>
+                            <div class="stat-content">
+                                <p class="stat-label">Sin Precio</p>
+                                <p class="stat-value" id="sinPrecio">0</p>
                             </div>
                         </div>
                     </div>
@@ -674,6 +680,8 @@
                                         <th>Fecha/Hora</th>
                                         <th>Vendedor</th>
                                         <th>Productos</th>
+                                        <th>Subtotal</th>
+                                        <th>Descuento</th>
                                         <th>Total</th>
                                         <th>Método Pago</th>
                                         <th>Acciones</th>
@@ -681,7 +689,7 @@
                                 </thead>
                                 <tbody id="salesTableBody">
                                     <tr>
-                                        <td colspan="7" class="text-center">
+                                        <td colspan="9" class="text-center">
                                             <div class="loading-state">
                                                 <div class="spinner"></div>
                                                 <p>Cargando ventas...</p>
@@ -772,16 +780,76 @@
                 </div>
 
                 <div class="asistencia-content" style="padding: 24px;">
-                    <!-- Estado Actual -->
+                    <!-- Panel de Control Admin (Solo Encargado) -->
+                    <div id="panelControlAdmin" class="admin-control-panel" style="background: linear-gradient(135deg, hsl(var(--primary) / 0.05), hsl(var(--accent) / 0.05)); border: 2px solid hsl(var(--primary) / 0.3); border-radius: 12px; padding: 24px; margin-bottom: 24px; display: none;">
+                        <h3 style="font-size: 18px; font-weight: 700; margin: 0 0 8px 0; color: hsl(var(--primary)); display: flex; align-items: center; gap: 8px;">
+                            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <path d="M12 2a10 10 0 110 20 10 10 0 010-20z"/>
+                                <path d="M12 6v6l4 2"/>
+                            </svg>
+                            Control de Asistencia (Admin)
+                        </h3>
+                        <p style="font-size: 13px; color: hsl(var(--muted-foreground)); margin: 0 0 20px 0;">Marca entrada y salida de cualquier empleado</p>
+                        
+                        <div style="display: grid; gap: 20px;">
+                            <!-- Selector de Usuario -->
+                            <div class="form-group" style="margin: 0;">
+                                <label style="font-weight: 600; margin-bottom: 8px; display: block;">Seleccionar Empleado</label>
+                                <select id="adminSelectUsuario" class="form-select" onchange="cargarEstadoUsuarioAdmin()" style="font-size: 16px; padding: 12px;">
+                                    <option value="">-- Selecciona un empleado --</option>
+                                </select>
+                            </div>
+
+                            <!-- Estado del usuario seleccionado -->
+                            <div id="adminEstadoUsuario" style="background: white; border-radius: 8px; padding: 16px; display: none;">
+                                <h4 style="font-size: 14px; font-weight: 600; margin: 0 0 12px 0; color: hsl(var(--muted-foreground));">Estado Actual</h4>
+                                <div id="adminEstadoContent"></div>
+                            </div>
+
+                            <!-- Botones de marcaje por admin -->
+                            <div id="adminBotonesControl" style="display: none;">
+                                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 12px;">
+                                    <button id="adminBtnEntrada" class="btn btn-success" onclick="marcarEventoAdmin('entrada')" style="padding: 16px;">
+                                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" style="margin-bottom: 6px;">
+                                            <path d="M9 11l3 3L22 4" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                                            <path d="M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                                        </svg>
+                                        <div style="font-size: 14px;">Marcar Entrada</div>
+                                    </button>
+                                    <button id="adminBtnInicioAlmuerzo" class="btn btn-warning" onclick="marcarEventoAdmin('inicio_almuerzo')" style="padding: 16px;" disabled>
+                                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" style="margin-bottom: 6px;">
+                                            <path d="M12 12h9l-9 9v-9zM12 3v9H3z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                                        </svg>
+                                        <div style="font-size: 14px;">Iniciar Almuerzo</div>
+                                    </button>
+                                    <button id="adminBtnFinAlmuerzo" class="btn btn-info" onclick="marcarEventoAdmin('fin_almuerzo')" style="padding: 16px;" disabled>
+                                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" style="margin-bottom: 6px;">
+                                            <circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="2"/>
+                                            <path d="M12 6v6l4 4" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+                                        </svg>
+                                        <div style="font-size: 14px;">Terminar Almuerzo</div>
+                                    </button>
+                                    <button id="adminBtnSalida" class="btn btn-danger" onclick="marcarEventoAdmin('salida')" style="padding: 16px;" disabled>
+                                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" style="margin-bottom: 6px;">
+                                            <path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4M16 17l5-5-5-5M21 12H9" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                                        </svg>
+                                        <div style="font-size: 14px;">Marcar Salida</div>
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Estado Actual (Personal) -->
                     <div id="estadoActual" class="estado-card" style="background: hsl(var(--card)); border: 1px solid hsl(var(--border)); border-radius: 12px; padding: 24px; margin-bottom: 24px;">
-                        <h3 style="font-size: 16px; font-weight: 600; margin: 0 0 16px 0;">📍 Estado Actual</h3>
+                        <h3 style="font-size: 16px; font-weight: 600; margin: 0 0 16px 0;">📍 Tu Estado Actual</h3>
                         <div id="estadoContent">
                             <div class="spinner"></div>
                             <p>Cargando estado...</p>
                         </div>
                     </div>
 
-                    <!-- Botones de Marcaje -->
+                    <!-- Botones de Marcaje (Personal) -->
                     <div class="marcaje-btns" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 16px; margin-bottom: 24px;">
                         <button id="btnMarcarEntrada" class="btn btn-success" onclick="marcarEvento('entrada')" style="padding: 20px;">
                             <svg width="24" height="24" viewBox="0 0 24 24" fill="none" style="margin-bottom: 8px;">
@@ -1037,6 +1105,66 @@
                                 <div class="stat-row stat-total" style="background: hsl(var(--success) / 0.1); border: 2px solid hsl(var(--success) / 0.3);">
                                     <span class="stat-label"><strong>💰 Total Pagado Personal</strong></span>
                                     <span class="stat-value" style="color: hsl(var(--success));" id="totalPagadoPersonal">$0</span>
+                                </div>
+                            </div>
+
+                            <!-- Reparto / Delivery -->
+                            <div class="panel-header" style="margin-top: 32px;">
+                                <h3>🚚 Reparto / Delivery</h3>
+                                <p class="panel-subtitle">Pedidos del sistema de reparto</p>
+                            </div>
+
+                            <div class="stats-summary">
+                                <div class="stat-row" style="background: linear-gradient(135deg, hsl(var(--primary) / 0.1), hsl(var(--primary) / 0.05)); border: 2px solid hsl(var(--primary) / 0.3);">
+                                    <span class="stat-label">
+                                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
+                                            <path d="M1 1h4l2.68 13.39a2 2 0 002 1.61h9.72a2 2 0 002-1.61L23 6H6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                                        </svg>
+                                        <strong>Total Recaudado Reparto</strong>
+                                    </span>
+                                    <span class="stat-value" style="color: hsl(var(--primary)); font-size: 24px;" id="totalRecaudadoReparto">$0</span>
+                                </div>
+                                
+                                <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; margin-top: 12px;">
+                                    <div class="stat-row">
+                                        <span class="stat-label">
+                                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
+                                                <path d="M12 2v20M17 5H9.5a3.5 3.5 0 000 7h5a3.5 3.5 0 010 7H6" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+                                            </svg>
+                                            Efectivo
+                                        </span>
+                                        <span class="stat-value" style="font-size: 16px;" id="repartoEfectivo">$0</span>
+                                    </div>
+                                    <div class="stat-row">
+                                        <span class="stat-label">
+                                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
+                                                <rect x="2" y="5" width="20" height="14" rx="2" stroke="currentColor" stroke-width="2"/>
+                                                <path d="M2 10h20" stroke="currentColor" stroke-width="2"/>
+                                            </svg>
+                                            Tarjetas
+                                        </span>
+                                        <span class="stat-value" style="font-size: 16px;" id="repartoTarjetas">$0</span>
+                                    </div>
+                                </div>
+
+                                <div class="stat-row" style="margin-top: 12px; background: hsl(var(--warning) / 0.1); border-left: 3px solid hsl(var(--warning));">
+                                    <span class="stat-label">
+                                        ⏳ Pendientes
+                                    </span>
+                                    <span class="stat-value" style="color: hsl(var(--warning));">
+                                        <span id="repartoPendientesCantidad">0</span> pedidos
+                                        (<span id="repartoPendientesMonto">$0</span>)
+                                    </span>
+                                </div>
+
+                                <div class="stat-row" style="background: hsl(var(--success) / 0.1); border-left: 3px solid hsl(var(--success));">
+                                    <span class="stat-label">
+                                        ✅ Pagadas/Entregadas
+                                    </span>
+                                    <span class="stat-value" style="color: hsl(var(--success));">
+                                        <span id="repartoPagadasCantidad">0</span> pedidos
+                                        (<span id="repartoPagadasMonto">$0</span>)
+                                    </span>
                                 </div>
                             </div>
 
@@ -1321,9 +1449,51 @@
                 </button>
             </div>
             <div class="modal-body">
+                <!-- Sección de Descuento -->
+                <div id="seccionDescuento" style="background: hsl(var(--muted)/0.3); padding: 12px; border-radius: 8px; margin-bottom: 12px;">
+                    <label style="display: flex; align-items: center; gap: 8px; margin-bottom: 8px; font-weight: 600; font-size: 13px;">
+                        💸 Descuento
+                    </label>
+                    <div style="display: grid; grid-template-columns: 1fr 1fr auto; gap: 6px; margin-bottom: 10px;">
+                        <button onclick="seleccionarTipoDescuento('porcentaje')" id="btnDescPorcentaje" class="btn-secondary" style="padding: 8px 10px; font-size: 12px; border-radius: 10px;">
+                            % %
+                        </button>
+                        <button onclick="seleccionarTipoDescuento('monto')" id="btnDescMonto" class="btn-secondary" style="padding: 8px 10px; font-size: 12px; border-radius: 10px;">
+                            $ Fijo
+                        </button>
+                        <button onclick="limpiarDescuento()" class="btn-secondary" style="padding: 8px 10px; font-size: 12px; border-radius: 10px;">
+                            ✕
+                        </button>
+                    </div>
+                    <div id="areaDescPorcentaje" style="display: none;">
+                        <div class="form-group" style="margin: 0;">
+                            <input type="number" id="inputDescPorcentaje" class="form-input" placeholder="Ej: 10" min="0" max="100" step="1" oninput="aplicarDescuento()" style="padding: 8px 10px; font-size: 14px; border-radius: 8px;">
+                            <small style="color: hsl(var(--muted-foreground)); font-size: 10px; margin-top: 4px; display: block;">% de descuento</small>
+                        </div>
+                    </div>
+                    <div id="areaDescMonto" style="display: none;">
+                        <div class="form-group" style="margin: 0;">
+                            <input type="number" id="inputDescMonto" class="form-input" placeholder="Ej: 5000" min="0" step="100" oninput="aplicarDescuento()" style="padding: 8px 10px; font-size: 14px; border-radius: 8px;">
+                            <small style="color: hsl(var(--muted-foreground)); font-size: 10px; margin-top: 4px; display: block;">Monto a descontar</small>
+                        </div>
+                    </div>
+                    <div id="resumenDescuento" style="display: none; margin-top: 10px; padding: 8px 10px; background: hsl(var(--success)/0.1); border-radius: 6px; border: 1px solid hsl(var(--success));">
+                        <div style="font-size: 11px; color: hsl(var(--success)); display: flex; justify-content: space-between;">
+                            <span>✓ Descuento:</span>
+                            <strong id="montoDescuentoAplicado">$0</strong>
+                        </div>
+                    </div>
+                </div>
+
                 <div class="checkout-total">
-                    <span>Total a Pagar</span>
-                    <span class="checkout-amount" id="pagoTotal">$0</span>
+                    <div style="display: flex; flex-direction: column; gap: 2px; flex: 1;">
+                        <span id="labelSubtotal" style="font-size: 11px; color: hsl(var(--muted-foreground)); display: none;">Subtotal</span>
+                        <span style="font-size: 13px; font-weight: 600;">Total a Pagar</span>
+                    </div>
+                    <div style="display: flex; flex-direction: column; align-items: flex-end; gap: 2px;">
+                        <span id="montoSubtotal" style="font-size: 12px; color: hsl(var(--muted-foreground)); text-decoration: line-through; display: none;">$0</span>
+                        <span class="checkout-amount" id="pagoTotal">$0</span>
+                    </div>
                 </div>
 
                 <div class="payment-methods">
@@ -1548,33 +1718,130 @@
 
                 <!-- Lista de productos granel -->
                 <div class="form-group">
-                    <label>Productos Disponibles (Precio por kg)</label>
-                    <div id="listaProductosGranel" style="max-height: 300px; overflow-y: auto; border: 1px solid hsl(var(--border)); border-radius: 8px; padding: 8px;">
+                    <label style="font-size: 13px; font-weight: 600;">Productos Disponibles</label>
+                    <div id="listaProductosGranel" style="max-height: 200px; overflow-y: auto; border: 1px solid hsl(var(--border)); border-radius: 8px; padding: 8px;">
                         <div class="loading-state">
                             <div class="spinner"></div>
-                            <p>Cargando productos...</p>
+                            <p style="font-size: 13px;">Cargando...</p>
                         </div>
                     </div>
                 </div>
 
                 <!-- Producto seleccionado -->
                 <div id="granelSeleccionado" style="display: none;">
-                    <div class="alert alert-success" style="margin-bottom: 16px;">
-                        <strong id="granelNombreSeleccionado"></strong>
+                    <div class="alert alert-success" style="margin-bottom: 12px; padding: 10px 12px;">
+                        <strong id="granelNombreSeleccionado" style="font-size: 14px;"></strong>
                         <br>
-                        <span id="granelPrecioKg" style="font-size: 14px;"></span>
+                        <span id="granelPrecioKg" style="font-size: 12px;"></span>
                     </div>
 
+                    <!-- Calculadora Normal -->
+                    <div class="form-group" style="background: hsl(var(--muted)/0.3); padding: 12px; border-radius: 8px; margin-bottom: 12px;">
+                        <label style="display: flex; align-items: center; gap: 8px; margin-bottom: 8px; font-size: 14px; font-weight: 600;">
+                            🧮 Calculadora
+                            <button onclick="limpiarCalculadoraGranel()" class="btn-secondary" style="margin-left: auto; padding: 4px 10px; font-size: 11px;">C</button>
+                        </label>
+                        
+                        <!-- Display de la calculadora -->
+                        <div id="displayCalculadora" style="background: white; padding: 10px 12px; border-radius: 8px; margin-bottom: 10px; text-align: right; font-size: 20px; font-weight: 700; min-height: 44px; display: flex; align-items: center; justify-content: flex-end; border: 2px solid hsl(var(--border)); font-family: 'Courier New', monospace;">
+                            0
+                        </div>
+                        
+                        <!-- Teclado numérico -->
+                        <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px;">
+                            <!-- Fila 1 -->
+                            <button onclick="agregarNumeroCalc('7')" class="btn-calc">7</button>
+                            <button onclick="agregarNumeroCalc('8')" class="btn-calc">8</button>
+                            <button onclick="agregarNumeroCalc('9')" class="btn-calc">9</button>
+                            <button onclick="agregarOperacionCalc('/')" class="btn-calc-op">÷</button>
+                            
+                            <!-- Fila 2 -->
+                            <button onclick="agregarNumeroCalc('4')" class="btn-calc">4</button>
+                            <button onclick="agregarNumeroCalc('5')" class="btn-calc">5</button>
+                            <button onclick="agregarNumeroCalc('6')" class="btn-calc">6</button>
+                            <button onclick="agregarOperacionCalc('*')" class="btn-calc-op">×</button>
+                            
+                            <!-- Fila 3 -->
+                            <button onclick="agregarNumeroCalc('1')" class="btn-calc">1</button>
+                            <button onclick="agregarNumeroCalc('2')" class="btn-calc">2</button>
+                            <button onclick="agregarNumeroCalc('3')" class="btn-calc">3</button>
+                            <button onclick="agregarOperacionCalc('-')" class="btn-calc-op">−</button>
+                            
+                            <!-- Fila 4 -->
+                            <button onclick="agregarNumeroCalc('0')" class="btn-calc" style="grid-column: span 2;">0</button>
+                            <button onclick="calcularResultado()" class="btn-calc-igual">=</button>
+                            <button onclick="agregarOperacionCalc('+')" class="btn-calc-op">+</button>
+                        </div>
+                        
+                        <button onclick="aplicarCalculadora()" class="btn-primary" style="width: 100%; margin-top: 10px; padding: 10px; font-weight: 600; font-size: 13px; border-radius: 10px;">
+                            ✓ Aplicar resultado
+                        </button>
+                    </div>
+                    
+                    <style>
+                        .btn-calc, .btn-calc-op, .btn-calc-igual {
+                            padding: 12px;
+                            font-size: 16px;
+                            font-weight: 600;
+                            border: none;
+                            border-radius: 6px;
+                            cursor: pointer;
+                            transition: all 0.15s;
+                        }
+                        
+                        .btn-calc {
+                            background: white;
+                            color: hsl(var(--foreground));
+                            border: 2px solid hsl(var(--border));
+                        }
+                        
+                        .btn-calc:hover, .btn-calc:active {
+                            background: hsl(var(--muted));
+                            transform: scale(0.98);
+                        }
+                        
+                        .btn-calc-op {
+                            background: hsl(var(--primary)/0.1);
+                            color: hsl(var(--primary));
+                            border: 2px solid hsl(var(--primary)/0.3);
+                        }
+                        
+                        .btn-calc-op:hover, .btn-calc-op:active {
+                            background: hsl(var(--primary)/0.2);
+                            transform: scale(0.98);
+                        }
+                        
+                        .btn-calc-igual {
+                            background: hsl(var(--success));
+                            color: white;
+                            border: none;
+                        }
+                        
+                        .btn-calc-igual:hover, .btn-calc-igual:active {
+                            background: hsl(var(--success)/0.9);
+                            transform: scale(0.98);
+                        }
+                        
+                        @media (max-width: 768px) {
+                            .btn-calc, .btn-calc-op, .btn-calc-igual {
+                                padding: 14px 10px;
+                                font-size: 18px;
+                                border-radius: 8px;
+                            }
+                        }
+                    </style>
+
                     <div class="form-group">
-                        <label>Monto Total Vendido ($)</label>
+                        <label style="font-size: 13px; font-weight: 600;">Monto Total Vendido ($)</label>
                         <input type="number" 
                                id="granelMonto" 
                                class="form-input" 
                                placeholder="Ej: 5000" 
                                min="0" 
                                step="100"
-                               oninput="calcularPesoEstimado()">
-                        <small style="color: hsl(var(--muted-foreground)); font-size: 12px; margin-top: 4px; display: block;">
+                               oninput="calcularPesoEstimado()"
+                               style="padding: 10px 12px; font-size: 16px;">
+                        <small style="color: hsl(var(--muted-foreground)); font-size: 11px; margin-top: 4px; display: block;">
                             💡 Peso estimado: <strong id="pesoEstimado">0 kg</strong>
                         </small>
                     </div>
@@ -1791,47 +2058,6 @@
             <div class="modal-footer">
                 <button class="btn btn-secondary" onclick="cerrarModalNuevo()">Cancelar</button>
                 <button class="btn btn-primary" onclick="guardarNuevoProducto()">Registrar Producto</button>
-            </div>
-        </div>
-    </div>
-
-    <!-- MODAL: Administrar Precios (Solo Encargado) -->
-    <div id="modalAdminPrecios" class="modal">
-        <div class="modal-overlay" onclick="cerrarModalAdminPrecios()"></div>
-        <div class="modal-content modal-large" style="max-width: 900px;">
-            <div class="modal-header">
-                <h3>💰 Administrar Precios</h3>
-                <button class="btn-close" onclick="cerrarModalAdminPrecios()">
-                    <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
-                        <path d="M15 5L5 15M5 5l10 10" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
-                    </svg>
-                </button>
-            </div>
-            <div class="modal-body" style="padding: 0;">
-                <div style="max-height: 60vh; overflow-y: auto;">
-                    <table class="tabla-precios" style="width: 100%; border-collapse: collapse;">
-                        <thead style="position: sticky; top: 0; background: hsl(var(--card)); z-index: 10;">
-                            <tr>
-                                <th style="padding: 12px; text-align: left; border-bottom: 2px solid hsl(var(--border));">Producto</th>
-                                <th style="padding: 12px; text-align: left; border-bottom: 2px solid hsl(var(--border));">Categoría</th>
-                                <th style="padding: 12px; text-align: center; border-bottom: 2px solid hsl(var(--border));">Stock</th>
-                                <th style="padding: 12px; text-align: center; border-bottom: 2px solid hsl(var(--border)); width: 150px;">Precio</th>
-                            </tr>
-                        </thead>
-                        <tbody id="tablaAdminPrecios">
-                            <!-- Se llena dinámicamente -->
-                        </tbody>
-                    </table>
-                </div>
-            </div>
-            <div class="modal-footer">
-                <button class="btn btn-secondary" onclick="cerrarModalAdminPrecios()">Cancelar</button>
-                <button class="btn btn-primary" onclick="guardarCambiosPrecios()">
-                    <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
-                        <path d="M5 10l3 3 7-7" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-                    </svg>
-                    <span>Guardar Cambios</span>
-                </button>
             </div>
         </div>
     </div>

@@ -11,6 +11,10 @@ let currentView = 'pos';
 let productos = [];
 let carrito = [];
 let totalVenta = 0;
+let totalSinDescuento = 0; // Total antes de aplicar descuento
+let descuentoAplicado = 0; // Monto de descuento aplicado
+let tipoDescuento = 'ninguno'; // 'ninguno', 'porcentaje', 'monto'
+let valorDescuento = 0; // Valor del descuento (% o $)
 let metodoPagoSeleccionado = 'Efectivo';
 let pagosRegistrados = [];
 let categoriaActual = 'Todos';
@@ -526,6 +530,10 @@ function aplicarPermisosRol() {
     const btnRegistrarMerma = document.getElementById('btnRegistrarMerma');
     if (btnRegistrarMerma) btnRegistrarMerma.style.display = esAdmin ? 'inline-flex' : 'none';
 
+    // Botón Importar Stock desde WhatsApp en Inventario
+    const btnImportarStock = document.getElementById('btnImportarStock');
+    if (btnImportarStock) btnImportarStock.style.display = esAdmin ? 'block' : 'none';
+
     // Ranking de vendedores
     const rankingVendedores = document.getElementById('rankingVendedores');
     if (rankingVendedores) rankingVendedores.style.display = esAdmin ? 'block' : 'none';
@@ -698,9 +706,21 @@ function cambiarVista(vista) {
     } else if (vista === 'asistencia') {
         cargarEstadoActual();
         cargarAsistencias();
-        // Si es admin, cargar lista de vendedores para el filtro
+        // Si es admin, cargar lista de vendedores para el filtro y panel de control
         if (currentUserRole === 'encargado') {
             cargarVendedoresParaFiltro();
+            // Mostrar y cargar panel de control de admin
+            const panelAdmin = document.getElementById('panelControlAdmin');
+            if (panelAdmin) {
+                panelAdmin.style.display = 'block';
+                cargarUsuariosParaAdmin();
+            }
+        } else {
+            // Ocultar panel de control si es vendedor
+            const panelAdmin = document.getElementById('panelControlAdmin');
+            if (panelAdmin) {
+                panelAdmin.style.display = 'none';
+            }
         }
         // Establecer fecha de hoy por defecto
         const hoy = new Date().toISOString().split('T')[0];
@@ -883,7 +903,12 @@ function renderProductos() {
                 </div>
                 <div class="product-category">${producto.marca || producto.categoria || 'General'}</div>
                 <div class="product-price">$${formatoMoneda(producto.precio || 0)}</div>
-                <button class="btn-add-product" onclick="agregarAlCarrito(${producto.id})">+ Agregar</button>
+                ${esGranel ? 
+                    `<div style="padding: 12px; text-align: center; color: hsl(var(--muted-foreground)); font-size: 13px;">
+                        Usa el botón 🌾 Granel
+                    </div>` : 
+                    `<button class="btn-add-product" onclick="agregarAlCarrito(${producto.id})">+ Agregar</button>`
+                }
             </div>
         `;
     }).join('');
@@ -1201,6 +1226,24 @@ function abrirModalCobro() {
     // Limpiar pagos registrados
     pagosRegistrados = [];
     metodoPagoSeleccionado = 'Efectivo';
+    
+    // Resetear descuentos
+    totalSinDescuento = totalVenta;
+    descuentoAplicado = 0;
+    tipoDescuento = 'ninguno';
+    valorDescuento = 0;
+    document.getElementById('inputDescPorcentaje').value = '';
+    document.getElementById('inputDescMonto').value = '';
+    document.getElementById('areaDescPorcentaje').style.display = 'none';
+    document.getElementById('areaDescMonto').style.display = 'none';
+    document.getElementById('resumenDescuento').style.display = 'none';
+    document.getElementById('labelSubtotal').style.display = 'none';
+    document.getElementById('montoSubtotal').style.display = 'none';
+    document.querySelectorAll('#seccionDescuento button').forEach(btn => {
+        btn.classList.remove('active');
+        btn.style.background = '';
+        btn.style.color = '';
+    });
 
     document.getElementById('pagoTotal').textContent = '$' + formatoMoneda(totalVenta);
     document.getElementById('montoEntregado').value = '';
@@ -1253,6 +1296,138 @@ function abrirModalCobro() {
     const modal = document.getElementById('modalCobro');
     modal.style.display = 'flex';
     modal.classList.add('show');
+}
+
+// ===================================
+// SISTEMA DE DESCUENTOS
+// ===================================
+
+function seleccionarTipoDescuento(tipo) {
+    tipoDescuento = tipo;
+    
+    // Resetear campos
+    document.getElementById('inputDescPorcentaje').value = '';
+    document.getElementById('inputDescMonto').value = '';
+    valorDescuento = 0;
+    
+    // Actualizar UI de botones
+    const btnPorcentaje = document.getElementById('btnDescPorcentaje');
+    const btnMonto = document.getElementById('btnDescMonto');
+    
+    // Resetear estilos
+    btnPorcentaje.style.background = '';
+    btnPorcentaje.style.color = '';
+    btnMonto.style.background = '';
+    btnMonto.style.color = '';
+    
+    if (tipo === 'porcentaje') {
+        document.getElementById('areaDescPorcentaje').style.display = 'block';
+        document.getElementById('areaDescMonto').style.display = 'none';
+        btnPorcentaje.style.background = 'hsl(var(--primary))';
+        btnPorcentaje.style.color = 'white';
+        
+        setTimeout(() => document.getElementById('inputDescPorcentaje').focus(), 100);
+    } else if (tipo === 'monto') {
+        document.getElementById('areaDescPorcentaje').style.display = 'none';
+        document.getElementById('areaDescMonto').style.display = 'block';
+        btnMonto.style.background = 'hsl(var(--primary))';
+        btnMonto.style.color = 'white';
+        
+        setTimeout(() => document.getElementById('inputDescMonto').focus(), 100);
+    }
+    
+    aplicarDescuento();
+}
+
+function limpiarDescuento() {
+    tipoDescuento = 'ninguno';
+    valorDescuento = 0;
+    descuentoAplicado = 0;
+    totalVenta = totalSinDescuento;
+    
+    document.getElementById('inputDescPorcentaje').value = '';
+    document.getElementById('inputDescMonto').value = '';
+    document.getElementById('areaDescPorcentaje').style.display = 'none';
+    document.getElementById('areaDescMonto').style.display = 'none';
+    document.getElementById('resumenDescuento').style.display = 'none';
+    document.getElementById('labelSubtotal').style.display = 'none';
+    document.getElementById('montoSubtotal').style.display = 'none';
+    
+    // Resetear botones
+    document.querySelectorAll('#seccionDescuento button').forEach(btn => {
+        btn.style.background = '';
+        btn.style.color = '';
+    });
+    
+    // Actualizar total
+    document.getElementById('pagoTotal').textContent = '$' + formatoMoneda(totalVenta);
+    
+    mostrarNotificacion('Descuento eliminado', 'info');
+}
+
+function aplicarDescuento() {
+    if (tipoDescuento === 'ninguno') {
+        limpiarDescuento();
+        return;
+    }
+    
+    if (tipoDescuento === 'porcentaje') {
+        const porcentaje = parseFloat(document.getElementById('inputDescPorcentaje').value) || 0;
+        
+        if (porcentaje < 0 || porcentaje > 100) {
+            mostrarNotificacion('El porcentaje debe estar entre 0 y 100', 'warning');
+            return;
+        }
+        
+        valorDescuento = porcentaje;
+        descuentoAplicado = Math.round((totalSinDescuento * porcentaje) / 100);
+        
+    } else if (tipoDescuento === 'monto') {
+        const monto = parseFloat(document.getElementById('inputDescMonto').value) || 0;
+        
+        if (monto < 0) {
+            mostrarNotificacion('El monto no puede ser negativo', 'warning');
+            return;
+        }
+        
+        if (monto > totalSinDescuento) {
+            mostrarNotificacion('El descuento no puede ser mayor al total', 'warning');
+            document.getElementById('inputDescMonto').value = totalSinDescuento;
+            valorDescuento = totalSinDescuento;
+            descuentoAplicado = totalSinDescuento;
+        } else {
+            valorDescuento = monto;
+            descuentoAplicado = monto;
+        }
+    }
+    
+    // Calcular nuevo total
+    totalVenta = Math.max(0, totalSinDescuento - descuentoAplicado);
+    
+    // Actualizar UI
+    if (descuentoAplicado > 0) {
+        document.getElementById('labelSubtotal').style.display = 'block';
+        document.getElementById('montoSubtotal').style.display = 'block';
+        document.getElementById('montoSubtotal').textContent = '$' + formatoMoneda(totalSinDescuento);
+        document.getElementById('resumenDescuento').style.display = 'block';
+        document.getElementById('montoDescuentoAplicado').textContent = '-$' + formatoMoneda(descuentoAplicado);
+    } else {
+        document.getElementById('labelSubtotal').style.display = 'none';
+        document.getElementById('montoSubtotal').style.display = 'none';
+        document.getElementById('resumenDescuento').style.display = 'none';
+    }
+    
+    document.getElementById('pagoTotal').textContent = '$' + formatoMoneda(totalVenta);
+    
+    // Recalcular vuelto si está en efectivo
+    if (metodoPagoSeleccionado === 'Efectivo') {
+        calcularVuelto();
+    }
+    
+    // Recalcular pago mixto si está activo
+    if (metodoPagoSeleccionado === 'Mixto') {
+        calcularPagoMixto();
+    }
 }
 
 function cerrarModalCobro() {
@@ -1641,6 +1816,14 @@ async function finalizarVenta() {
                 metodo_pago: metodoPagoFinal,
                 fecha: ahora.toISOString().split('T')[0] // Solo fecha YYYY-MM-DD
             };
+            
+            // Guardar información de descuento si se aplicó
+            if (descuentoAplicado > 0) {
+                venta.descuento_aplicado = descuentoAplicado;
+                venta.descuento_tipo = tipoDescuento; // 'porcentaje' o 'monto'
+                venta.descuento_valor = valorDescuento; // Valor del % o monto
+                venta.subtotal_sin_descuento = totalSinDescuento;
+            }
 
             // Si es pago mixto, guardar detalle de pagos
             if (pagosRegistrados.length > 0) {
@@ -1843,6 +2026,29 @@ function filtrarInventario(filtro) {
     });
     document.querySelector(`[data-filtro="${filtro}"]`)?.classList.add('stat-card-active');
 
+    // Limpiar buscador si se selecciona un filtro
+    const buscador = document.getElementById('buscadorProductos');
+    if (buscador) {
+        buscador.value = '';
+        document.getElementById('btnLimpiarBusqueda').style.display = 'none';
+    }
+
+    // Recargar inventario con filtro
+    cargarInventario();
+}
+
+/**
+ * Filtrar y ordenar inventario por estado
+ */
+function filtrarInventario(filtro) {
+    filtroInventarioActivo = filtro;
+
+    // Actualizar indicador visual
+    document.querySelectorAll('.stat-card-clickable').forEach(card => {
+        card.classList.remove('stat-card-active');
+    });
+    document.querySelector(`[data-filtro="${filtro}"]`)?.classList.add('stat-card-active');
+
     // Recargar inventario con filtro
     cargarInventario();
 }
@@ -1910,11 +2116,18 @@ async function cargarInventario() {
     const enStock = productos.filter(p => p.stock > (p.stock_minimo || 5)).length;
     const stockBajo = productos.filter(p => p.stock > 0 && p.stock <= (p.stock_minimo || 5)).length;
     const sinStock = productos.filter(p => p.stock === 0).length;
+    const sinPrecio = productos.filter(p => !p.precio || p.precio === 0).length;
 
     document.getElementById('totalProductos').textContent = totalProductos;
     document.getElementById('enStock').textContent = enStock;
     document.getElementById('stockBajo').textContent = stockBajo;
     document.getElementById('sinStock').textContent = sinStock;
+    
+    // Actualizar contador de productos sin precio
+    const sinPrecioElement = document.getElementById('sinPrecio');
+    if (sinPrecioElement) {
+        sinPrecioElement.textContent = sinPrecio;
+    }
 
     // Filtrar y ordenar productos según filtro activo
     let productosFiltrados = [...productos];
@@ -1934,6 +2147,11 @@ async function cargarInventario() {
             productosFiltrados = productos.filter(p => p.stock > (p.stock_minimo || 5));
             // Ordenar de mayor a menor stock
             productosFiltrados.sort((a, b) => b.stock - a.stock);
+            break;
+        case 'sinprecio':
+            productosFiltrados = productos.filter(p => !p.precio || p.precio === 0);
+            // Ordenar alfabéticamente por nombre
+            productosFiltrados.sort((a, b) => a.nombre.localeCompare(b.nombre));
             break;
         case 'todos':
         default:
@@ -2366,7 +2584,7 @@ async function cargarVentas() {
         if (tbody) {
             tbody.innerHTML = `
                 <tr>
-                    <td colspan="7" class="text-center">
+                    <td colspan="9" class="text-center">
                         <p style="padding: 24px; color: hsl(var(--destructive));">
                             ❌ Error al cargar datos: ${error.message}<br>
                             <small>Verifica la consola para más detalles</small>
@@ -2737,7 +2955,7 @@ function renderTablaHistorialVentas(ventas) {
     if (ventas.length === 0) {
         tbody.innerHTML = `
             <tr>
-                <td colspan="7" class="text-center">
+                <td colspan="9" class="text-center">
                     <p style="padding: 24px; color: hsl(var(--muted-foreground));">No hay ventas en este período</p>
                 </td>
             </tr>
@@ -2778,6 +2996,7 @@ function renderTablaHistorialVentas(ventas) {
                     <td>${new Date(v.created_at).toLocaleString('es-CL', { timeZone: 'America/Santiago' })}</td>
                     <td>${v.vendedor_nombre}</td>
                     <td>${productosTexto}</td>
+                    <td colspan="2"></td>
                     <td>${totalCelda}</td>
                     <td><span class="badge badge-warning">REPARTO</span></td>
                     <td>
@@ -2792,12 +3011,26 @@ function renderTablaHistorialVentas(ventas) {
                 ? '<span class="badge-devolucion" title="Esta venta tiene devolución registrada">🔄 Devuelto</span>' 
                 : '';
             
+            // Información de descuento
+            const tieneDescuento = v.descuento_aplicado && v.descuento_aplicado > 0;
+            const subtotalOriginal = tieneDescuento && v.subtotal_sin_descuento 
+                ? `$${formatoMoneda(v.subtotal_sin_descuento)}` 
+                : `$${formatoMoneda(v.total)}`;
+            
+            let descuentoTexto = '-';
+            if (tieneDescuento) {
+                const tipoDesc = v.descuento_tipo === 'porcentaje' ? `${v.descuento_valor}%` : '$';
+                descuentoTexto = `<span style="color: hsl(142 76% 36%); font-weight: 600;">-$${formatoMoneda(v.descuento_aplicado)}</span><br><small style="color: hsl(var(--muted-foreground));">(${tipoDesc})</small>`;
+            }
+            
             return `
                 <tr class="${filaClass}">
                     <td><strong>#${v.id}</strong> ${badgeDevolucion}</td>
                     <td>${new Date(v.created_at || v.fecha).toLocaleString('es-CL', { timeZone: 'America/Santiago' })}</td>
                     <td>${v.vendedor_nombre || v.vendedor || 'Sin asignar'}</td>
                     <td>${productosTexto}</td>
+                    <td>${subtotalOriginal}</td>
+                    <td>${descuentoTexto}</td>
                     <td><strong>$${formatoMoneda(v.total)}</strong></td>
                     <td><span class="badge badge-success">${v.metodo_pago}</span></td>
                     <td style="display: flex; gap: 4px;">
@@ -3594,8 +3827,8 @@ function mostrarProductosGranel(productos) {
 
     lista.innerHTML = productos.map(p => `
         <div class="producto-granel-item" onclick="seleccionarProductoGranel(${p.id})" style="
-            padding: 12px;
-            margin-bottom: 8px;
+            padding: 10px;
+            margin-bottom: 6px;
             border: 2px solid ${productoGranelSeleccionado?.id === p.id ? 'hsl(var(--success))' : 'hsl(var(--border))'};
             border-radius: 8px;
             cursor: pointer;
@@ -3603,14 +3836,14 @@ function mostrarProductosGranel(productos) {
             background: ${productoGranelSeleccionado?.id === p.id ? 'hsl(var(--success) / 0.1)' : 'white'};
         " onmouseover="this.style.borderColor='hsl(var(--primary))'" onmouseout="this.style.borderColor='${productoGranelSeleccionado?.id === p.id ? 'hsl(var(--success))' : 'hsl(var(--border))'}' ">
             <div style="display: flex; justify-content: space-between; align-items: center;">
-                <div>
-                    <strong style="color: hsl(var(--foreground));">${p.nombre}</strong>
-                    <div style="font-size: 12px; color: hsl(var(--muted-foreground)); margin-top: 4px;">
+                <div style="flex: 1;">
+                    <strong style="color: hsl(var(--foreground)); font-size: 13px;">${p.nombre}</strong>
+                    <div style="font-size: 11px; color: hsl(var(--muted-foreground)); margin-top: 2px;">
                         ${p.categoria || 'Sin categoría'}
                     </div>
                 </div>
-                <div style="text-align: right;">
-                    <div style="font-size: 18px; font-weight: 700; color: hsl(var(--success));">
+                <div style="text-align: right; padding-left: 8px;">
+                    <div style="font-size: 15px; font-weight: 700; color: hsl(var(--success));">
                         $${formatoMoneda(p.precio)}/kg
                     </div>
                 </div>
@@ -3644,10 +3877,21 @@ function seleccionarProductoGranel(idProducto) {
     document.getElementById('pesoEstimado').textContent = '0 kg';
     document.getElementById('btnAgregarGranel').disabled = true;
     
-    // Focus en input de monto
+    // Limpiar calculadora
+    limpiarCalculadoraGranel();
+    
+    // Focus en input de monto + Scroll automático para móviles
     setTimeout(() => {
-        document.getElementById('granelMonto').focus();
-    }, 100);
+        const inputMonto = document.getElementById('granelMonto');
+        inputMonto.focus();
+        
+        // Scroll suave hacia el input en dispositivos móviles
+        inputMonto.scrollIntoView({ 
+            behavior: 'smooth', 
+            block: 'center',
+            inline: 'nearest'
+        });
+    }, 150);
 }
 
 function calcularPesoEstimado() {
@@ -3702,12 +3946,134 @@ function agregarGranelAlCarrito() {
     cerrarModalGranel();
 }
 
+// ===================================
+// CALCULADORA NORMAL PARA GRANEL
+// ===================================
+
+let displayCalc = '0';
+let operacionActual = '';
+let valorAnterior = null;
+let nuevoNumero = true;
+
+function agregarNumeroCalc(numero) {
+    const display = document.getElementById('displayCalculadora');
+    
+    if (nuevoNumero) {
+        displayCalc = numero;
+        nuevoNumero = false;
+    } else {
+        if (displayCalc === '0') {
+            displayCalc = numero;
+        } else {
+            displayCalc += numero;
+        }
+    }
+    
+    display.textContent = displayCalc;
+}
+
+function agregarOperacionCalc(operacion) {
+    const display = document.getElementById('displayCalculadora');
+    
+    if (valorAnterior !== null && !nuevoNumero) {
+        calcularResultado();
+    }
+    
+    valorAnterior = parseFloat(displayCalc);
+    operacionActual = operacion;
+    nuevoNumero = true;
+}
+
+function calcularResultado() {
+    const display = document.getElementById('displayCalculadora');
+    
+    if (valorAnterior === null || nuevoNumero) {
+        return;
+    }
+    
+    const valorActual = parseFloat(displayCalc);
+    let resultado = 0;
+    
+    switch (operacionActual) {
+        case '+':
+            resultado = valorAnterior + valorActual;
+            break;
+        case '-':
+            resultado = valorAnterior - valorActual;
+            break;
+        case '*':
+            resultado = valorAnterior * valorActual;
+            break;
+        case '/':
+            if (valorActual === 0) {
+                mostrarNotificacion('No se puede dividir por cero', 'error');
+                limpiarCalculadoraGranel();
+                return;
+            }
+            resultado = valorAnterior / valorActual;
+            break;
+        default:
+            return;
+    }
+    
+    // Redondear a 2 decimales
+    resultado = Math.round(resultado * 100) / 100;
+    
+    displayCalc = resultado.toString();
+    display.textContent = displayCalc;
+    
+    valorAnterior = null;
+    operacionActual = '';
+    nuevoNumero = true;
+}
+
+function limpiarCalculadoraGranel() {
+    displayCalc = '0';
+    operacionActual = '';
+    valorAnterior = null;
+    nuevoNumero = true;
+    
+    const display = document.getElementById('displayCalculadora');
+    if (display) {
+        display.textContent = '0';
+    }
+}
+
+function aplicarCalculadora() {
+    const resultado = parseFloat(displayCalc);
+    
+    if (isNaN(resultado) || resultado <= 0) {
+        mostrarNotificacion('Calcula un monto válido primero', 'warning');
+        return;
+    }
+    
+    // Redondear al entero más cercano
+    const montoFinal = Math.round(resultado);
+    
+    // Aplicar al input de monto
+    document.getElementById('granelMonto').value = montoFinal;
+    calcularPesoEstimado();
+    
+    mostrarNotificacion(`✓ $${formatoMoneda(montoFinal)} aplicado al monto`, 'success');
+    
+    // Scroll al input de monto
+    setTimeout(() => {
+        document.getElementById('granelMonto').scrollIntoView({ 
+            behavior: 'smooth', 
+            block: 'center' 
+        });
+    }, 100);
+}
+
 function abrirModalGranel() {
     // Resetear estado
     productoGranelSeleccionado = null;
     document.getElementById('searchGranelInput').value = '';
     document.getElementById('granelSeleccionado').style.display = 'none';
     document.getElementById('granelMonto').value = '';
+    
+    // Resetear calculadora
+    limpiarCalculadoraGranel();
     
     // Cargar productos granel
     cargarProductosGranel();
@@ -4077,6 +4443,9 @@ async function cargarDatosCaja() {
 
     // Cargar pagos al personal del día
     await cargarPagosPersonalDelDia();
+
+    // Cargar datos del reparto
+    await cargarDatosReparto();
 
     // Actualizar totales
     actualizarTotalesCaja();
@@ -5637,6 +6006,134 @@ function actualizarResumenPagosPersonal() {
 }
 
 /**
+ * Cargar datos del sistema de reparto/delivery del día
+ */
+async function cargarDatosReparto() {
+    try {
+        console.log('🚚 Cargando datos de reparto...');
+
+        if (typeof supabaseClient === 'undefined' || !supabaseClient) {
+            console.warn('⚠️ Supabase no configurado, omitiendo datos de reparto');
+            actualizarResumenReparto(null);
+            return;
+        }
+
+        const hoy = new Date().toISOString().split('T')[0]; // YYYY-MM-DD
+
+        // Consultar pedidos del día
+        const { data: pedidos, error } = await supabaseClient
+            .from('pedidos')
+            .select('*')
+            .eq('fecha', hoy);
+
+        if (error) {
+            console.warn('⚠️ No se pudo acceder a datos de reparto:', error.message);
+            actualizarResumenReparto(null);
+            return;
+        }
+
+        if (!pedidos || pedidos.length === 0) {
+            console.log('ℹ️ No hay pedidos de reparto para hoy');
+            actualizarResumenReparto([]);
+            return;
+        }
+
+        console.log(`✅ ${pedidos.length} pedidos de reparto encontrados`);
+        actualizarResumenReparto(pedidos);
+
+    } catch (error) {
+        console.error('❌ Error cargando datos de reparto:', error);
+        actualizarResumenReparto(null);
+    }
+}
+
+/**
+ * Actualizar resumen de reparto en el panel
+ */
+function actualizarResumenReparto(pedidos) {
+    if (pedidos === null) {
+        // Error o no disponible
+        document.getElementById('totalRecaudadoReparto').textContent = 'N/A';
+        document.getElementById('repartoEfectivo').textContent = 'N/A';
+        document.getElementById('repartoTarjetas').textContent = 'N/A';
+        document.getElementById('repartoPendientesCantidad').textContent = '0';
+        document.getElementById('repartoPendientesMonto').textContent = '$0';
+        document.getElementById('repartoPagadasCantidad').textContent = '0';
+        document.getElementById('repartoPagadasMonto').textContent = '$0';
+        return;
+    }
+
+    if (!pedidos || pedidos.length === 0) {
+        // No hay pedidos
+        document.getElementById('totalRecaudadoReparto').textContent = '$0';
+        document.getElementById('repartoEfectivo').textContent = '$0';
+        document.getElementById('repartoTarjetas').textContent = '$0';
+        document.getElementById('repartoPendientesCantidad').textContent = '0';
+        document.getElementById('repartoPendientesMonto').textContent = '$0';
+        document.getElementById('repartoPagadasCantidad').textContent = '0';
+        document.getElementById('repartoPagadasMonto').textContent = '$0';
+        return;
+    }
+
+    // Calcular estadísticas
+    let efectivo = 0;
+    let tarjetas = 0;
+    let transferencias = 0;
+    let pendientes = [];
+    let entregadas = [];
+
+    pedidos.forEach(pedido => {
+        const total = pedido.total || 0;
+        const entregado = pedido.entregado === true;
+
+        // Separar por estado
+        if (entregado) {
+            entregadas.push(pedido);
+        } else {
+            pendientes.push(pedido);
+        }
+
+        // Solo contar en recaudación los entregados
+        if (entregado) {
+            // Método de pago: E=Efectivo, T=Tarjeta, TR=Transferencia
+            const metodoPago = pedido.metodo_pago || 'E';
+            
+            if (metodoPago === 'E' || metodoPago.toLowerCase().includes('efectivo')) {
+                efectivo += total;
+            } else if (metodoPago === 'T' || metodoPago.toLowerCase().includes('tarjeta')) {
+                tarjetas += total;
+            } else if (metodoPago === 'TR' || metodoPago.toLowerCase().includes('transferencia')) {
+                transferencias += total;
+            } else {
+                // Por defecto contar como efectivo
+                efectivo += total;
+            }
+        }
+    });
+
+    const totalRecaudado = efectivo + tarjetas + transferencias;
+    const montoPendientes = pendientes.reduce((sum, p) => sum + (p.total || 0), 0);
+    const montoPagadas = entregadas.reduce((sum, p) => sum + (p.total || 0), 0);
+
+    // Actualizar UI
+    document.getElementById('totalRecaudadoReparto').textContent = '$' + formatoMoneda(totalRecaudado);
+    document.getElementById('repartoEfectivo').textContent = '$' + formatoMoneda(efectivo);
+    document.getElementById('repartoTarjetas').textContent = '$' + formatoMoneda(tarjetas);
+    document.getElementById('repartoPendientesCantidad').textContent = pendientes.length;
+    document.getElementById('repartoPendientesMonto').textContent = '$' + formatoMoneda(montoPendientes);
+    document.getElementById('repartoPagadasCantidad').textContent = entregadas.length;
+    document.getElementById('repartoPagadasMonto').textContent = '$' + formatoMoneda(montoPagadas);
+
+    console.log('📊 Resumen reparto actualizado:', {
+        total: totalRecaudado,
+        efectivo,
+        tarjetas,
+        pendientes: pendientes.length,
+        entregadas: entregadas.length
+    });
+}
+
+/**
  * Abrir modal de editar pagos al personal
  */
 function abrirModalEditarPagosPersonal() {
@@ -6852,107 +7349,7 @@ async function asignarCodigoAProducto(codigoBarra) {
 // ===================================
 // GESTIÓN MASIVA DE PRECIOS
 // ===================================
-
-function abrirModalAdminPrecios() {
-    const tbody = document.getElementById('tablaAdminPrecios');
-
-    tbody.innerHTML = productos.map(p => `
-        <tr data-producto-id="${p.id}">
-            <td style="padding: 12px; border-bottom: 1px solid hsl(var(--border));">
-                <strong>${p.nombre}</strong><br>
-                <small style="color: hsl(var(--muted-foreground));">${p.marca || '-'}</small>
-            </td>
-            <td style="padding: 12px; border-bottom: 1px solid hsl(var(--border));">
-                ${p.categoria || '-'}
-            </td>
-            <td style="padding: 12px; text-align: center; border-bottom: 1px solid hsl(var(--border));">
-                <strong>${Math.floor(p.stock)}</strong>
-            </td>
-            <td style="padding: 12px; text-align: center; border-bottom: 1px solid hsl(var(--border));">
-                <input
-                    type="number"
-                    class="input-precio-editable"
-                    data-producto-id="${p.id}"
-                    value="${p.precio}"
-                    min="0"
-                    step="100"
-                    style="width: 120px; padding: 8px 12px; border: 2px solid hsl(var(--border)); border-radius: 8px; text-align: right; font-weight: 600; font-size: 14px; transition: all 0.2s;"
-                    onfocus="this.style.borderColor='hsl(var(--primary))'; this.select();"
-                    onblur="this.style.borderColor='hsl(var(--border))';"
-                >
-            </td>
-        </tr>
-    `).join('');
-
-    const modal = document.getElementById('modalAdminPrecios');
-    modal.style.display = 'flex';
-    modal.classList.add('show');
-}
-
-function cerrarModalAdminPrecios() {
-    const modal = document.getElementById('modalAdminPrecios');
-    modal.style.display = 'none';
-    modal.classList.remove('show');
-}
-
-async function guardarCambiosPrecios() {
-    const inputs = document.querySelectorAll('.input-precio-editable');
-    const cambios = [];
-
-    inputs.forEach(input => {
-        const productoId = parseInt(input.dataset.productoId);
-        const nuevoPrecio = parseFloat(input.value);
-        const productoOriginal = productos.find(p => p.id === productoId);
-
-        // Solo agregar si cambió el precio
-        if (productoOriginal && productoOriginal.precio !== nuevoPrecio) {
-            cambios.push({
-                id: productoId,
-                nombre: productoOriginal.nombre,
-                precioAnterior: productoOriginal.precio,
-                precioNuevo: nuevoPrecio
-            });
-        }
-    });
-
-    if (cambios.length === 0) {
-        mostrarNotificacion('No hay cambios para guardar', 'info');
-        return;
-    }
-
-    if (!confirm(`¿Confirmas actualizar ${cambios.length} precio(s)?`)) {
-        return;
-    }
-
-    try {
-        // Actualizar precios en Supabase
-        const promesas = cambios.map(cambio =>
-            supabaseClient
-                .from('productos')
-                .update({ precio: cambio.precioNuevo })
-                .eq('id', cambio.id)
-        );
-
-        const resultados = await Promise.all(promesas);
-
-        // Verificar errores
-        const errores = resultados.filter(r => r.error);
-        if (errores.length > 0) {
-            throw new Error('Algunos precios no se actualizaron');
-        }
-
-        mostrarNotificacion(`✅ ${cambios.length} precio(s) actualizado(s) exitosamente`, 'success');
-
-        // Recargar productos
-        await cargarProductos();
-
-        cerrarModalAdminPrecios();
-
-    } catch (error) {
-        console.error('Error actualizando precios:', error);
-        mostrarNotificacion('Error al guardar cambios', 'error');
-    }
-}
+// (Funciones eliminadas: modal de administración de precios no se utiliza)
 
 // ==========================================
 // SISTEMA DE ASISTENCIA
@@ -7551,6 +7948,307 @@ async function cargarVendedoresParaFiltro() {
 
     } catch (error) {
         console.error('Error cargando vendedores para filtro:', error);
+    }
+}
+
+// ===================================
+// CONTROL DE ASISTENCIA POR ADMIN
+// ===================================
+
+/**
+ * Cargar usuarios disponibles para control de admin
+ */
+async function cargarUsuariosParaAdmin() {
+    try {
+        const { data, error } = await supabaseClient
+            .from('usuarios')
+            .select('username, nombre_completo')
+            .eq('activo', true)
+            .order('username');
+
+        if (error) throw error;
+
+        const select = document.getElementById('adminSelectUsuario');
+        if (!select) return;
+
+        // Limpiar y agregar opción por defecto
+        select.innerHTML = '<option value="">-- Selecciona un empleado --</option>';
+
+        data.forEach(user => {
+            const option = document.createElement('option');
+            option.value = user.username;
+            option.textContent = user.nombre_completo || user.username;
+            select.appendChild(option);
+        });
+
+    } catch (error) {
+        console.error('Error cargando usuarios para admin:', error);
+        mostrarNotificacion('Error cargando lista de empleados', 'error');
+    }
+}
+
+/**
+ * Cargar estado del usuario seleccionado por el admin
+ */
+async function cargarEstadoUsuarioAdmin() {
+    try {
+        const select = document.getElementById('adminSelectUsuario');
+        const username = select?.value;
+        
+        const estadoDiv = document.getElementById('adminEstadoUsuario');
+        const contentDiv = document.getElementById('adminEstadoContent');
+        const botonesDiv = document.getElementById('adminBotonesControl');
+
+        if (!username) {
+            estadoDiv.style.display = 'none';
+            botonesDiv.style.display = 'none';
+            return;
+        }
+
+        // Mostrar estado y botones
+        estadoDiv.style.display = 'block';
+        botonesDiv.style.display = 'block';
+
+        const hoy = new Date().toISOString().split('T')[0];
+
+        const { data, error } = await supabaseClient
+            .from('asistencias')
+            .select('*')
+            .eq('username', username)
+            .eq('fecha', hoy)
+            .single();
+
+        if (error && error.code !== 'PGRST116') {
+            throw error;
+        }
+
+        const formatHora = (timestamp) => {
+            if (!timestamp) return '-';
+            return new Date(timestamp).toLocaleTimeString('es-CL', {
+                hour: '2-digit',
+                minute: '2-digit',
+                timeZone: 'America/Santiago'
+            });
+        };
+
+        if (!data) {
+            contentDiv.innerHTML = `
+                <div style="text-align: center; padding: 12px; color: hsl(var(--muted-foreground));">
+                    <p style="margin: 0; font-size: 14px;">No ha marcado entrada hoy</p>
+                </div>
+            `;
+            actualizarBotonesAsistenciaAdmin(null);
+            return;
+        }
+
+        const horasTrabajadas = data.horas_trabajadas ?
+            `${Math.floor(data.horas_trabajadas)}h ${Math.round((data.horas_trabajadas % 1) * 60)}m` :
+            'Calculando...';
+
+        let estadoTexto = '';
+        let estadoColor = '';
+
+        if (data.estado === 'Completo') {
+            estadoTexto = '✅ Jornada Completa';
+            estadoColor = 'hsl(var(--success))';
+        } else if (data.estado === 'En almuerzo') {
+            estadoTexto = '🍽️ En Almuerzo';
+            estadoColor = 'hsl(var(--warning))';
+        } else if (data.estado === 'Trabajando') {
+            estadoTexto = '🟢 Trabajando';
+            estadoColor = 'hsl(var(--success))';
+        } else {
+            estadoTexto = '⚠️ Incompleto';
+            estadoColor = 'hsl(var(--destructive))';
+        }
+
+        contentDiv.innerHTML = `
+            <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; margin-bottom: 12px;">
+                <div>
+                    <div style="font-size: 11px; color: hsl(var(--muted-foreground)); margin-bottom: 2px;">Entrada</div>
+                    <div style="font-size: 16px; font-weight: 600;">${formatHora(data.hora_entrada)}</div>
+                </div>
+                <div>
+                    <div style="font-size: 11px; color: hsl(var(--muted-foreground)); margin-bottom: 2px;">Salida</div>
+                    <div style="font-size: 16px; font-weight: 600;">${formatHora(data.hora_salida)}</div>
+                </div>
+            </div>
+            <div style="display: flex; justify-content: space-between; align-items: center; padding-top: 12px; border-top: 1px solid hsl(var(--border));">
+                <div>
+                    <div style="font-size: 11px; color: hsl(var(--muted-foreground));">Horas</div>
+                    <div style="font-size: 18px; font-weight: 700; color: hsl(var(--primary));">${horasTrabajadas}</div>
+                </div>
+                <div style="padding: 6px 12px; background: ${estadoColor}15; border: 1px solid ${estadoColor}; border-radius: 6px; color: ${estadoColor}; font-weight: 600; font-size: 13px;">
+                    ${estadoTexto}
+                </div>
+            </div>
+        `;
+
+        actualizarBotonesAsistenciaAdmin(data);
+
+    } catch (error) {
+        console.error('Error cargando estado de usuario:', error);
+        document.getElementById('adminEstadoContent').innerHTML = `
+            <div style="text-align: center; color: hsl(var(--destructive)); padding: 12px;">
+                <p style="margin: 0; font-size: 13px;">Error al cargar estado</p>
+            </div>
+        `;
+    }
+}
+
+/**
+ * Actualizar estado de botones de admin según el registro del usuario
+ */
+function actualizarBotonesAsistenciaAdmin(data) {
+    const btnEntrada = document.getElementById('adminBtnEntrada');
+    const btnInicioAlmuerzo = document.getElementById('adminBtnInicioAlmuerzo');
+    const btnFinAlmuerzo = document.getElementById('adminBtnFinAlmuerzo');
+    const btnSalida = document.getElementById('adminBtnSalida');
+
+    if (!data) {
+        btnEntrada.disabled = false;
+        btnInicioAlmuerzo.disabled = true;
+        btnFinAlmuerzo.disabled = true;
+        btnSalida.disabled = true;
+        return;
+    }
+
+    btnEntrada.disabled = true;
+    btnInicioAlmuerzo.disabled = !!data.hora_inicio_almuerzo;
+    btnFinAlmuerzo.disabled = !data.hora_inicio_almuerzo || !!data.hora_fin_almuerzo;
+    btnSalida.disabled = (!data.hora_fin_almuerzo && data.hora_inicio_almuerzo) || !!data.hora_salida;
+}
+
+/**
+ * Marcar evento de asistencia para otro usuario (solo admin)
+ */
+async function marcarEventoAdmin(tipo) {
+    try {
+        // Verificar que sea encargado
+        if (currentUserRole !== 'encargado') {
+            mostrarNotificacion('Solo el encargado puede realizar esta acción', 'error');
+            return;
+        }
+
+        const select = document.getElementById('adminSelectUsuario');
+        const targetUsername = select?.value;
+
+        if (!targetUsername) {
+            mostrarNotificacion('Selecciona un empleado primero', 'warning');
+            return;
+        }
+
+        const confirmacion = confirm(
+            `¿Marcar ${tipo.replace('_', ' ')} para ${targetUsername}?\n\n` +
+            'Esta acción se registrará con la hora actual.'
+        );
+
+        if (!confirmacion) return;
+
+        const ahora = new Date();
+        const hoy = ahora.toISOString().split('T')[0];
+        const horaActual = ahora.toISOString();
+
+        // Obtener usuario_id del empleado
+        const { data: userData, error: userError } = await supabaseClient
+            .from('usuarios')
+            .select('id')
+            .eq('username', targetUsername)
+            .single();
+
+        if (userError) throw userError;
+
+        // Obtener registro actual del día
+        const { data: registroActual, error: errorCheck } = await supabaseClient
+            .from('asistencias')
+            .select('*')
+            .eq('username', targetUsername)
+            .eq('fecha', hoy)
+            .single();
+
+        if (errorCheck && errorCheck.code !== 'PGRST116') {
+            throw errorCheck;
+        }
+
+        let updateData = {};
+        let mensaje = '';
+
+        if (tipo === 'entrada') {
+            if (registroActual) {
+                mostrarNotificacion(`${targetUsername} ya marcó entrada hoy`, 'warning');
+                return;
+            }
+
+            const { error } = await supabaseClient
+                .from('asistencias')
+                .insert({
+                    usuario_id: userData.id,
+                    username: targetUsername,
+                    fecha: hoy,
+                    hora_entrada: horaActual
+                });
+
+            if (error) throw error;
+            mensaje = `✅ Entrada marcada para ${targetUsername}`;
+
+        } else {
+            if (!registroActual) {
+                mostrarNotificacion(`${targetUsername} debe marcar entrada primero`, 'warning');
+                return;
+            }
+
+            switch(tipo) {
+                case 'inicio_almuerzo':
+                    if (registroActual.hora_inicio_almuerzo) {
+                        mostrarNotificacion(`${targetUsername} ya inició almuerzo`, 'warning');
+                        return;
+                    }
+                    updateData = { hora_inicio_almuerzo: horaActual };
+                    mensaje = `✅ Inicio de almuerzo marcado para ${targetUsername}`;
+                    break;
+
+                case 'fin_almuerzo':
+                    if (!registroActual.hora_inicio_almuerzo) {
+                        mostrarNotificacion(`${targetUsername} debe iniciar almuerzo primero`, 'warning');
+                        return;
+                    }
+                    if (registroActual.hora_fin_almuerzo) {
+                        mostrarNotificacion(`${targetUsername} ya terminó el almuerzo`, 'warning');
+                        return;
+                    }
+                    updateData = { hora_fin_almuerzo: horaActual };
+                    mensaje = `✅ Fin de almuerzo marcado para ${targetUsername}`;
+                    break;
+
+                case 'salida':
+                    if (registroActual.hora_inicio_almuerzo && !registroActual.hora_fin_almuerzo) {
+                        mostrarNotificacion(`${targetUsername} debe terminar el almuerzo primero`, 'warning');
+                        return;
+                    }
+                    if (registroActual.hora_salida) {
+                        mostrarNotificacion(`${targetUsername} ya marcó salida`, 'warning');
+                        return;
+                    }
+                    updateData = { hora_salida: horaActual };
+                    mensaje = `✅ Salida marcada para ${targetUsername}`;
+                    break;
+            }
+
+            const { error } = await supabaseClient
+                .from('asistencias')
+                .update(updateData)
+                .eq('id', registroActual.id);
+
+            if (error) throw error;
+        }
+
+        mostrarNotificacion(mensaje, 'success');
+        cargarEstadoUsuarioAdmin();
+        cargarAsistencias();
+
+    } catch (error) {
+        console.error('Error marcando evento para usuario:', error);
+        mostrarNotificacion('Error al registrar la acción', 'error');
     }
 }
 
@@ -9187,3 +9885,7 @@ function renderTablaMermas(mermas) {
     
     container.innerHTML = html;
 }
+
+// ===================================
+// FIN DE FUNCIONES DE INVENTARIO
+// ===================================
