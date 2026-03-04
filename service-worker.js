@@ -1,27 +1,32 @@
-// Sabrofood PWA Service Worker
-// Versión: 1.2.0
-// Fecha: 02-03-2026
+// Sabrofood PWA Service Worker - OFFLINE COMPLETO
+// Versión: 2.0.0
+// Fecha: 04-03-2026
 
-const CACHE_VERSION = 'sabrofood-v1.2.0-20260302';
+const CACHE_VERSION = 'sabrofood-v2.0.0-offline-complete';
 const CACHE_NAME = `${CACHE_VERSION}-static`;
 const DATA_CACHE = `${CACHE_VERSION}-data`;
 
-// Archivos a cachear para funcionamiento offline
+// Archivos a cachear para funcionamiento offline COMPLETO
 const STATIC_ASSETS = [
   '/sabrofood/',
   '/sabrofood/index.html',
   '/sabrofood/manifest.json',
-  // Nota: style.css y script.js se cachean dinámicamente para permitir actualizaciones
+  '/sabrofood/style.css',
+  '/sabrofood/script.js',
+  '/sabrofood/supabase-config.js',
+  '/sabrofood/bodega-module.js',
+  '/sabrofood/pwa-install.js',
   // Fuentes de Google
   'https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap',
   // CDN externas (QR y Charts)
   'https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js',
-  'https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js'
+  'https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js',
+  // Supabase SDK
+  'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2'
 ];
 
-// URLs que NUNCA deben cachearse (seguridad y tiempo real)
+// URLs que NUNCA deben cachearse (solo APIs de Supabase)
 const NEVER_CACHE = [
-  'supabase-config.js',       // Contiene credenciales
   '.supabase.co',             // API de Supabase
   'supabase.co',              // Realtime y auth
   '/auth/',                   // Endpoints de autenticación
@@ -86,52 +91,57 @@ self.addEventListener('fetch', (event) => {
   const { request } = event;
   const url = new URL(request.url);
 
-  // 🔒 REGLA 1: NUNCA cachear URLs sensibles o de Supabase
+  // 🔒 REGLA 1: APIs de Supabase - Network First (intentar red, fallback a caché si offline)
   if (shouldNeverCache(url.href)) {
-    console.log('[SW] Omitiendo caché para:', url.href);
-    event.respondWith(fetch(request)); // Ir directo a la red
+    event.respondWith(networkFirstWithOfflineSupport(request));
     return;
   }
 
-  // � REGLA 2: Network First para JS y CSS (permite actualizaciones rápidas)
-  const pathname = url.pathname.toLowerCase();
-  if (pathname.endsWith('.js') || pathname.endsWith('.css')) {
-    event.respondWith(networkFirst(request));
-    return;
-  }
-
-  // 📦 REGLA 3: Cache First para otros archivos estáticos
-  if (isStaticAsset(url)) {
-    event.respondWith(cacheFirst(request));
-    return;
-  }
-
-  // 🌐 REGLA 4: Network First para todo lo demás
-  event.respondWith(networkFirst(request));
+  // 📦 REGLA 2: Todos los recursos estáticos - Cache First
+  event.respondWith(cacheFirstWithUpdate(request));
 });
 
 // ===================================
 // ESTRATEGIAS DE CACHÉ
 // ===================================
 
-// Cache First: Intenta desde caché, si falla va a la red
-async function cacheFirst(request) {
+// Cache First con actualización en segundo plano
+async function cacheFirstWithUpdate(request) {
   try {
     const cachedResponse = await caches.match(request);
+    
+    // Devolver caché inmediatamente si existe
     if (cachedResponse) {
-      console.log('[SW] Sirviendo desde caché:', request.url);
+      // Actualizar caché en segundo plano
+      fetch(request).then(networkResponse => {
+        if (networkResponse && networkResponse.status === 200) {
+          caches.open(CACHE_NAME).then(cache => {
+            cache.put(request, networkResponse);
+          });
+        }
+      }).catch(() => {}); // Ignorar errores de red
+      
       return cachedResponse;
     }
 
+    // Si no hay caché, obtener de red y cachear
     const networkResponse = await fetch(request);
     const cache = await caches.open(CACHE_NAME);
     cache.put(request, networkResponse.clone());
-    console.log('[SW] Cacheando nuevo recurso:', request.url);
     return networkResponse;
 
   } catch (error) {
-    console.error('[SW] Error en Cache First:', error);
-    // Fallback básico
+    // Intentar caché como último recurso
+    const cachedResponse = await caches.match(request);
+    if (cachedResponse) {
+      return cachedResponse;
+    }
+    
+    // Fallback para archivos HTML
+    if (request.destination === 'document') {
+      return caches.match('/sabrofood/index.html');
+    }
+    
     return new Response('Offline - Recurso no disponible', {
       status: 503,
       statusText: 'Service Unavailable'
@@ -139,21 +149,28 @@ async function cacheFirst(request) {
   }
 }
 
-// Network First: Intenta red primero, si falla va al caché
-async function networkFirst(request) {
+// Network First con soporte offline para APIs
+async function networkFirstWithOfflineSupport(request) {
   try {
     const networkResponse = await fetch(request);
-    const cache = await caches.open(DATA_CACHE);
-    cache.put(request, networkResponse.clone());
+    
+    // Solo cachear respuestas exitosas de lectura (GET)
+    if (request.method === 'GET' && networkResponse.status === 200) {
+      const cache = await caches.open(DATA_CACHE);
+      cache.put(request, networkResponse.clone());
+    }
+    
     return networkResponse;
 
   } catch (error) {
-    console.log('[SW] Red no disponible, intentando caché:', request.url);
+    // Si falla la red, intentar caché
     const cachedResponse = await caches.match(request);
     if (cachedResponse) {
+      console.log('[SW] 📡 Modo Offline: Sirviendo desde caché:', request.url);
       return cachedResponse;
     }
-
+    
+    // Si no hay caché, retornar error
     throw error;
   }
 }
@@ -162,21 +179,9 @@ async function networkFirst(request) {
 // FUNCIONES DE UTILIDAD
 // ===================================
 
-// Verificar si una URL NO debe cachearse NUNCA
+// Verificar si una URL NO debe cachearse (solo APIs)
 function shouldNeverCache(url) {
   return NEVER_CACHE.some(pattern => url.includes(pattern));
-}
-
-// Verificar si es un recurso estático cacheable
-function isStaticAsset(url) {
-  const staticExtensions = ['.html', '.css', '.js', '.png', '.jpg', '.jpeg', '.svg', '.woff', '.woff2'];
-  const pathname = url.pathname.toLowerCase();
-
-  // Es estático si termina en alguna de las extensiones
-  return staticExtensions.some(ext => pathname.endsWith(ext)) ||
-         pathname === '/' ||
-         url.hostname.includes('fonts.googleapis.com') ||
-         url.hostname.includes('fonts.gstatic.com');
 }
 
 // ===================================

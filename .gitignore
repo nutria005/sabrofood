@@ -1,7 +1,43 @@
+# =====================================================
+# .gitignore para Sabrofood PWA
+# =====================================================
+
+# Dependencias
+node_modules/
+bower_components/
+
+# Archivos del sistema
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Python
 __pycache__/
 *.pyc
-.DS_Store
-node_modules/
+*.pyo
+*.pyd
+.Python
+*.so
+
+# IDEs y Editores
+.vscode/
+.idea/
+*.sublime-*
+*.swp
+*.swo
+*~
+
+# Logs
+*.log
+logs/
+npm-debug.log*
+
+# Archivos de test y desarrollo
+test-*.html
+test-*.js
+*.test.html
+*.test.js
+prueba-*.html
 
 # IMPORTANTE: Para GitHub Pages, supabase-config.js DEBE subirse
 # El ANON_KEY es público por diseño - La seguridad está en RLS de Supabase
@@ -17,3 +53,15 @@ estructura_base_datos.sql
 productos_parte_1_economicos.sql
 productos_parte_2_premium.sql
 productos_parte_3_final.sql
+
+# Backups y temporales
+*.bak
+*.tmp
+*.temp
+.cache/
+
+# Archivos de configuración local
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local

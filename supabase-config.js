@@ -10,12 +10,12 @@ const SUPABASE_CONFIG = {
   anonKey: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJoamdjcGpzam9mdW9oYWN5aXNlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjIzNjI4MDksImV4cCI6MjA3NzkzODgwOX0.ki4Ss9vYQUEYcvT3-rHl5d5ghL71oTL9mOMzetBwhEw'
 };
 
-// Inicializar cliente de Supabase
-let supabaseClient = null;
+// Inicializar cliente de Supabase como variable GLOBAL
+window.supabaseClient = null;
 
 // Esperar a que Supabase esté disponible
 if (typeof supabase !== 'undefined') {
-  supabaseClient = supabase.createClient(SUPABASE_CONFIG.url, SUPABASE_CONFIG.anonKey);
+  window.supabaseClient = supabase.createClient(SUPABASE_CONFIG.url, SUPABASE_CONFIG.anonKey);
   console.log('✅ Supabase conectado:', SUPABASE_CONFIG.url);
   console.log('🔑 Cliente inicializado correctamente');
 } else {
@@ -23,9 +23,9 @@ if (typeof supabase !== 'undefined') {
 }
 
 // Verificar conexión
-if (supabaseClient) {
+if (window.supabaseClient) {
   console.log('🧪 Probando conexión a Supabase...');
-  supabaseClient.from('productos').select('id').limit(1).then(({ data, error }) => {
+  window.supabaseClient.from('productos').select('id').limit(1).then(({ data, error }) => {
     if (error) {
       console.error('❌ Error de conexión:', error.message);
     } else {

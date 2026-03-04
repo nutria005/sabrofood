@@ -19,7 +19,7 @@ let realtimeChannelBodega = null;
  */
 async function cargarSolicitudesReposicion() {
     try {
-        const { data, error } = await supabaseClient
+        const { data, error } = await window.supabaseClient
             .from('solicitudes_reposicion')
             .select(`
                 *,
@@ -171,7 +171,7 @@ function actualizarContadorPendientes() {
  */
 async function cargarStockBodega() {
     try {
-        const { data, error } = await supabaseClient
+        const { data, error } = await window.supabaseClient
             .from('productos')
             .select('id, nombre, categoria, stock, stock_minimo_sacos')
             .in('categoria', ['Adulto', 'Cachorro', 'Senior', 'Gato', 'Gatito', 'Arena'])
@@ -241,7 +241,7 @@ async function buscarProductosParaReposicion() {
 
     try {
         // Buscar en productos a granel (TODAS las categorías de comida para mascotas)
-        const { data, error } = await supabaseClient
+        const { data, error } = await window.supabaseClient
             .from('productos')
             .select('id, nombre, categoria')
             .in('categoria', [
@@ -308,7 +308,7 @@ async function buscarProductosParaReposicion() {
 async function agregarSolicitudReposicion(productoId, nombreProducto, categoria) {
     try {
         // Insertar solicitud (optimizado: sin campos redundantes)
-        const { data, error } = await supabaseClient
+        const { data, error } = await window.supabaseClient
             .from('solicitudes_reposicion')
             .insert({
                 producto_id: productoId,
@@ -355,7 +355,7 @@ async function completarSolicitud(solicitudId) {
         }
 
         // Obtener stock actual del producto
-        const { data: producto, error: errorProducto } = await supabaseClient
+        const { data: producto, error: errorProducto } = await window.supabaseClient
             .from('productos')
             .select('stock')
             .eq('id', solicitud.producto_id)
@@ -371,7 +371,7 @@ async function completarSolicitud(solicitudId) {
         }
 
         // Actualizar stock del producto
-        const { error: errorStock } = await supabaseClient
+        const { error: errorStock } = await window.supabaseClient
             .from('productos')
             .update({ stock: nuevoStock })
             .eq('id', solicitud.producto_id);
@@ -379,7 +379,7 @@ async function completarSolicitud(solicitudId) {
         if (errorStock) throw errorStock;
 
         // Marcar solicitud como completada
-        const { error } = await supabaseClient
+        const { error } = await window.supabaseClient
             .from('solicitudes_reposicion')
             .update({
                 estado: 'completada',
@@ -416,7 +416,7 @@ async function cancelarSolicitud(solicitudId) {
 
     try {
         // Opción 1: Eliminar permanentemente
-        const { error } = await supabaseClient
+        const { error } = await window.supabaseClient
             .from('solicitudes_reposicion')
             .delete()
             .eq('id', solicitudId);
@@ -450,7 +450,7 @@ async function cargarHistorialSacos() {
         const inicioHoy = hoy.toISOString();
 
         // Cargar solicitudes completadas hoy CON datos del producto (JOIN)
-        const { data, error } = await supabaseClient
+        const { data, error } = await window.supabaseClient
             .from('solicitudes_reposicion')
             .select(`
                 *,
@@ -513,7 +513,7 @@ async function cargarHistorialSacos() {
  * SIMPLIFICADO: Solo solicitudes
  */
 function inicializarRealtimeBodega() {
-    if (!supabaseClient) {
+    if (!window.supabaseClient) {
         console.warn('⚠️ Supabase no disponible para Realtime de bodega');
         return;
     }
@@ -521,7 +521,7 @@ function inicializarRealtimeBodega() {
     console.log('🔴 Iniciando Realtime para Bodega...');
 
     // Canal para sincronización
-    realtimeChannelBodega = supabaseClient
+    realtimeChannelBodega = window.supabaseClient
         .channel('bodega-reposicion')
         .on(
             'postgres_changes',
@@ -561,7 +561,7 @@ function inicializarRealtimeBodega() {
  */
 function desconectarRealtimeBodega() {
     if (realtimeChannelBodega) {
-        supabaseClient.removeChannel(realtimeChannelBodega);
+        window.supabaseClient.removeChannel(realtimeChannelBodega);
         realtimeChannelBodega = null;
         console.log('❌ Realtime de Bodega desconectado');
     }
