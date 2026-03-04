@@ -539,6 +539,29 @@ function inicializarApp() {
 
 async function initApp() {
     console.log('🚀 Iniciando aplicación...');
+    console.log('📱 Dispositivo:', navigator.userAgent);
+    console.log('🌐 Modo Standalone:', window.navigator.standalone ? 'Sí (iOS)' : 'No');
+    
+    // PROTECCIÓN CONTRA BUCLE INFINITO EN iOS
+    try {
+        const loopCounter = sessionStorage.getItem('init_loop_counter') || '0';
+        const counter = parseInt(loopCounter);
+        
+        if (counter > 3) {
+            console.error('❌ Detectado bucle infinito. Limpiando datos...');
+            try {
+                localStorage.clear();
+                sessionStorage.clear();
+            } catch (e) {
+                console.error('No se pudo limpiar storage:', e);
+            }
+            sessionStorage.setItem('init_loop_counter', '0');
+        } else {
+            sessionStorage.setItem('init_loop_counter', String(counter + 1));
+        }
+    } catch (e) {
+        console.warn('⚠️ SessionStorage no disponible:', e);
+    }
     
     // Esperar a que Supabase esté disponible (máximo 5 segundos)
     let intentos = 0;
@@ -551,23 +574,41 @@ async function initApp() {
         console.error('❌ Error: Supabase no disponible');
         document.getElementById('loginScreen').style.display = 'flex';
         document.getElementById('mainApp').style.display = 'none';
+        sessionStorage.setItem('init_loop_counter', '0'); // Reset counter
         return;
     }
     
-    // Verificar si hay sesión guardada
-    const sesionRestaurada = await verificarSesionGuardada();
+    // Verificar si hay sesión guardada (con manejo de errores iOS)
+    let sesionRestaurada = false;
+    try {
+        sesionRestaurada = await verificarSesionGuardada();
+    } catch (error) {
+        console.error('❌ Error al verificar sesión guardada:', error);
+        // Limpiar localStorage si hay error
+        try {
+            localStorage.removeItem('sabrofood_remember');
+        } catch (e) {
+            console.error('No se pudo limpiar localStorage:', e);
+        }
+    }
 
     if (sesionRestaurada) {
         console.log('✅ Sesión restaurada');
+        sessionStorage.setItem('init_loop_counter', '0'); // Reset counter
         return;
     }
     
     // Limpiar sesión antigua si existe
-    localStorage.removeItem('sabrofood_user');
+    try {
+        localStorage.removeItem('sabrofood_user');
+    } catch (e) {
+        console.warn('⚠️ No se pudo limpiar sabrofood_user:', e);
+    }
 
     // Mostrar pantalla de login
     document.getElementById('loginScreen').style.display = 'flex';
     document.getElementById('mainApp').style.display = 'none';
+    sessionStorage.setItem('init_loop_counter', '0'); // Reset counter
 }
 
 // ===================================
@@ -879,23 +920,39 @@ async function validarCredenciales(username, password) {
  * @param {boolean} rememberDevice - Si debe recordar dispositivo
  * @param {string} username - Nombre de usuario
  * @param {string} role - Rol del usuario
+ * CON PROTECCIÓN iOS
  */
 function guardarSesionSiRecordado(rememberDevice, username, role) {
-    if (!rememberDevice) {
-        localStorage.removeItem('sabrofood_remember');
-        return;
-    }
+    try {
+        if (!rememberDevice) {
+            try {
+                localStorage.removeItem('sabrofood_remember');
+            } catch (e) {
+                console.warn('⚠️ No se pudo eliminar sesión:', e);
+            }
+            return;
+        }
 
-    // Guardar en localStorage (persiste entre recargas)
-    const sessionData = {
-        username: username,
-        role: role,
-        timestamp: Date.now(),
-        expires: Date.now() + (30 * 24 * 60 * 60 * 1000) // 30 días
-    };
-    
-    localStorage.setItem('sabrofood_remember', JSON.stringify(sessionData));
-    console.log('✅ Sesión guardada para:', username);
+        // Guardar en localStorage (persiste entre recargas)
+        const sessionData = {
+            username: username,
+            role: role,
+            timestamp: Date.now(),
+            expires: Date.now() + (30 * 24 * 60 * 60 * 1000) // 30 días
+        };
+        
+        try {
+            localStorage.setItem('sabrofood_remember', JSON.stringify(sessionData));
+            console.log('✅ Sesión guardada para:', username);
+        } catch (e) {
+            console.error('❌ Error al guardar sesión (común en iOS):', e);
+            console.warn('⚠️ La sesión no se recordará. Deberás iniciar sesión cada vez.');
+            // No es error crítico, continuar sin recordar
+        }
+    } catch (error) {
+        console.error('❌ Error crítico en guardarSesionSiRecordado:', error);
+        // No lanzar error, solo loguear
+    }
 }
 
 /**
@@ -1081,9 +1138,22 @@ async function handleLogout() {
     carrito = [];
     productos = [];
 
-    // Limpiar localStorage
-    localStorage.removeItem('sabrofood_remember');
-    localStorage.removeItem('sabrofood_user');
+    // Limpiar localStorage (con protección iOS)
+    try {
+        localStorage.removeItem('sabrofood_remember');
+        localStorage.removeItem('sabrofood_user');
+        console.log('✅ Sesión limpiada');
+    } catch (e) {
+        console.warn('⚠️ No se pudo limpiar localStorage:', e);
+        // Continuar de todos modos
+    }
+    
+    // Limpiar contador de bucle
+    try {
+        sessionStorage.setItem('init_loop_counter', '0');
+    } catch (e) {
+        console.warn('⚠️ No se pudo resetear contador:', e);
+    }
 
     // Recargar página para estado limpio
     window.location.reload();
@@ -1092,37 +1162,64 @@ async function handleLogout() {
 /**
  * 🆕 SISTEMA SIMPLE: Verifica si hay sesión guardada en localStorage
  * Sin dependencia de tabla sessions ni fingerprinting
+ * CON PROTECCIÓN iOS
  */
 async function verificarSesionGuardada() {
     try {
         if (!window.supabaseClient) {
+            console.warn('⚠️ Supabase no disponible para verificar sesión');
             return false;
         }
         
-        // Buscar en localStorage
-        const savedSession = localStorage.getItem('sabrofood_remember');
+        // Buscar en localStorage (con protección iOS)
+        let savedSession = null;
+        try {
+            const savedData = localStorage.getItem('sabrofood_remember');
+            if (savedData) {
+                savedSession = JSON.parse(savedData);
+            }
+        } catch (storageError) {
+            console.error('❌ Error al leer localStorage (común en iOS standalone):', storageError);
+            // Intentar limpiar localStorage corrupto
+            try {
+                localStorage.removeItem('sabrofood_remember');
+            } catch (e) {
+                console.error('No se pudo limpiar:', e);
+            }
+            return false;
+        }
         
         if (!savedSession) {
+            console.log('ℹ️ No hay sesión guardada');
             return false;
         }
         
-        const sessionData = JSON.parse(savedSession);
-        
         // Verificar expiración (30 días)
-        if (Date.now() > sessionData.expires) {
-            localStorage.removeItem('sabrofood_remember');
+        if (Date.now() > savedSession.expires) {
+            console.log('⏰ Sesión expirada');
+            try {
+                localStorage.removeItem('sabrofood_remember');
+            } catch (e) {
+                console.error('No se pudo eliminar sesión expirada:', e);
+            }
             return false;
         }
         
         // Verificar que el usuario aún existe y está activo en Supabase
+        console.log('🔍 Verificando usuario:', savedSession.username);
         const { data, error } = await window.supabaseClient
             .from('usuarios')
             .select('username, role, activo')
-            .eq('username', sessionData.username)
+            .eq('username', savedSession.username)
             .single();
 
         if (error || !data || !data.activo) {
-            localStorage.removeItem('sabrofood_remember');
+            console.log('❌ Usuario no válido o inactivo');
+            try {
+                localStorage.removeItem('sabrofood_remember');
+            } catch (e) {
+                console.error('No se pudo eliminar sesión inválida:', e);
+            }
             return false;
         }
 
@@ -1142,8 +1239,12 @@ async function verificarSesionGuardada() {
         return true;
 
     } catch (error) {
-        console.error('Error al verificar sesión:', error);
-        localStorage.removeItem('sabrofood_remember');
+        console.error('❌ Error crítico al verificar sesión:', error);
+        try {
+            localStorage.removeItem('sabrofood_remember');
+        } catch (e) {
+            console.error('No se pudo limpiar después del error:', e);
+        }
         return false;
     }
 }
