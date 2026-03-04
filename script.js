@@ -475,38 +475,110 @@ function requireAdminRole(accion = 'esta acción') {
 }
 
 // ===================================
-// FORZAR ACTUALIZACIÓN (CACHE BUSTING)
+// 🔄 ACTUALIZACIÓN FORZADA TOTAL
 // ===================================
 
-function forzarActualizacion() {
-    if (confirm('Esto borrará el caché y recargará la aplicación. ¿Continuar?')) {
-        // Borrar localStorage
-        localStorage.clear();
+/**
+ * 🔄 ACTUALIZACION FORZADA TOTAL
+ * Limpia TODOS los cachés y storage, desregistra Service Workers
+ * y recarga la app con versión fresca desde el servidor.
+ * 
+ * Útil cuando:
+ * - El usuario reporta que no ve cambios
+ * - Hay problemas con caché corrupto
+ * - Después de un fix crítico en producción
+ */
+async function forzarActualizacion() {
+    console.log('🔄 [UPDATE] Iniciando actualización forzada...');
+    
+    const confirmar = confirm(
+        '🔄 ACTUALIZACIÓN COMPLETA\n\n' +
+        'Esto hará:\n' +
+        '• Limpiar TODO el caché\n' +
+        '• Desinstalar Service Workers\n' +
+        '• Descargar versión más reciente\n\n' +
+        '⚠️ Necesitarás volver a iniciar sesión\n\n' +
+        '¿Continuar?'
+    );
+    
+    if (!confirmar) {
+        console.log('🔄 [UPDATE] Actualización cancelada por el usuario');
+        return;
+    }
 
-        // Borrar sessionStorage
-        sessionStorage.clear();
-
-        // Desregistrar Service Workers si existen
+    try {
+        console.log('🔄 [UPDATE] PASO 1/5: Desregistrando Service Workers...');
+        
+        // PASO 1: Desregistrar TODOS los Service Workers
         if ('serviceWorker' in navigator) {
-            navigator.serviceWorker.getRegistrations().then(function(registrations) {
-                for(let registration of registrations) {
-                    registration.unregister();
-                }
-            });
+            const registrations = await navigator.serviceWorker.getRegistrations();
+            console.log(`🔄 [UPDATE] Encontrados ${registrations.length} Service Workers`);
+            
+            for (let registration of registrations) {
+                const success = await registration.unregister();
+                console.log(`🔄 [UPDATE] SW desregistrado:`, registration.scope, success ? '✅' : '❌');
+            }
         }
 
-        // Borrar cache API si existe
+        console.log('🔄 [UPDATE] PASO 2/5: Limpiando cachés...');
+        
+        // PASO 2: Limpiar TODOS los cachés
         if ('caches' in window) {
-            caches.keys().then(function(names) {
-                for (let name of names) {
-                    caches.delete(name);
-                }
-            });
+            const cacheNames = await caches.keys();
+            console.log(`🔄 [UPDATE] Encontrados ${cacheNames.length} cachés`);
+            
+            await Promise.all(
+                cacheNames.map(cacheName => {
+                    console.log('🔄 [UPDATE] Eliminando caché:', cacheName);
+                    return caches.delete(cacheName);
+                })
+            );
+            console.log('🔄 [UPDATE] ✅ Todos los cachés eliminados');
         }
 
-        // Recargar con timestamp único para evitar caché
-        const timestamp = new Date().getTime();
-        window.location.href = window.location.origin + window.location.pathname + '?nocache=' + timestamp;
+        console.log('🔄 [UPDATE] PASO 3/5: Limpiando localStorage...');
+        
+        // PASO 3: Limpiar localStorage (con protección iOS)
+        try {
+            localStorage.clear();
+            console.log('🔄 [UPDATE] ✅ localStorage limpiado');
+        } catch (e) {
+            console.warn('🔄 [UPDATE] ⚠️ No se pudo limpiar localStorage:', e);
+        }
+
+        console.log('🔄 [UPDATE] PASO 4/5: Limpiando sessionStorage...');
+        
+        // PASO 4: Limpiar sessionStorage
+        try {
+            sessionStorage.clear();
+            console.log('🔄 [UPDATE] ✅ sessionStorage limpiado');
+        } catch (e) {
+            console.warn('🔄 [UPDATE] ⚠️ No se pudo limpiar sessionStorage:', e);
+        }
+
+        console.log('🔄 [UPDATE] PASO 5/5: Recargando con versión fresca...');
+        
+        // PASO 5: Recargar con timestamp único para evitar CUALQUIER caché
+        const timestamp = Date.now();
+        const currentUrl = window.location;
+        const reloadUrl = `${currentUrl.origin}${currentUrl.pathname}?force_update=${timestamp}`;
+        
+        console.log('🔄 [UPDATE] 🚀 Recargando:', reloadUrl);
+        
+        // Dar tiempo para que los logs se escriban
+        await new Promise(resolve => setTimeout(resolve, 100));
+        
+        // Recargar
+        window.location.href = reloadUrl;
+        
+    } catch (error) {
+        console.error('🔄 [UPDATE] ❌ Error durante actualización forzada:', error);
+        alert(
+            '❌ Error al actualizar\n\n' +
+            'Por favor, cierra completamente la app e intenta de nuevo.\n\n' +
+            'En iOS: Desliza hacia arriba para cerrar\n' +
+            'En Android: Cierra desde el gestor de apps'
+        );
     }
 }
 
@@ -524,17 +596,40 @@ function verificarVersion() {
     localStorage.setItem('app_version', APP_VERSION);
 }
 
-// Inicialización
+// ===================================
+// 🚀 INICIALIZACIÓN DE LA APLICACIÓN
+// ===================================
+
 // Ejecutar inmediatamente si el DOM ya está listo, o esperar al evento
 if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', inicializarApp);
 } else {
+    // DOM ya está listo
     inicializarApp();
 }
 
-function inicializarApp() {
-    initApp();
-    verificarVersion();
+/**
+ * 🚀 Función principal de inicialización
+ * IMPORTANTE: Debe esperar a que initApp() termine (es async)
+ */
+async function inicializarApp() {
+    console.log('🚀 [INIT] Iniciando aplicación Sabrofood...');
+    
+    try {
+        // PASO 1: Inicializar app y verificar sesión (esperar a que termine)
+        await initApp();
+        console.log('🚀 [INIT] ✅ App inicializada');
+        
+        // PASO 2: Verificar si hay nueva versión disponible
+        verificarVersion();
+        console.log('🚀 [INIT] ✅ Inicialización completa');
+        
+    } catch (error) {
+        console.error('🚀 [INIT] ❌ Error en inicialización:', error);
+        // Mostrar pantalla de login aunque falle
+        document.getElementById('loginScreen').style.display = 'flex';
+        document.getElementById('mainApp').style.display = 'none';
+    }
 }
 
 async function initApp() {
@@ -1119,94 +1214,198 @@ function aplicarPermisosRol() {
     if (thAcciones) thAcciones.style.display = esAdmin ? 'table-cell' : 'none';
 }
 
+/**
+ * 🚪 CERRAR SESIÓN
+ * Limpia TODOS los datos y previene bucle de auto-login
+ * Protegido contra errores de iOS localStorage
+ */
 async function handleLogout() {
+    console.log('🚪 [LOGOUT] Iniciando cierre de sesión...');
+    
+    // Advertir si hay productos en carrito
     if (carrito.length > 0) {
         if (!confirm('Tienes productos en el carrito. ¿Deseas cerrar sesión de todas formas?')) {
+            console.log('🚪 [LOGOUT] Cancelado por el usuario');
             return;
         }
     }
 
-    // Recordatorio: marcar salida manualmente
-    // La marca de asistencia ahora es completamente manual
-
-    // Desconectar Realtime
-    desconectarRealtime();
-
-    // Limpiar datos
-    currentUser = '';
-    currentUserRole = '';
-    carrito = [];
-    productos = [];
-
-    // Limpiar localStorage (con protección iOS)
     try {
-        localStorage.removeItem('sabrofood_remember');
-        localStorage.removeItem('sabrofood_user');
-        console.log('✅ Sesión limpiada');
-    } catch (e) {
-        console.warn('⚠️ No se pudo limpiar localStorage:', e);
-        // Continuar de todos modos
+        // Desconectar Realtime
+        console.log('🚪 [LOGOUT] Desconectando Realtime...');
+        desconectarRealtime();
+
+        // Limpiar variables en memoria
+        console.log('🚪 [LOGOUT] Limpiando variables...');
+        currentUser = '';
+        currentUserRole = '';
+        carrito = [];
+        productos = [];
+
+        // ⚠️ CRÍTICO: Setear flag ANTES de limpiar storage
+        // Esto previene que verificarSesionGuardada() restaure la sesión
+        console.log('🚪 [LOGOUT] Seteando flag de prevención...');
+        try {
+            sessionStorage.setItem('logout_in_progress', 'true');
+            sessionStorage.setItem('prevent_auto_login', 'true');
+            sessionStorage.setItem('init_loop_counter', '0'); // Reset contador
+        } catch (e) {
+            console.warn('🚪 [LOGOUT] ⚠️ No se pudo setear flags:', e);
+        }
+
+        // Intentar limpiar localStorage con múltiples reintentos (iOS puede fallar)
+        console.log('🚪 [LOGOUT] Limpiando localStorage...');
+        const storageCleared = await limpiarStorageConReintentos(3);
+        
+        if (!storageCleared) {
+            console.error('🚪 [LOGOUT] ❌ No se pudo limpiar localStorage después de 3 intentos');
+            
+            // Opción de emergencia: reinstalar PWA
+            const reinstalar = confirm(
+                '⚠️ No se pudo cerrar sesión correctamente\n\n' +
+                'Esto puede deberse a restricciones de iOS.\n\n' +
+                'Soluciones:\n' +
+                '1. Borra el caché de Safari\n' +
+                '2. Reinstala la app desde Safari\n\n' +
+                '¿Deseas intentar una actualización forzada?'
+            );
+            
+            if (reinstalar) {
+                await forzarActualizacion();
+            }
+            return;
+        }
+
+        console.log('🚪 [LOGOUT] ✅ Sesión limpiada correctamente');
+        
+        // Recargar página (el flag prevent_auto_login evitará auto-login)
+        console.log('🚪 [LOGOUT] Recargando página...');
+        window.location.reload();
+        
+    } catch (error) {
+        console.error('🚪 [LOGOUT] ❌ Error durante logout:', error);
+        
+        // Intentar forzar recarga de todas formas
+        try {
+            sessionStorage.setItem('prevent_auto_login', 'true');
+        } catch (e) {}
+        
+        window.location.reload();
+    }
+}
+
+/**
+ * 🔄 Intentar limpiar localStorage con reintentos
+ * iOS a veces falla en limpiar storage, especialmente en modo standalone
+ * 
+ * @param {number} maxIntentos - Número máximo de intentos
+ * @returns {Promise<boolean>} - true si se limpió exitosamente
+ */
+async function limpiarStorageConReintentos(maxIntentos = 3) {
+    for (let intento = 1; intento <= maxIntentos; intento++) {
+        try {
+            console.log(`🔄 [STORAGE] Intento ${intento}/${maxIntentos} de limpiar storage...`);
+            
+            // Intentar remover claves específicas primero
+            localStorage.removeItem('sabrofood_remember');
+            localStorage.removeItem('sabrofood_user');
+            localStorage.removeItem('app_version');
+            
+            // Verificar que se hayan eliminado
+            const checkRemember = localStorage.getItem('sabrofood_remember');
+            const checkUser = localStorage.getItem('sabrofood_user');
+            
+            if (!checkRemember && !checkUser) {
+                console.log(`🔄 [STORAGE] ✅ Storage limpiado en intento ${intento}`);
+                return true;
+            } else {
+                console.warn(`🔄 [STORAGE] ⚠️ Storage no se limpió completamente, reintentando...`);
+            }
+            
+        } catch (e) {
+            console.warn(`🔄 [STORAGE] ⚠️ Error en intento ${intento}:`, e);
+        }
+        
+        // Esperar antes del siguiente intento
+        if (intento < maxIntentos) {
+            await new Promise(resolve => setTimeout(resolve, 200));
+        }
     }
     
-    // Limpiar contador de bucle
-    try {
-        sessionStorage.setItem('init_loop_counter', '0');
-    } catch (e) {
-        console.warn('⚠️ No se pudo resetear contador:', e);
-    }
-
-    // Recargar página para estado limpio
-    window.location.reload();
+    // Si llegamos aquí, no se pudo limpiar
+    console.error('🔄 [STORAGE] ❌ No se pudo limpiar storage después de todos los intentos');
+    return false;
 }
 
 /**
  * 🆕 SISTEMA SIMPLE: Verifica si hay sesión guardada en localStorage
  * Sin dependencia de tabla sessions ni fingerprinting
- * CON PROTECCIÓN iOS
+ * CON PROTECCIÓN iOS + PREVENCIÓN DE BUCLE EN LOGOUT
  */
 async function verificarSesionGuardada() {
     try {
+        // ⚠️ CRÍTICO: Verificar flag de prevención PRIMERO
+        // Si el usuario hizo logout, NO restaurar sesión automáticamente
+        try {
+            const preventLogin = sessionStorage.getItem('prevent_auto_login');
+            const logoutInProgress = sessionStorage.getItem('logout_in_progress');
+            
+            if (preventLogin === 'true' || logoutInProgress === 'true') {
+                console.log('🔒 [SESSION] Auto-login bloqueado (logout reciente)');
+                // Limpiar flags después de verificar
+                sessionStorage.removeItem('prevent_auto_login');
+                sessionStorage.removeItem('logout_in_progress');
+                return false;
+            }
+        } catch (e) {
+            console.warn('⚠️ [SESSION] No se pudo verificar flags:', e);
+        }
+        
         if (!window.supabaseClient) {
-            console.warn('⚠️ Supabase no disponible para verificar sesión');
+            console.warn('⚠️ [SESSION] Supabase no disponible');
             return false;
         }
         
-        // Buscar en localStorage (con protección iOS)
+        // Buscar sesión guardada en localStorage (con protección iOS)
+        console.log('🔍 [SESSION] Buscando sesión guardada...');
         let savedSession = null;
+        
         try {
             const savedData = localStorage.getItem('sabrofood_remember');
             if (savedData) {
                 savedSession = JSON.parse(savedData);
+                console.log('📦 [SESSION] Sesión encontrada:', savedSession.username);
             }
         } catch (storageError) {
-            console.error('❌ Error al leer localStorage (común en iOS standalone):', storageError);
+            console.error('❌ [SESSION] Error al leer localStorage (común en iOS standalone):', storageError);
             // Intentar limpiar localStorage corrupto
             try {
                 localStorage.removeItem('sabrofood_remember');
+                console.log('🗑️ [SESSION] localStorage corrupto limpiado');
             } catch (e) {
-                console.error('No se pudo limpiar:', e);
+                console.error('❌ [SESSION] No se pudo limpiar localStorage:', e);
             }
             return false;
         }
         
         if (!savedSession) {
-            console.log('ℹ️ No hay sesión guardada');
+            console.log('ℹ️ [SESSION] No hay sesión guardada');
             return false;
         }
         
         // Verificar expiración (30 días)
         if (Date.now() > savedSession.expires) {
-            console.log('⏰ Sesión expirada');
+            console.log('⏰ [SESSION] Sesión expirada');
             try {
                 localStorage.removeItem('sabrofood_remember');
             } catch (e) {
-                console.error('No se pudo eliminar sesión expirada:', e);
+                console.error('❌ [SESSION] No se pudo eliminar sesión expirada:', e);
             }
             return false;
         }
         
         // Verificar que el usuario aún existe y está activo en Supabase
-        console.log('🔍 Verificando usuario:', savedSession.username);
+        console.log('🔍 [SESSION] Verificando usuario en BD:', savedSession.username);
         const { data, error } = await window.supabaseClient
             .from('usuarios')
             .select('username, role, activo')
@@ -1214,20 +1413,19 @@ async function verificarSesionGuardada() {
             .single();
 
         if (error || !data || !data.activo) {
-            console.log('❌ Usuario no válido o inactivo');
+            console.log('❌ [SESSION] Usuario no válido o inactivo');
             try {
                 localStorage.removeItem('sabrofood_remember');
             } catch (e) {
-                console.error('No se pudo eliminar sesión inválida:', e);
+                console.error('❌ [SESSION] No se pudo eliminar sesión inválida:', e);
             }
             return false;
         }
 
-        // Restaurar sesión automáticamente
+        // ✅ Sesión válida - Restaurar automáticamente
+        console.log('✅ [SESSION] Restaurando sesión:', data.username, `(${data.role})`);
         currentUser = data.username;
         currentUserRole = data.role;
-        
-        console.log('✅ Sesión restaurada:', currentUser);
 
         // Aplicar permisos y actualizar UI
         aplicarPermisosRol();
@@ -1239,7 +1437,7 @@ async function verificarSesionGuardada() {
         return true;
 
     } catch (error) {
-        console.error('❌ Error crítico al verificar sesión:', error);
+        console.error('❌ [SESSION] Error crítico al verificar sesión:', error);
         try {
             localStorage.removeItem('sabrofood_remember');
         } catch (e) {
@@ -1830,7 +2028,11 @@ function filtrarCategoria(categoria) {
     renderProductos();
 }
 
-// Event listener para búsqueda
+// ===================================
+// 🔍 INICIALIZACIÓN DE EVENT LISTENERS
+// ===================================
+// NOTA: Este listener se ejecuta después del DOMContentLoaded principal
+// Se mantiene separado para organización del código de UI
 document.addEventListener('DOMContentLoaded', () => {
     const searchInput = document.getElementById('searchInput');
     if (searchInput) {
