@@ -1727,11 +1727,16 @@ function renderProductos() {
     const searchInput = document.getElementById('searchInput');
     if (searchInput && searchInput.value) {
         const search = searchInput.value.toLowerCase();
+        console.log(`🔍 [RENDER] Filtrando productos por búsqueda: "${search}"`);
+        console.log(`🔍 [RENDER] Productos antes del filtro: ${productosFiltrados.length}`);
+        
         productosFiltrados = productosFiltrados.filter(p =>
             p.nombre.toLowerCase().includes(search) ||
             (p.marca && p.marca.toLowerCase().includes(search)) ||
             (p.categoria && p.categoria.toLowerCase().includes(search))
         );
+        
+        console.log(`🔍 [RENDER] Productos después del filtro: ${productosFiltrados.length}`);
     }
 
     if (productosFiltrados.length === 0) {
@@ -2036,9 +2041,25 @@ function filtrarCategoria(categoria) {
 document.addEventListener('DOMContentLoaded', () => {
     const searchInput = document.getElementById('searchInput');
     if (searchInput) {
-        searchInput.addEventListener('input', debounce(() => {
+        console.log('🔍 [SEARCH] Configurando event listener para searchInput');
+        
+        // Listener con debounce (principal)
+        const debouncedRender = debounce(() => {
+            console.log('🔍 [SEARCH] Ejecutando renderProductos() con filtro:', searchInput.value);
             renderProductos();
-        }, 300));
+        }, 300);
+        
+        searchInput.addEventListener('input', (e) => {
+            console.log('🔍 [SEARCH] Input detectado:', e.target.value);
+            debouncedRender();
+        });
+        
+        // Verificar que el listener funciona
+        setTimeout(() => {
+            console.log('🔍 [SEARCH] Listener configurado correctamente');
+        }, 100);
+    } else {
+        console.error('❌ [SEARCH] No se encontró el elemento searchInput');
     }
 
     // Event listener para búsqueda por código de barras
