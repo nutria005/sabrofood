@@ -579,11 +579,12 @@ body {
   transform: translateY(-50%);
   color: hsl(var(--muted-foreground));
   pointer-events: none;
+  z-index: 1;
 }
 
 .search-input {
   width: 100%;
-  padding: 14px 16px 14px 48px;
+  padding: 14px 48px 14px 52px; /* Más espacio para lupa (left) y botón limpiar (right) */
   border: 2px solid hsl(var(--border));
   border-radius: 12px;
   font-size: 15px;
@@ -2042,7 +2043,7 @@ body {
   }
 
   .search-input {
-    padding: 10px 12px;
+    padding: 12px 48px 12px 50px; /* Mantener espacio para íconos en móvil */
     font-size: 14px;
   }
 }
@@ -3211,6 +3212,11 @@ body {
   opacity: 1;
 }
 
+/* Asegurar padding correcto en search-secondary */
+.search-secondary .search-input {
+  padding-right: 48px; /* Espacio para botón de limpiar */
+}
+
 .btn-clear-search {
   position: absolute;
   right: 16px;
@@ -3263,6 +3269,23 @@ body {
 
   .search-secondary .search-input {
     font-size: 16px;
+    padding: 12px 48px 12px 50px; /* Asegurar espacio para íconos en tablets */
+  }
+}
+
+/* Media query específico para móviles pequeños */
+@media (max-width: 480px) {
+  .search-icon {
+    left: 14px; /* Acercar un poco el ícono en móviles */
+  }
+  
+  .search-input {
+    padding: 11px 46px 11px 48px; /* Ajuste fino para móviles pequeños */
+    font-size: 16px; /* Evitar zoom en iOS */
+  }
+  
+  .search-secondary .search-input {
+    padding: 11px 46px 11px 48px;
   }
 }
 
