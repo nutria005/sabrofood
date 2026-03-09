@@ -1082,6 +1082,9 @@ async function iniciarSesionYCargarApp() {
     inicializarCategorias();
     inicializarMarcas();
     
+    // ⚡ CRÍTICO: Configurar event listeners del buscador DESPUÉS de cargar la app
+    configurarEventListenersBuscador();
+    
     // Inicializar sistema de cierre automático
     inicializarSistemaCierreAutomatico();
     verificarCierresAutomaticosPendientes();
@@ -1693,12 +1696,28 @@ function mostrarProductosMock() {
 
 function renderProductos() {
     const grid = document.getElementById('productosGrid');
-    if (!grid) return;
+    if (!grid) {
+        console.error('❌ [RENDER] productosGrid no encontrado');
+        return;
+    }
 
+    // Verificar que hay productos cargados
+    if (!productos || productos.length === 0) {
+        console.warn('⚠️ [RENDER] Array de productos vacío');
+        grid.innerHTML = `
+            <div class="loading-state" style="grid-column: 1/-1;">
+                <p>No hay productos cargados</p>
+            </div>
+        `;
+        return;
+    }
+
+    console.log(`📊 [RENDER] Iniciando render con ${productos.length} productos totales`);
     let productosFiltrados = productos;
 
     // Filtrar por categoría
     if (categoriaActual !== 'Todos') {
+        console.log(`📂 [RENDER] Filtrando por categoría: ${categoriaActual}`);
         if (categoriaActual === 'Adulto') {
             // "Adulto" solo muestra productos de perro adulto (excluir gatos)
             productosFiltrados = productosFiltrados.filter(p => 
@@ -1721,22 +1740,32 @@ function renderProductos() {
                 p.categoria && p.categoria.toLowerCase().includes(categoriaActual.toLowerCase())
             );
         }
+        console.log(`📂 [RENDER] Productos después de filtro de categoría: ${productosFiltrados.length}`);
     }
 
     // Filtrar por búsqueda
     const searchInput = document.getElementById('searchInput');
-    if (searchInput && searchInput.value) {
-        const search = searchInput.value.toLowerCase();
-        console.log(`🔍 [RENDER] Filtrando productos por búsqueda: "${search}"`);
-        console.log(`🔍 [RENDER] Productos antes del filtro: ${productosFiltrados.length}`);
-        
-        productosFiltrados = productosFiltrados.filter(p =>
-            p.nombre.toLowerCase().includes(search) ||
-            (p.marca && p.marca.toLowerCase().includes(search)) ||
-            (p.categoria && p.categoria.toLowerCase().includes(search))
-        );
-        
-        console.log(`🔍 [RENDER] Productos después del filtro: ${productosFiltrados.length}`);
+    if (searchInput) {
+        const searchValue = searchInput.value.trim(); // Trim para eliminar espacios
+        if (searchValue) {
+            const search = searchValue.toLowerCase();
+            console.log(`🔍 [RENDER] Aplicando filtro de búsqueda: "${search}"`);
+            console.log(`🔍 [RENDER] Productos antes del filtro de búsqueda: ${productosFiltrados.length}`);
+            
+            productosFiltrados = productosFiltrados.filter(p => {
+                const matchNombre = p.nombre && p.nombre.toLowerCase().includes(search);
+                const matchMarca = p.marca && p.marca.toLowerCase().includes(search);
+                const matchCategoria = p.categoria && p.categoria.toLowerCase().includes(search);
+                return matchNombre || matchMarca || matchCategoria;
+            });
+            
+            console.log(`🔍 [RENDER] Productos después del filtro de búsqueda: ${productosFiltrados.length}`);
+            console.log(`🔍 [RENDER] Primeros 3 productos filtrados:`, productosFiltrados.slice(0, 3).map(p => p.nombre));
+        } else {
+            console.log('🔍 [RENDER] Campo de búsqueda vacío, mostrando todos');
+        }
+    } else {
+        console.warn('⚠️ [RENDER] searchInput no encontrado en el DOM');
     }
 
     if (productosFiltrados.length === 0) {
@@ -2034,49 +2063,87 @@ function filtrarCategoria(categoria) {
 }
 
 // ===================================
-// 🔍 INICIALIZACIÓN DE EVENT LISTENERS
+// 🔍 CONFIGURACIÓN DE EVENT LISTENERS DEL BUSCADOR
 // ===================================
-// NOTA: Este listener se ejecuta después del DOMContentLoaded principal
-// Se mantiene separado para organización del código de UI
-document.addEventListener('DOMContentLoaded', () => {
+/**
+ * Configura los event listeners para el buscador de productos
+ * Se llama desde iniciarSesionYCargarApp() para asegurar que el DOM existe
+ * Funciona en móvil y desktop
+ */
+function configurarEventListenersBuscador() {
+    console.log('🔍 [SEARCH] Iniciando configuración de buscadores...');
+    
+    // ========== BUSCADOR DE TEXTO (searchInput) ==========
     const searchInput = document.getElementById('searchInput');
     if (searchInput) {
-        console.log('🔍 [SEARCH] Configurando event listener para searchInput');
+        console.log('🔍 [SEARCH] ✅ searchInput encontrado, configurando listener');
         
-        // Listener con debounce (principal)
+        // Obtener botón de limpiar del searchInput
+        const btnClearSearch = searchInput.parentElement?.querySelector('.btn-clear-search');
+        
+        // Remover listeners previos (por si se llama múltiples veces)
+        const oldListener = searchInput._searchListener;
+        if (oldListener) {
+            searchInput.removeEventListener('input', oldListener);
+        }
+        
+        // Crear función de búsqueda con debounce
         const debouncedRender = debounce(() => {
-            console.log('🔍 [SEARCH] Ejecutando renderProductos() con filtro:', searchInput.value);
+            const valor = searchInput.value.trim();
+            console.log('🔍 [SEARCH] Ejecutando búsqueda con:', valor);
             renderProductos();
         }, 300);
         
-        searchInput.addEventListener('input', (e) => {
-            console.log('🔍 [SEARCH] Input detectado:', e.target.value);
+        // Listener principal
+        const newListener = (e) => {
+            const valor = e.target.value;
+            console.log('🔍 [SEARCH] Input detectado:', valor);
+            
+            // Mostrar/ocultar botón de limpiar
+            if (btnClearSearch) {
+                btnClearSearch.style.display = valor ? 'block' : 'none';
+            }
+            
             debouncedRender();
-        });
+        };
         
-        // Verificar que el listener funciona
-        setTimeout(() => {
-            console.log('🔍 [SEARCH] Listener configurado correctamente');
-        }, 100);
+        // Guardar referencia para poder removerlo después
+        searchInput._searchListener = newListener;
+        searchInput.addEventListener('input', newListener);
+        
+        console.log('🔍 [SEARCH] ✅ Listener configurado correctamente');
     } else {
-        console.error('❌ [SEARCH] No se encontró el elemento searchInput');
+        console.error('❌ [SEARCH] searchInput no encontrado en el DOM');
     }
-
-    // Event listener para búsqueda por código de barras
+    
+    // ========== BUSCADOR DE CÓDIGO DE BARRAS ==========
     const inputCodigoBarras = document.getElementById('inputCodigoBarras');
     if (inputCodigoBarras) {
+        console.log('🔍 [BARCODE] ✅ inputCodigoBarras encontrado');
+        
         // Auto-focus al cargar
         inputCodigoBarras.focus();
 
+        // Remover listeners previos
+        if (inputCodigoBarras._inputListener) {
+            inputCodigoBarras.removeEventListener('input', inputCodigoBarras._inputListener);
+        }
+        if (inputCodigoBarras._keypressListener) {
+            inputCodigoBarras.removeEventListener('keypress', inputCodigoBarras._keypressListener);
+        }
+
         // Mostrar/ocultar botón de limpiar
-        inputCodigoBarras.addEventListener('input', (e) => {
+        const inputListener = (e) => {
             const btnClear = document.querySelector('.btn-clear-search');
             if (btnClear) {
                 btnClear.style.display = e.target.value ? 'block' : 'none';
             }
-        });
+        };
+        inputCodigoBarras._inputListener = inputListener;
+        inputCodigoBarras.addEventListener('input', inputListener);
 
-        inputCodigoBarras.addEventListener('keypress', async (e) => {
+        // Enter para buscar producto
+        const keypressListener = async (e) => {
             if (e.key === 'Enter') {
                 e.preventDefault();
                 const codigo = e.target.value.trim();
@@ -2086,14 +2153,12 @@ document.addEventListener('DOMContentLoaded', () => {
                         agregarAlCarrito(producto.id);
                         mostrarNotificacion(`✅ ${producto.nombre} agregado`, 'success');
                         e.target.value = '';
-                        e.target.focus(); // Mantener focus para siguiente escaneo
+                        e.target.focus();
 
-                        // Ocultar botón limpiar
                         const btnClear = document.querySelector('.btn-clear-search');
                         if (btnClear) btnClear.style.display = 'none';
                     } else {
                         mostrarNotificacion('❌ Código no encontrado. Intenta buscar por nombre', 'warning');
-                        // Opcional: mover focus al campo de búsqueda manual
                         setTimeout(() => {
                             const searchInput = document.getElementById('searchInput');
                             if (searchInput) searchInput.focus();
@@ -2101,7 +2166,27 @@ document.addEventListener('DOMContentLoaded', () => {
                     }
                 }
             }
-        });
+        };
+        inputCodigoBarras._keypressListener = keypressListener;
+        inputCodigoBarras.addEventListener('keypress', keypressListener);
+        
+        console.log('🔍 [BARCODE] ✅ Listeners configurados');
+    } else {
+        console.error('❌ [BARCODE] inputCodigoBarras no encontrado');
+    }
+    
+    console.log('🔍 [SEARCH] ✅ Configuración de buscadores completa');
+}
+
+// ===================================
+// 🔄 EVENT DELEGATION COMO RESPALDO
+// ===================================
+// Event delegation en el document para capturar eventos incluso si los inputs se recrean
+document.addEventListener('input', (e) => {
+    // Si el evento viene del searchInput y no tiene listener directo
+    if (e.target.id === 'searchInput' && !e.target._searchListener) {
+        console.log('🔍 [DELEGATION] searchInput detectado sin listener, configurando...');
+        configurarEventListenersBuscador();
     }
 });
 
@@ -5093,6 +5178,24 @@ function limpiarBusquedaCodigo() {
 
     if (btnClear) {
         btnClear.style.display = 'none';
+    }
+}
+
+/**
+ * Limpiar búsqueda de texto (searchInput)
+ */
+function limpiarBusquedaTexto() {
+    const searchInput = document.getElementById('searchInput');
+    const btnClearSearch = searchInput?.parentElement?.querySelector('.btn-clear-search');
+    
+    if (searchInput) {
+        searchInput.value = '';
+        console.log('🔍 [SEARCH] Búsqueda limpiada, renderizando todos los productos');
+        renderProductos(); // Volver a mostrar todos los productos
+    }
+    
+    if (btnClearSearch) {
+        btnClearSearch.style.display = 'none';
     }
 }
 
