@@ -1081,16 +1081,26 @@
                                     </span>
                                     <span class="stat-value stat-transbank" id="ventasTransbank">$0</span>
                                 </div>
-                                <div class="stat-row stat-row-editable" onclick="abrirModalAjusteCaja('Transferencia')" title="Click para ajustar si no cuadra" style="cursor: pointer; transition: all 0.2s;">
-                                    <span class="stat-label">
-                                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
-                                            <path d="M3 3l18 18M21 12a9 9 0 11-18 0 9 9 0 0118 0z" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
-                                            <path d="M12 8v4l3 3" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+                                <div class="stat-row stat-row-editable" style="cursor: pointer; transition: all 0.2s; flex-direction: column; align-items: stretch; gap: 12px;">
+                                    <div style="display: flex; justify-content: space-between; align-items: center; width: 100%;" onclick="abrirModalAjusteCaja('Transferencia')" title="Click para ajustar si no cuadra">
+                                        <span class="stat-label">
+                                            <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
+                                                <path d="M3 3l18 18M21 12a9 9 0 11-18 0 9 9 0 0118 0z" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+                                                <path d="M12 8v4l3 3" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+                                            </svg>
+                                            Transferencia
+                                            <span id="indicadorAjusteTransferencia" style="display: none; margin-left: 8px; font-size: 11px; padding: 2px 6px; background: hsl(38 92% 50% / 0.2); color: hsl(38 92% 50%); border-radius: 4px; font-weight: 600;">⚠️ Ajustado</span>
+                                            <span id="badgePendientesBoletear" style="display: none; margin-left: 8px; font-size: 11px; padding: 3px 8px; background: hsl(38 92% 50%); color: white; border-radius: 12px; font-weight: 700;">0 sin boletear</span>
+                                        </span>
+                                        <span class="stat-value stat-transferencia" id="ventasTransferencia">$0</span>
+                                    </div>
+                                    <button onclick="abrirModalDetalleTransferencias(); event.stopPropagation();" style="background: linear-gradient(135deg, hsl(var(--primary)) 0%, hsl(var(--primary) / 0.8) 100%); color: white; border: none; padding: 10px 16px; border-radius: 8px; font-size: 13px; font-weight: 600; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 6px; transition: all 0.2s; box-shadow: 0 2px 4px rgba(0,0,0,0.1);" onmouseover="this.style.transform='translateY(-1px)'; this.style.boxShadow='0 4px 8px rgba(0,0,0,0.15)';" onmouseout="this.style.transform='translateY(0)'; this.style.boxShadow='0 2px 4px rgba(0,0,0,0.1)';" title="Ver lista detallada de transferencias para boletear">
+                                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                            <path d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" stroke-linecap="round" stroke-linejoin="round"/>
+                                            <path d="M9 12h6m-6 4h6" stroke-linecap="round"/>
                                         </svg>
-                                        Transferencia
-                                        <span id="indicadorAjusteTransferencia" style="display: none; margin-left: 8px; font-size: 11px; padding: 2px 6px; background: hsl(38 92% 50% / 0.2); color: hsl(38 92% 50%); border-radius: 4px; font-weight: 600;">⚠️ Ajustado</span>
-                                    </span>
-                                    <span class="stat-value stat-transferencia" id="ventasTransferencia">$0</span>
+                                        Ver Detalle / Boletear
+                                    </button>
                                 </div>
                                 <div class="stat-row stat-total">
                                     <span class="stat-label"><strong>Total Ventas</strong></span>
@@ -2833,6 +2843,82 @@
                         </svg>
                         <span>Guardar Ajuste</span>
                     </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- MODAL: Detalle de Transferencias -->
+    <div id="modalDetalleTransferencias" class="modal" style="display: none;">
+        <div class="modal-overlay" onclick="cerrarModalDetalleTransferencias()"></div>
+        <div class="modal-content" style="max-width: 900px; max-height: 90vh;">
+            <div class="modal-header">
+                <div>
+                    <h2 style="margin: 0; display: flex; align-items: center; gap: 8px;">
+                        💳 Detalle de Transferencias
+                    </h2>
+                    <p style="margin: 8px 0 0; font-size: 14px; color: hsl(var(--muted-foreground));">
+                        Gestiona y marca las transferencias que ya fueron boleteadas
+                    </p>
+                </div>
+                <button class="btn-close" onclick="cerrarModalDetalleTransferencias()">&times;</button>
+            </div>
+
+            <div class="modal-body" style="padding: 24px;">
+                <!-- Resumen de Transferencias -->
+                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 16px; margin-bottom: 24px;">
+                    <div style="background: linear-gradient(135deg, hsl(var(--primary) / 0.1), hsl(var(--primary) / 0.05)); border: 2px solid hsl(var(--primary) / 0.3); border-radius: 12px; padding: 16px;">
+                        <p style="font-size: 12px; color: hsl(var(--muted-foreground)); margin: 0 0 8px;">💰 Total Transferencias</p>
+                        <p style="font-size: 24px; font-weight: 700; color: hsl(var(--primary)); margin: 0;" id="resumenTotalTransferencias">$0</p>
+                        <p style="font-size: 11px; color: hsl(var(--muted-foreground)); margin: 8px 0 0;" id="resumenCantidadTotal">0 transferencias</p>
+                    </div>
+                    
+                    <div style="background: linear-gradient(135deg, hsl(var(--success) / 0.1), hsl(var(--success) / 0.05)); border: 2px solid hsl(var(--success) / 0.3); border-radius: 12px; padding: 16px;">
+                        <p style="font-size: 12px; color: hsl(var(--muted-foreground)); margin: 0 0 8px;">✅ Boleteadas</p>
+                        <p style="font-size: 24px; font-weight: 700; color: hsl(var(--success)); margin: 0;" id="resumenBoleteadas">$0</p>
+                        <p style="font-size: 11px; color: hsl(var(--muted-foreground)); margin: 8px 0 0;" id="resumenCantidadBoleteadas">0 transferencias</p>
+                    </div>
+                    
+                    <div style="background: linear-gradient(135deg, hsl(38 92% 50% / 0.1), hsl(38 92% 50% / 0.05)); border: 2px solid hsl(38 92% 50% / 0.3); border-radius: 12px; padding: 16px;">
+                        <p style="font-size: 12px; color: hsl(var(--muted-foreground)); margin: 0 0 8px;">⏳ Pendientes</p>
+                        <p style="font-size: 24px; font-weight: 700; color: hsl(38 92% 50%); margin: 0;" id="resumenPendientes">$0</p>
+                        <p style="font-size: 11px; color: hsl(var(--muted-foreground)); margin: 8px 0 0;" id="resumenCantidadPendientes">0 transferencias</p>
+                    </div>
+                </div>
+
+                <!-- Filtros -->
+                <div style="display: flex; gap: 12px; margin-bottom: 20px; flex-wrap: wrap; align-items: center;">
+                    <input type="date" id="filtroFechaTransferencias" class="form-input" style="flex: 1; min-width: 180px;" onchange="cargarListaTransferencias()">
+                    
+                    <select id="filtroEstadoTransferencias" class="form-select" style="flex: 1; min-width: 150px;" onchange="cargarListaTransferencias()">
+                        <option value="todas">Todas</option>
+                        <option value="pendientes">Sin boletear</option>
+                        <option value="boleteadas">Boleteadas</option>
+                    </select>
+                    
+                    <select id="filtroOrigenTransferencias" class="form-select" style="flex: 1; min-width: 150px;" onchange="cargarListaTransferencias()">
+                        <option value="todas">Todos los orígenes</option>
+                        <option value="pos">Solo POS</option>
+                        <option value="reparto">Solo Reparto</option>
+                    </select>
+                    
+                    <button class="btn btn-secondary" onclick="exportarTransferencias()" style="white-space: nowrap;">
+                        <svg width="16" height="16" viewBox="0 0 20 20" fill="none" style="margin-right: 6px;">
+                            <path d="M3 10v6a2 2 0 002 2h10a2 2 0 002-2v-6M15 5l-5-5m0 0L5 5m5-5v12" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                        </svg>
+                        Exportar
+                    </button>
+                </div>
+
+                <!-- Lista de Transferencias -->
+                <div id="listaTransferencias" style="max-height: 50vh; overflow-y: auto; border: 1px solid hsl(var(--border)); border-radius: 8px; background: hsl(var(--background));">
+                    <div style="text-align: center; padding: 60px 20px; color: hsl(var(--muted-foreground));">
+                        <svg width="64" height="64" viewBox="0 0 24 24" fill="none" style="margin: 0 auto 16px; opacity: 0.3;">
+                            <circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="2"/>
+                            <path d="M12 6v6l4 2" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+                        </svg>
+                        <p>Cargando transferencias...</p>
+                    </div>
                 </div>
             </div>
         </div>

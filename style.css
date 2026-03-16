@@ -2808,6 +2808,52 @@ body {
   font-size: 22px;
 }
 
+/* Badge Pendientes Boletear */
+#badgePendientesBoletear {
+  display: inline-block;
+  font-size: 10px;
+  font-weight: 600;
+  padding: 3px 8px;
+  border-radius: 6px;
+  background: hsl(38 92% 50% / 0.15);
+  color: hsl(38 92% 50%);
+  margin-bottom: 6px;
+  animation: pulse 2s infinite;
+}
+
+@keyframes pulse {
+  0%, 100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.6;
+  }
+}
+
+/* Botón Ver Detalle en Stat Row */
+.stat-row-editable button {
+  font-size: 11px;
+  padding: 6px 12px;
+  margin-top: 8px;
+  border: none;
+  background: hsl(var(--primary));
+  color: white;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.2s;
+  font-weight: 600;
+}
+
+.stat-row-editable button:hover {
+  background: hsl(var(--primary) / 0.9);
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px hsl(var(--primary) / 0.3);
+}
+
+.stat-row-editable button:active {
+  transform: translateY(0);
+}
+
 /* Arqueo Section */
 .arqueo-section {
   background: hsl(var(--accent));

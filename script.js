@@ -6832,6 +6832,401 @@ async function cargarAjustesCaja(fecha) {
 }
 
 // ===================================
+// MÓDULO: TRANSFERENCIAS BOLETEADAS
+// ===================================
+
+/**
+ * Abrir modal de detalle de transferencias
+ */
+async function abrirModalDetalleTransferencias() {
+    const modal = document.getElementById('modalDetalleTransferencias');
+    modal.style.display = 'flex';
+    modal.classList.add('show');
+    
+    // Establecer fecha por defecto (hoy)
+    const hoy = new Date().toISOString().split('T')[0];
+    document.getElementById('filtroFechaTransferencias').value = hoy;
+    
+    // Restablecer filtros
+    document.getElementById('filtroEstadoTransferencias').value = 'todas';
+    document.getElementById('filtroOrigenTransferencias').value = 'todas';
+    
+    // Cargar transferencias
+    await cargarListaTransferencias();
+}
+
+/**
+ * Cerrar modal de detalle de transferencias
+ */
+function cerrarModalDetalleTransferencias() {
+    const modal = document.getElementById('modalDetalleTransferencias');
+    modal.style.display = 'none';
+    modal.classList.remove('show');
+}
+
+/**
+ * Cargar lista de transferencias desde POS y Reparto
+ */
+async function cargarListaTransferencias() {
+    try {
+        const fecha = document.getElementById('filtroFechaTransferencias').value;
+        const filtroEstado = document.getElementById('filtroEstadoTransferencias').value;
+        const filtroOrigen = document.getElementById('filtroOrigenTransferencias').value;
+        
+        if (!fecha) {
+            console.warn('⚠️ No hay fecha seleccionada');
+            return;
+        }
+        
+        console.log(`🔄 Cargando transferencias para: ${fecha}`);
+        console.log(`   Filtro Estado: ${filtroEstado}`);
+        console.log(`   Filtro Origen: ${filtroOrigen}`);
+        
+        let transferencias = [];
+        
+        // Cargar desde POS (ventas)
+        if (filtroOrigen === 'todas' || filtroOrigen === 'pos') {
+            console.log('📊 Consultando ventas POS con Transferencia...');
+            
+            const { data: ventasPOS, error: errorPOS } = await window.supabaseClient
+                .from('ventas')
+                .select('*')
+                .eq('metodo_pago', 'Transferencia')
+                .eq('fecha', fecha)
+                .order('created_at', { ascending: false });
+            
+            if (errorPOS) {
+                console.error('❌ Error al cargar ventas POS:', errorPOS);
+            } else {
+                console.log(`✅ ${ventasPOS?.length || 0} ventas POS encontradas`);
+                const ventasFormateadas = ventasPOS.map(v => ({
+                    id: v.id,
+                    origen: 'POS',
+                    cliente: v.cliente || 'Cliente general',
+                    monto: parseFloat(v.total || 0),
+                    fecha: v.created_at || v.fecha,
+                    hora: v.created_at 
+                        ? new Date(v.created_at).toLocaleTimeString('es-CL', { hour: '2-digit', minute: '2-digit' })
+                        : '00:00',
+                    vendedor: v.vendedor_nombre || v.vendedor || 'Sin vendedor',
+                    productos: v.productos || [],
+                    metodoPago: 'Transferencia',
+                    boleteada: v.boleteada || false,
+                    numeroBoleta: v.numero_boleta || '',
+                    fechaBoleta: v.fecha_boleta || null
+                }));
+                transferencias.push(...ventasFormateadas);
+            }
+        }
+        
+        // Cargar desde Reparto (pedidos)
+        if (filtroOrigen === 'todas' || filtroOrigen === 'reparto') {
+            console.log('🚚 Consultando pedidos de Reparto vía RPC...');
+            console.log(`   Fecha seleccionada: ${fecha}`);
+            
+            // VERIFICAR CONEXIÓN
+            if (!window.supabaseClient) {
+                console.error('❌ window.supabaseClient NO está inicializado');
+                alert('ERROR: Supabase no está conectado. Recarga la página.');
+            } else {
+                console.log('✅ Cliente Supabase conectado');
+                
+                try {
+                    // LLAMAR A FUNCIÓN RPC SEGURA (bypasea políticas RLS)
+                    console.log('📡 Llamando función RPC: obtener_transferencias_dia');
+                    console.log('   Parámetro fecha:', fecha);
+                    
+                    const { data: pedidosRPC, error: errorRPC } = await window.supabaseClient
+                        .rpc('obtener_transferencias_dia', { fecha_consulta: fecha });
+                    
+                    console.log('📡 RPC completada');
+                    console.log('   Error:', errorRPC);
+                    console.log('   Data recibida:', pedidosRPC?.length || 0, 'registros');
+                    
+                    if (errorRPC) {
+                        console.error('❌ Error en RPC:', errorRPC);
+                        console.error('   Código:', errorRPC.code);
+                        console.error('   Mensaje:', errorRPC.message);
+                        console.error('   Hint:', errorRPC.hint);
+                        
+                        // Si la función no existe, mostrar instrucciones
+                        if (errorRPC.code === '42883' || errorRPC.message?.includes('function')) {
+                            alert('⚠️ CONFIGURACIÓN PENDIENTE:\n\n' +
+                                  'Debes ejecutar el script SQL:\n' +
+                                  'CREAR_FUNCION_RPC_PEDIDOS.sql\n\n' +
+                                  'en el SQL Editor de Supabase.\n\n' +
+                                  '✅ Esto NO afecta el sistema de Reparto.');
+                        } else {
+                            alert(`ERROR al cargar pedidos de Reparto: ${errorRPC.message}`);
+                        }
+                    } else {
+                        const totalPedidos = pedidosRPC?.length || 0;
+                        console.log(`📦 Total pedidos encontrados: ${totalPedidos}`);
+                        
+                        if (totalPedidos > 0) {
+                            // Procesar y formatear pedidos encontrados
+                            const pedidosFormateados = pedidosRPC.map(p => {
+                                const metodoPago = p.metodo_pago || 'Transferencia';
+                                let metodoPagoTexto = 'Transferencia';
+                                
+                                if (metodoPago === 'TP') metodoPagoTexto = 'Transferencia Pendiente';
+                                else if (metodoPago === 'TG') metodoPagoTexto = 'Transferencia Pagada';
+                                else if (metodoPago.includes('TRANSF')) metodoPagoTexto = 'Transferencia';
+                                
+                                // Usar created_at para timestamp
+                                const fechaTimestamp = p.created_at || p.fecha;
+                                const hora = fechaTimestamp 
+                                    ? new Date(fechaTimestamp).toLocaleTimeString('es-CL', { hour: '2-digit', minute: '2-digit' })
+                                    : '00:00';
+                                
+                                // Los productos están en items
+                                const productos = p.items || [];
+                                
+                                console.log(`✅ Pedido: ${p.nombre}, Método: ${metodoPago}, Total: $${p.total}`);
+                                
+                                return {
+                                    id: p.id,
+                                    origen: 'Reparto',
+                                    cliente: p.nombre || 'Cliente',
+                                    monto: parseFloat(p.total || 0),
+                                    fecha: fechaTimestamp,
+                                    hora: hora,
+                                    vendedor: p.asignado_a || 'Sin asignar',
+                                    productos: productos,
+                                    metodoPago: metodoPagoTexto,
+                                    boleteada: p.boleteada || false,
+                                    numeroBoleta: p.numero_boleta || '',
+                                    fechaBoleta: p.fecha_boleta || null
+                                };
+                            });
+                            
+                            transferencias.push(...pedidosFormateados);
+                            console.log(`✅ ${pedidosFormateados.length} pedidos de Reparto agregados`);
+                        }
+                    }
+                } catch (errorQuery) {
+                    console.error('❌ Error en bloque try de pedidos:', errorQuery);
+                    console.error('   Stack:', errorQuery.stack);
+                }
+            }
+        }
+        
+        // Aplicar filtro de estado
+        if (filtroEstado === 'pendientes') {
+            transferencias = transferencias.filter(t => !t.boleteada);
+        } else if (filtroEstado === 'boleteadas') {
+            transferencias = transferencias.filter(t => t.boleteada);
+        }
+        
+        // Ordenar por fecha (más reciente primero)
+        transferencias.sort((a, b) => new Date(b.fecha) - new Date(a.fecha));
+        
+        console.log(`✅ ${transferencias.length} transferencias cargadas`);
+        
+        // Renderizar lista
+        renderizarListaTransferencias(transferencias);
+        
+        // Actualizar resumen
+        actualizarResumenTransferencias(transferencias);
+        
+        // Actualizar badge en la tarjeta principal
+        actualizarBadgePendientes(transferencias);
+        
+    } catch (error) {
+        console.error('❌ Error en cargarListaTransferencias:', error);
+        manejarError(error, {
+            contexto: 'cargarListaTransferencias',
+            mensajeUsuario: 'Error al cargar transferencias'
+        });
+    }
+}
+
+/**
+ * Renderizar lista de transferencias en el DOM
+ */
+function renderizarListaTransferencias(transferencias) {
+    const container = document.getElementById('listaTransferencias');
+    
+    if (!transferencias || transferencias.length === 0) {
+        container.innerHTML = `
+            <div style="text-align: center; padding: 60px 20px; color: hsl(var(--muted-foreground));">
+                <svg width="64" height="64" viewBox="0 0 24 24" fill="none" style="margin: 0 auto 16px; opacity: 0.3;">
+                    <path d="M9 11L12 14L22 4M21 12V19C21 19.5304 20.7893 20.0391 20.4142 20.4142C20.0391 20.7893 19.5304 21 19 21H5C4.46957 21 3.96086 20.7893 3.58579 20.4142C3.21071 20.0391 3 19.5304 3 19V5C3 4.46957 3.21071 3.96086 3.58579 3.58579C3.96086 3.21071 4.46957 3 5 3H16" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                </svg>
+                <p style="font-size: 16px; font-weight: 600; margin: 0 0 8px;">No hay transferencias</p>
+                <p style="font-size: 14px; margin: 0;">No se encontraron transferencias para los filtros seleccionados</p>
+            </div>
+        `;
+        return;
+    }
+    
+    let html = '<div style="padding: 16px;">';
+    
+    transferencias.forEach(t => {
+        const productosTexto = Array.isArray(t.productos) && t.productos.length > 0 
+            ? t.productos.map(p => `${p.nombre || p.producto} (${p.cantidad})`).join(', ')
+            : 'Sin detalle de productos';
+        
+        const estadoColor = t.boleteada ? 'hsl(var(--success))' : 'hsl(38 92% 50%)';
+        const estadoIcono = t.boleteada ? '✅' : '⏳';
+        const estadoTexto = t.boleteada ? 'Boleteada' : 'Sin boletear';
+        
+        html += `
+            <div style="background: hsl(var(--card)); border: 1px solid hsl(var(--border)); border-radius: 12px; padding: 16px; margin-bottom: 12px; ${t.boleteada ? 'opacity: 0.7;' : ''}">
+                <div style="display: flex; justify-content: space-between; align-items: start; margin-bottom: 12px;">
+                    <div style="flex: 1;">
+                        <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 4px;">
+                            <span style="font-weight: 700; font-size: 18px; color: hsl(var(--primary));">$${formatoMoneda(t.monto)}</span>
+                            <span style="background: ${t.origen === 'POS' ? 'hsl(var(--primary) / 0.1)' : 'hsl(217 91% 60% / 0.1)'}; color: ${t.origen === 'POS' ? 'hsl(var(--primary))' : 'hsl(217 91% 60%)'}; padding: 2px 8px; border-radius: 6px; font-size: 10px; font-weight: 600;">${t.origen}</span>
+                        </div>
+                        <p style="font-size: 14px; font-weight: 600; margin: 0 0 4px; color: hsl(var(--foreground));">👤 ${t.cliente}</p>
+                        <p style="font-size: 12px; color: hsl(var(--muted-foreground)); margin: 0;">
+                            🕐 ${t.hora} • 👨‍💼 ${t.vendedor}
+                        </p>
+                        <p style="font-size: 11px; color: hsl(var(--muted-foreground)); margin: 8px 0 0; line-height: 1.4;">
+                            📦 ${productosTexto}
+                        </p>
+                    </div>
+                    
+                    <div style="display: flex; flex-direction: column; align-items: flex-end; gap: 8px;">
+                        <span style="background: ${estadoColor}15; color: ${estadoColor}; padding: 4px 12px; border-radius: 8px; font-size: 11px; font-weight: 600; white-space: nowrap;">
+                            ${estadoIcono} ${estadoTexto}
+                        </span>
+                        ${!t.boleteada ? `
+                            <button onclick="marcarComoBoleteada('${t.id}', '${t.origen}')" class="btn btn-sm btn-primary" style="font-size: 11px; padding: 6px 12px;">
+                                Marcar Boleteada
+                            </button>
+                        ` : t.numeroBoleta ? `
+                            <p style="font-size: 10px; color: hsl(var(--muted-foreground)); margin: 0; text-align: right;">
+                                N° Boleta: <strong>${t.numeroBoleta}</strong><br>
+                                ${t.fechaBoleta ? new Date(t.fechaBoleta).toLocaleDateString('es-CL') : ''}
+                            </p>
+                        ` : ''}
+                    </div>
+                </div>
+            </div>
+        `;
+    });
+    
+    html += '</div>';
+    container.innerHTML = html;
+}
+
+/**
+ * Actualizar resumen de transferencias (cards superiores)
+ */
+function actualizarResumenTransferencias(transferencias) {
+    const total = transferencias.reduce((sum, t) => sum + t.monto, 0);
+    const boleteadas = transferencias.filter(t => t.boleteada);
+    const totalBoleteadas = boleteadas.reduce((sum, t) => sum + t.monto, 0);
+    const pendientes = transferencias.filter(t => !t.boleteada);
+    const totalPendientes = pendientes.reduce((sum, t) => sum + t.monto, 0);
+    
+    document.getElementById('resumenTotalTransferencias').textContent = '$' + formatoMoneda(total);
+    document.getElementById('resumenCantidadTotal').textContent = `${transferencias.length} transferencia${transferencias.length !== 1 ? 's' : ''}`;
+    
+    document.getElementById('resumenBoleteadas').textContent = '$' + formatoMoneda(totalBoleteadas);
+    document.getElementById('resumenCantidadBoleteadas').textContent = `${boleteadas.length} transferencia${boleteadas.length !== 1 ? 's' : ''}`;
+    
+    document.getElementById('resumenPendientes').textContent = '$' + formatoMoneda(totalPendientes);
+    document.getElementById('resumenCantidadPendientes').textContent = `${pendientes.length} transferencia${pendientes.length !== 1 ? 's' : ''}`;
+}
+
+/**
+ * Actualizar badge de pendientes en la tarjeta principal
+ */
+function actualizarBadgePendientes(transferencias) {
+    const pendientes = transferencias.filter(t => !t.boleteada);
+    const badge = document.getElementById('badgePendientesBoletear');
+    
+    if (pendientes.length > 0) {
+        badge.textContent = `${pendientes.length} sin boletear`;
+        badge.style.display = 'inline-block';
+    } else {
+        badge.style.display = 'none';
+    }
+}
+
+/**
+ * Marcar una transferencia como boleteada
+ */
+async function marcarComoBoleteada(id, origen) {
+    try {
+        // Preguntar por número de boleta (opcional)
+        const numeroBoleta = prompt('Número de boleta (opcional):');
+        
+        // Confirmar acción
+        const confirmar = confirm('¿Marcar esta transferencia como boleteada?');
+        if (!confirmar) return;
+        
+        const tabla = origen === 'POS' ? 'ventas' : 'pedidos';
+        const fechaBoleta = new Date().toISOString();
+        
+        const updateData = {
+            boleteada: true,
+            fecha_boleta: fechaBoleta
+        };
+        
+        if (numeroBoleta && numeroBoleta.trim() !== '') {
+            updateData.numero_boleta = numeroBoleta.trim();
+        }
+        
+        const { error } = await window.supabaseClient
+            .from(tabla)
+            .update(updateData)
+            .eq('id', id);
+        
+        if (error) {
+            throw error;
+        }
+        
+        console.log(`✅ Transferencia ${id} marcada como boleteada`);
+        
+        // Recargar lista
+        await cargarListaTransferencias();
+        
+        // Mostrar notificación
+        mostrarNotificacion('✅ Transferencia marcada como boleteada', 'success');
+        
+    } catch (error) {
+        console.error('❌ Error al marcar como boleteada:', error);
+        manejarError(error, {
+            contexto: 'marcarComoBoleteada',
+            mensajeUsuario: 'Error al marcar transferencia como boleteada'
+        });
+    }
+}
+
+/**
+ * Exportar transferencias a Excel/CSV
+ */
+function exportarTransferencias() {
+    try {
+        const fecha = document.getElementById('filtroFechaTransferencias').value;
+        const tabla = document.getElementById('listaTransferencias');
+        const transferencias = Array.from(tabla.querySelectorAll('[style*="background: hsl"]'));
+        
+        if (transferencias.length === 0) {
+            alert('No hay transferencias para exportar');
+            return;
+        }
+        
+        // Crear CSV
+        let csv = 'Fecha,Hora,Origen,Cliente,Monto,Vendedor,Estado,N° Boleta\n';
+        
+        // Aquí necesitaríamos acceder a los datos originales
+        // Por ahora mostrar mensaje
+        alert('Función de exportación en desarrollo. Próximamente podrás exportar a Excel.');
+        
+        console.log('📊 Exportar transferencias para fecha:', fecha);
+        
+    } catch (error) {
+        console.error('❌ Error al exportar:', error);
+        alert('Error al exportar transferencias');
+    }
+}
+
+// ===================================
 // MÓDULO: CIERRE AUTOMÁTICO
 // ===================================
 
