@@ -1054,8 +1054,22 @@
                                 </div>
                             </div>
 
+                            <!-- ========================================== -->
+                            <!-- SECCIÓN: INGRESOS -->
+                            <!-- ========================================== -->
+                            <div style="background: linear-gradient(135deg, hsl(142 76% 36% / 0.08), transparent); border-radius: 16px; padding: 24px 20px; margin-bottom: 32px; border: 2px solid hsl(142 76% 36% / 0.2);">
+                                <div style="display: flex; align-items: center; gap: 12px; margin-bottom: 24px;">
+                                    <div style="width: 48px; height: 48px; background: linear-gradient(135deg, hsl(142 76% 36%), hsl(142 76% 30%)); border-radius: 12px; display: flex; align-items: center; justify-content: center; font-size: 24px; box-shadow: 0 4px 12px rgba(34, 197, 94, 0.3);">
+                                        💰
+                                    </div>
+                                    <div>
+                                        <h2 style="margin: 0; font-size: 24px; font-weight: 800; color: hsl(142 76% 36%);">INGRESOS DEL DÍA</h2>
+                                        <p style="margin: 4px 0 0; font-size: 13px; color: hsl(var(--muted-foreground));">Todas las ventas registradas</p>
+                                    </div>
+                                </div>
+
                             <div class="panel-header">
-                                <h3>📊 Ventas del Día</h3>
+                                <h3>🏪 Ventas del Día (Local POS)</h3>
                                 <p class="panel-subtitle" id="cajaFechaHoy">Cargando...</p>
                             </div>
 
@@ -1094,6 +1108,11 @@
                                         </span>
                                         <span class="stat-value stat-transferencia" id="ventasTransferencia">$0</span>
                                     </div>
+                                    <!-- Desglose reparto en transferencias -->
+                                    <div id="desgloseTranferenciaReparto" style="display:none; padding: 6px 12px; background: hsl(var(--primary) / 0.07); border-radius: 6px; font-size: 12px; color: hsl(var(--muted-foreground)); display: flex; justify-content: space-between;">
+                                        <span>🏪 Local: <strong id="transferenciaLocal">$0</strong></span>
+                                        <span>🚚 Reparto: <strong id="transferenciaReparto" style="color: hsl(var(--primary));">$0</strong></span>
+                                    </div>
                                     <button onclick="abrirModalDetalleTransferencias(); event.stopPropagation();" style="background: linear-gradient(135deg, hsl(var(--primary)) 0%, hsl(var(--primary) / 0.8) 100%); color: white; border: none; padding: 10px 16px; border-radius: 8px; font-size: 13px; font-weight: 600; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 6px; transition: all 0.2s; box-shadow: 0 2px 4px rgba(0,0,0,0.1);" onmouseover="this.style.transform='translateY(-1px)'; this.style.boxShadow='0 4px 8px rgba(0,0,0,0.15)';" onmouseout="this.style.transform='translateY(0)'; this.style.boxShadow='0 2px 4px rgba(0,0,0,0.1)';" title="Ver lista detallada de transferencias para boletear">
                                         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                                             <path d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" stroke-linecap="round" stroke-linejoin="round"/>
@@ -1103,51 +1122,8 @@
                                     </button>
                                 </div>
                                 <div class="stat-row stat-total">
-                                    <span class="stat-label"><strong>Total Ventas</strong></span>
+                                    <span class="stat-label"><strong>Total Ventas Local</strong></span>
                                     <span class="stat-value" id="ventasTotal">$0</span>
-                                </div>
-                            </div>
-
-                            <!-- Gastos del Día -->
-                            <div class="panel-header" style="margin-top: 32px;">
-                                <h3>💸 Gastos del Día</h3>
-                            </div>
-
-                            <div class="stats-summary">
-                                <div class="stat-row">
-                                    <span class="stat-label">Gastos Operacionales</span>
-                                    <span class="stat-value stat-gastos" id="gastosTotal">$0</span>
-                                </div>
-                            </div>
-
-                            <!-- Pagos al Personal -->
-                            <div class="panel-header" style="margin-top: 32px;">
-                                <h3>👥 Pagos al Personal</h3>
-                                <p class="panel-subtitle">Pagos registrados hoy</p>
-                            </div>
-
-                            <div class="stats-summary">
-                                <div class="stat-row" style="cursor: pointer;" onclick="abrirModalEditarPagosPersonal()" title="Click para editar pagos">
-                                    <span class="stat-label">
-                                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
-                                            <circle cx="12" cy="8" r="3" stroke="currentColor" stroke-width="2"/>
-                                            <path d="M6 21v-2a4 4 0 014-4h4a4 4 0 014 4v2" stroke="currentColor" stroke-width="2"/>
-                                        </svg>
-                                        Empleados Pagados
-                                    </span>
-                                    <span class="stat-value" id="cantidadEmpleadosPagados">0</span>
-                                </div>
-                                <div class="stat-row">
-                                    <span class="stat-label">Total Jornadas</span>
-                                    <span class="stat-value" style="color: hsl(var(--info));" id="totalJornadas">$0</span>
-                                </div>
-                                <div class="stat-row">
-                                    <span class="stat-label">Total Almuerzos</span>
-                                    <span class="stat-value" style="color: hsl(var(--warning));" id="totalAlmuerzos">$0</span>
-                                </div>
-                                <div class="stat-row stat-total" style="background: hsl(var(--success) / 0.1); border: 2px solid hsl(var(--success) / 0.3);">
-                                    <span class="stat-label"><strong>💰 Total Pagado Personal</strong></span>
-                                    <span class="stat-value" style="color: hsl(var(--success));" id="totalPagadoPersonal">$0</span>
                                 </div>
                             </div>
 
@@ -1188,6 +1164,16 @@
                                         </span>
                                         <span class="stat-value" style="font-size: 16px;" id="repartoTarjetas">$0</span>
                                     </div>
+                                    <div class="stat-row">
+                                        <span class="stat-label">
+                                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
+                                                <path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z" stroke="currentColor" stroke-width="2"/>
+                                                <path d="M9 22V12h6v10" stroke="currentColor" stroke-width="2"/>
+                                            </svg>
+                                            Transferencias
+                                        </span>
+                                        <span class="stat-value" style="font-size: 16px;" id="repartoTransferencias">$0</span>
+                                    </div>
                                 </div>
 
                                 <div class="stat-row" style="margin-top: 12px; background: hsl(var(--warning) / 0.1); border-left: 3px solid hsl(var(--warning));">
@@ -1211,9 +1197,207 @@
                                 </div>
                             </div>
 
-                            <!-- Arqueo -->
+                            <!-- ========================================== -->
+                            <!-- CONSOLIDADO TOTAL (POS + Reparto) -->
+                            <!-- ========================================== -->
+                            <div style="margin-top: 40px; padding: 32px 24px; background: white; border-radius: 16px; box-shadow: 0 4px 16px rgba(0,0,0,0.08); border: 3px solid hsl(142 76% 36% / 0.3);">
+                                <div style="text-align: center; margin-bottom: 24px;">
+                                    <p style="margin: 0 0 8px; font-size: 14px; font-weight: 600; color: hsl(var(--muted-foreground)); text-transform: uppercase; letter-spacing: 2px;">
+                                        📊 Resumen Consolidado
+                                    </p>
+                                    <p style="margin: 0; font-size: 12px; color: hsl(var(--muted-foreground));">
+                                        Suma total de Local + Delivery
+                                    </p>
+                                </div>
+
+                            <!-- Total General Destacado -->
+                            <div style="background: linear-gradient(135deg, hsl(142 76% 36% / 0.15), hsl(142 76% 36% / 0.05)); border: 3px solid hsl(142 76% 36%); border-radius: 12px; padding: 28px; text-align: center; margin-bottom: 28px;">
+                                <p style="margin: 0 0 8px; font-size: 15px; font-weight: 700; color: hsl(142 76% 36%); text-transform: uppercase; letter-spacing: 1.5px;">
+                                    💰 Ventas Totales del Día
+                                </p>
+                                <p style="margin: 0; font-size: 52px; font-weight: 900; color: hsl(142 76% 36%); line-height: 1; text-shadow: 0 2px 4px rgba(0,0,0,0.05);" id="totalGeneralConsolidado">
+                                    $0
+                                </p>
+                                <div style="display: flex; justify-content: center; gap: 40px; margin-top: 20px; padding-top: 20px; border-top: 2px dashed hsl(142 76% 36% / 0.4);">
+                                    <div>
+                                        <p style="margin: 0; font-size: 12px; color: hsl(var(--muted-foreground)); font-weight: 600; text-transform: uppercase;">🏪 Local</p>
+                                        <p style="margin: 6px 0 0; font-size: 22px; font-weight: 800; color: hsl(var(--foreground));" id="consolidadoTotalPOS">$0</p>
+                                    </div>
+                                    <div style="width: 2px; background: hsl(142 76% 36% / 0.3);"></div>
+                                    <div>
+                                        <p style="margin: 0; font-size: 12px; color: hsl(var(--muted-foreground)); font-weight: 600; text-transform: uppercase;">🚚 Delivery</p>
+                                        <p style="margin: 6px 0 0; font-size: 22px; font-weight: 800; color: hsl(var(--foreground));" id="consolidadoTotalReparto">$0</p>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- Desglose por Método de Pago -->
+                            <div style="margin-bottom: 16px;">
+                                <p style="margin: 0; font-size: 13px; font-weight: 700; color: hsl(var(--muted-foreground)); text-transform: uppercase; letter-spacing: 1px;">
+                                    💳 Desglose por Forma de Pago
+                                </p>
+                                <p style="margin: 4px 0 0; font-size: 12px; color: hsl(var(--muted-foreground));">
+                                    Detalle de cada método con origen
+                                </p>
+                            </div>
+
+                            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 20px;">
+                                
+                                <!-- Efectivo -->
+                                <div style="background: white; border: 2px solid hsl(142 76% 36% / 0.3); border-radius: 12px; padding: 24px; box-shadow: 0 2px 8px rgba(0,0,0,0.05);">
+                                    <div style="display: flex; align-items: center; gap: 12px; margin-bottom: 16px;">
+                                        <div style="width: 48px; height: 48px; background: linear-gradient(135deg, hsl(142 76% 36% / 0.15), hsl(142 76% 36% / 0.05)); border-radius: 12px; display: flex; align-items: center; justify-content: center; font-size: 24px;">
+                                            💵
+                                        </div>
+                                        <div>
+                                            <p style="margin: 0; font-size: 14px; color: hsl(var(--muted-foreground)); font-weight: 500;">Efectivo</p>
+                                            <p style="margin: 4px 0 0; font-size: 28px; font-weight: 800; color: hsl(142 76% 36%); line-height: 1;" id="consolidadoEfectivo">$0</p>
+                                        </div>
+                                    </div>
+                                    <div style="background: hsl(var(--muted) / 0.3); border-radius: 8px; padding: 12px;">
+                                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+                                            <span style="font-size: 12px; color: hsl(var(--muted-foreground));">Local:</span>
+                                            <span style="font-size: 14px; font-weight: 600;" id="consolidadoEfectivoPOS">$0</span>
+                                        </div>
+                                        <div style="display: flex; justify-content: space-between; align-items: center;">
+                                            <span style="font-size: 12px; color: hsl(var(--muted-foreground));">Delivery:</span>
+                                            <span style="font-size: 14px; font-weight: 600;" id="consolidadoEfectivoRep">$0</span>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <!-- Tarjetas -->
+                                <div style="background: white; border: 2px solid hsl(var(--primary) / 0.3); border-radius: 12px; padding: 24px; box-shadow: 0 2px 8px rgba(0,0,0,0.05);">
+                                    <div style="display: flex; align-items: center; gap: 12px; margin-bottom: 16px;">
+                                        <div style="width: 48px; height: 48px; background: linear-gradient(135deg, hsl(var(--primary) / 0.15), hsl(var(--primary) / 0.05)); border-radius: 12px; display: flex; align-items: center; justify-content: center; font-size: 24px;">
+                                            💳
+                                        </div>
+                                        <div>
+                                            <p style="margin: 0; font-size: 14px; color: hsl(var(--muted-foreground)); font-weight: 500;">Tarjetas</p>
+                                            <p style="margin: 4px 0 0; font-size: 28px; font-weight: 800; color: hsl(var(--primary)); line-height: 1;" id="consolidadoTarjetas">$0</p>
+                                        </div>
+                                    </div>
+                                    <div style="background: hsl(var(--muted) / 0.3); border-radius: 8px; padding: 12px;">
+                                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+                                            <span style="font-size: 12px; color: hsl(var(--muted-foreground));">Local:</span>
+                                            <span style="font-size: 14px; font-weight: 600;" id="consolidadoTarjetasPOS">$0</span>
+                                        </div>
+                                        <div style="display: flex; justify-content: space-between; align-items: center;">
+                                            <span style="font-size: 12px; color: hsl(var(--muted-foreground));">Delivery:</span>
+                                            <span style="font-size: 14px; font-weight: 600;" id="consolidadoTarjetasRep">$0</span>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <!-- Transferencias -->
+                                <div style="background: white; border: 2px solid hsl(var(--info) / 0.3); border-radius: 12px; padding: 24px; box-shadow: 0 2px 8px rgba(0,0,0,0.05);">
+                                    <div style="display: flex; align-items: center; gap: 12px; margin-bottom: 16px;">
+                                        <div style="width: 48px; height: 48px; background: linear-gradient(135deg, hsl(var(--info) / 0.15), hsl(var(--info) / 0.05)); border-radius: 12px; display: flex; align-items: center; justify-content: center; font-size: 24px;">
+                                            🏦
+                                        </div>
+                                        <div>
+                                            <p style="margin: 0; font-size: 14px; color: hsl(var(--muted-foreground)); font-weight: 500;">Transferencias</p>
+                                            <p style="margin: 4px 0 0; font-size: 28px; font-weight: 800; color: hsl(var(--info)); line-height: 1;" id="consolidadoTransferencias">$0</p>
+                                        </div>
+                                    </div>
+                                    <div style="background: hsl(var(--muted) / 0.3); border-radius: 8px; padding: 12px;">
+                                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+                                            <span style="font-size: 12px; color: hsl(var(--muted-foreground));">Local:</span>
+                                            <span style="font-size: 14px; font-weight: 600;" id="consolidadoTransferenciasPOS">$0</span>
+                                        </div>
+                                        <div style="display: flex; justify-content: space-between; align-items: center;">
+                                            <span style="font-size: 12px; color: hsl(var(--muted-foreground));">Delivery:</span>
+                                            <span style="font-size: 14px; font-weight: 600;" id="consolidadoTransferenciasRep">$0</span>
+                                        </div>
+                                    </div>
+                                    <!-- Badge de Transferencias Pendientes (POS + Reparto) -->
+                                    <div id="badgePendientesReparto" style="display: none; margin-top: 12px; padding: 10px 12px; background: linear-gradient(135deg, hsl(38 92% 50% / 0.15), hsl(38 92% 50% / 0.05)); border: 2px solid hsl(38 92% 50%); border-radius: 8px;">
+                                        <div style="display: flex; align-items: center; gap: 8px;">
+                                            <span style="font-size: 16px;">⏳</span>
+                                            <div style="flex: 1;">
+                                                <p style="margin: 0; font-size: 12px; font-weight: 600; color: hsl(38 92% 40%);">Transferencias Sin Boletear/Confirmar</p>
+                                                <p style="margin: 2px 0 0; font-size: 11px; color: hsl(var(--muted-foreground));">No se contabilizan hasta confirmarse</p>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+
+                            </div>
+                            <!-- FIN: Grid de métodos de pago -->
+
+                            </div>
+                            <!-- FIN: Contenedor Consolidado -->
+
+                            </div>
+                            <!-- FIN SECCIÓN INGRESOS -->
+
+                            <!-- ========================================== -->
+                            <!-- SECCIÓN: SALIDAS  (EGRESOS) -->
+                            <!-- ========================================== -->
+                            <div style="background: linear-gradient(135deg, hsl(var(--destructive) / 0.08), transparent); border-radius: 16px; padding: 24px 20px; margin: 48px 0 32px; border: 2px solid hsl(var(--destructive) / 0.2);">
+                                <div style="display: flex; align-items: center; gap: 12px; margin-bottom: 24px;">
+                                    <div style="width: 48px; height: 48px; background: linear-gradient(135deg, hsl(var(--destructive)), hsl(var(--destructive) / 0.8)); border-radius: 12px; display: flex; align-items: center; justify-content: center; font-size: 24px; box-shadow: 0 4px 12px rgba(239, 68, 68, 0.3);">
+                                        💸
+                                    </div>
+                                    <div>
+                                        <h2 style="margin: 0; font-size: 24px; font-weight: 800; color: hsl(var(--destructive));">SALIDAS DEL DÍA</h2>
+                                        <p style="margin: 4px 0 0; font-size: 13px; color: hsl(var(--muted-foreground));">Gastos y pagos realizados</p>
+                                    </div>
+                                </div>
+
+                            <!-- Gastos del Día -->
+                            <div class="panel-header">
+                                <h3>💸 Gastos Operacionales</h3>
+                                <p class="panel-subtitle">Gastos del día</p>
+                            </div>
+
+                            <div class="stats-summary">
+                                <div class="stat-row">
+                                    <span class="stat-label">Total Gastos</span>
+                                    <span class="stat-value stat-gastos" id="gastosTotal">$0</span>
+                                </div>
+                            </div>
+
+                            <!-- Pagos al Personal -->
                             <div class="panel-header" style="margin-top: 32px;">
-                                <h3>🔍 Arqueo de Caja</h3>
+                                <h3>👥 Pagos al Personal</h3>
+                                <p class="panel-subtitle">Pagos registrados hoy</p>
+                            </div>
+
+                            <div class="stats-summary">
+                                <div class="stat-row" style="cursor: pointer;" onclick="abrirModalEditarPagosPersonal()" title="Click para editar pagos">
+                                    <span class="stat-label">
+                                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
+                                            <circle cx="12" cy="8" r="3" stroke="currentColor" stroke-width="2"/>
+                                            <path d="M6 21v-2a4 4 0 014-4h4a4 4 0 014 4v2" stroke="currentColor" stroke-width="2"/>
+                                        </svg>
+                                        Empleados Pagados
+                                    </span>
+                                    <span class="stat-value" id="cantidadEmpleadosPagados">0</span>
+                                </div>
+                                <div class="stat-row">
+                                    <span class="stat-label">Total Jornadas</span>
+                                    <span class="stat-value" style="color: hsl(var(--info));" id="totalJornadas">$0</span>
+                                </div>
+                                <div class="stat-row">
+                                    <span class="stat-label">Total Almuerzos</span>
+                                    <span class="stat-value" style="color: hsl(var(--warning));" id="totalAlmuerzos">$0</span>
+                                </div>
+                                <div class="stat-row stat-total" style="background: hsl(var(--success) / 0.1); border: 2px solid hsl(var(--success) / 0.3);">
+                                    <span class="stat-label"><strong>💰 Total Pagado Personal</strong></span>
+                                    <span class="stat-value" style="color: hsl(var(--success));" id="totalPagadoPersonal">$0</span>
+                                </div>
+                            </div>
+
+                            </div>
+                            <!-- FIN SECCIÓN SALIDAS -->
+
+                            <!-- ========================================== -->
+                            <!-- SECCIÓN: CIERRE -->
+                            <!-- ========================================== -->
+                            <div class="panel-header" style="margin-top: 48px; padding-top: 32px; border-top: 3px solid hsl(var(--border));">
+                                <h3>🔒 Arqueo y Cierre de Caja</h3>
+                                <p class="panel-subtitle">Verificación del efectivo y cierre del día</p>
                             </div>
 
                             <div class="arqueo-section">
@@ -1247,7 +1431,7 @@
                                 <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
                                     <div>
                                         <p style="margin: 0; font-weight: 600; font-size: 14px;">Habilitar cierre automático</p>
-                                        <p style="margin: 4px 0 0; font-size: 13px; color: hsl(var(--muted-foreground));">A las 12:00 AM si no se cerró manualmente</p>
+                                        <p style="margin: 4px 0 0; font-size: 13px; color: hsl(var(--muted-foreground));">A las 21:00 (9:00 PM) todos los días</p>
                                     </div>
                                     <label class="switch">
                                         <input type="checkbox" id="toggleCierreAutomatico" onchange="toggleCierreAutomatico()" checked>
@@ -1260,8 +1444,9 @@
                                         <path d="M12 16v-4M12 8h.01" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
                                     </svg>
                                     <p style="margin: 0; font-size: 13px; color: hsl(var(--foreground));">
-                                        <strong>Recordatorio a las 20:00</strong><br>
-                                        Se mostrará una notificación para recordar cerrar la caja
+                                        <strong>Recordatorios automáticos:</strong><br>
+                                        • 19:30 - Primera notificación (1.5h antes)<br>
+                                        • 20:00 - Recordatorio principal (1h antes)
                                     </p>
                                 </div>
                             </div>
@@ -2453,19 +2638,24 @@
     <!-- MODAL HISTORIAL DE CAJA -->
     <div id="modalHistorialCaja" class="modal" style="display: none;">
         <div class="modal-overlay" onclick="cerrarHistorialCaja()"></div>
-        <div class="modal-content" style="max-width: 1200px; max-height: 90vh; overflow-y: auto;">
+        <div class="modal-content" style="max-width: 1400px; max-height: 90vh; overflow-y: auto;">
             <div class="modal-header">
                 <div>
-                    <h2 style="margin: 0; font-size: 24px; font-weight: 700;">📊 Historial de Cierres de Caja</h2>
-                    <p style="margin: 4px 0 0; color: hsl(var(--muted-foreground)); font-size: 14px;">Consulta cierres anteriores y analiza tendencias</p>
+                    <h2 style="margin: 0; font-size: 26px; font-weight: 800; display: flex; align-items: center; gap: 12px;">
+                        📊 Historial de Cierres de Caja
+                        <span style="font-size: 14px; font-weight: 500; background: hsl(var(--primary) / 0.15); color: hsl(var(--primary)); padding: 4px 12px; border-radius: 6px;">Análisis Completo</span>
+                    </h2>
+                    <p style="margin: 8px 0 0; color: hsl(var(--muted-foreground)); font-size: 14px;">Consulta cierres anteriores, analiza tendencias y revisa detalles consolidados</p>
                 </div>
                 <button class="btn-close" onclick="cerrarHistorialCaja()" style="background: none; border: none; font-size: 32px; cursor: pointer; color: hsl(var(--muted-foreground)); line-height: 1; padding: 0; width: 32px; height: 32px;">&times;</button>
             </div>
 
-            <!-- Filtros -->
-            <div style="background: hsl(var(--muted) / 0.3); padding: 20px; border-radius: 12px; margin-bottom: 24px;">
-                <div style="display: flex; gap: 12px; flex-wrap: wrap; align-items: end;">
-                    <div style="flex: 1; min-width: 250px;">
+            <!-- Filtros y Búsqueda -->
+            <div style="background: linear-gradient(135deg, hsl(var(--muted) / 0.4), hsl(var(--muted) / 0.2)); padding: 24px; border-radius: 12px; margin-bottom: 24px; border: 1px solid hsl(var(--border));">
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 16px;">
+                    
+                    <!-- Filtro Rápido -->
+                    <div>
                         <label style="display: block; font-weight: 600; margin-bottom: 8px; font-size: 14px;">
                             ⚡ Filtro Rápido
                             <span style="font-weight: 400; font-size: 12px; color: hsl(var(--muted-foreground)); margin-left: 4px;">Selecciona un período</span>
@@ -2481,41 +2671,115 @@
                             <option value="custom">🎯 Rango personalizado</option>
                         </select>
                     </div>
-                    <div id="filtroPersonalizadoContainer" style="display: none; flex: 2; min-width: 320px; animation: fadeIn 0.3s ease;">
-                        <div style="display: flex; gap: 12px; align-items: end;">
-                            <div style="flex: 1;">
-                                <label style="display: block; font-weight: 600; margin-bottom: 8px; font-size: 14px;">
-                                    📅 Desde
-                                </label>
-                                <input type="date" id="fechaDesde" class="form-input" style="width: 100%;">
-                            </div>
-                            <div style="flex: 1;">
-                                <label style="display: block; font-weight: 600; margin-bottom: 8px; font-size: 14px;">
-                                    📅 Hasta
-                                </label>
-                                <input type="date" id="fechaHasta" class="form-input" style="width: 100%;">
-                            </div>
-                            <button class="btn btn-primary" onclick="cargarHistorialCaja()" style="white-space: nowrap; display: flex; align-items: center; gap: 6px;">
-                                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" style="display: inline-block;">
-                                    <circle cx="11" cy="11" r="8" stroke="currentColor" stroke-width="2"/>
-                                    <path d="M21 21l-4.35-4.35" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
-                                </svg>
-                                <span>Buscar</span>
-                            </button>
+                    
+                    <!-- Búsqueda Inteligente -->
+                    <div>
+                        <label style="display: block; font-weight: 600; margin-bottom: 8px; font-size: 14px;">
+                            🔍 Búsqueda Inteligente
+                            <span style="font-weight: 400; font-size: 12px; color: hsl(var(--muted-foreground)); margin-left: 4px;">
+                                Prueba: "lunes", "15", "semana pasada", "cuadrados"
+                            </span>
+                            <span id="resultadosBusqueda" style="display: none; margin-left: 8px; font-size: 11px; padding: 2px 8px; background: hsl(var(--primary)); color: white; border-radius: 12px; font-weight: 700;"></span>
+                        </label>
+                        <div style="position: relative;">
+                            <input 
+                                type="text" 
+                                id="busquedaInteligente" 
+                                class="form-input" 
+                                placeholder="Ej: lunes, 15 marzo, semana pasada, sobrantes..."
+                                oninput="buscarEnHistorial()"
+                                style="width: 100%; padding-right: 40px;"
+                            >
+                            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" style="position: absolute; right: 12px; top: 50%; transform: translateY(-50%); opacity: 0.5;">
+                                <circle cx="11" cy="11" r="8" stroke="currentColor" stroke-width="2"/>
+                                <path d="M21 21l-4.35-4.35" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+                            </svg>
                         </div>
+                    </div>
+                    
+                </div>
+                
+                <!-- Filtro Personalizado (oculto por defecto) -->
+                <div id="filtroPersonalizadoContainer" style="display: none; animation: fadeIn 0.3s ease;">
+                    <div style="display: flex; gap: 12px; align-items: end; padding-top: 16px; border-top: 1px solid hsl(var(--border));">
+                        <div style="flex: 1;">
+                            <label style="display: block; font-weight: 600; margin-bottom: 8px; font-size: 14px;">
+                                📅  Desde
+                            </label>
+                            <input type="date" id="fechaDesde" class="form-input" style="width: 100%;">
+                        </div>
+                        <div style="flex: 1;">
+                            <label style="display: block; font-weight: 600; margin-bottom: 8px; font-size: 14px;">
+                                📅 Hasta
+                            </label>
+                            <input type="date" id="fechaHasta" class="form-input" style="width: 100%;">
+                        </div>
+                        <button class="btn btn-primary" onclick="cargarHistorialCaja()" style="white-space: nowrap; display: flex; align-items: center; gap: 6px; padding: 10px 20px;">
+                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" style="display: inline-block;">
+                                <circle cx="11" cy="11" r="8" stroke="currentColor" stroke-width="2"/>
+                                <path d="M21 21l-4.35-4.35" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+                            </svg>
+                            <span>Buscar</span>
+                        </button>
                     </div>
                 </div>
             </div>
 
-            <!-- Gráfico -->
-            <div style="background: white; padding: 24px; border-radius: 12px; margin-bottom: 24px; box-shadow: 0 2px 8px rgba(0,0,0,0.1);">
-                <h3 style="margin: 0 0 20px; font-size: 18px; font-weight: 700;">📈 Tendencia de Ventas</h3>
+            <!-- Botón de Recuperación de Cierres -->
+            <div style="background: linear-gradient(135deg, hsl(38 92% 50% / 0.15), hsl(38 92% 50% / 0.05)); border: 2px solid hsl(38 92% 50% / 0.3); border-radius: 12px; padding: 20px; margin-bottom: 24px; display: flex; align-items: center; gap: 16px;">
+                <div style="flex: 1;">
+                    <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 8px;">
+                        <span style="font-size: 24px;">🔄</span>
+                        <h4 style="margin: 0; font-size: 16px; font-weight: 700; color: hsl(38 92% 40%);">Recuperación de Cierres</h4>
+                    </div>
+                    <p style="margin: 0; font-size: 13px; color: hsl(var(--muted-foreground)); line-height: 1.5;">
+                        Si el cierre automático falló algún día (por app cerrada, error de conexión, etc.), 
+                        usa este botón para detectar y recuperar automáticamente los cierres perdidos de los últimos 7 días.
+                    </p>
+                </div>
+                <button 
+                    onclick="recuperarCierresManuales()" 
+                    class="btn"
+                    style="background: hsl(38 92% 50%); color: white; padding: 12px 24px; border: none; border-radius: 8px; cursor: pointer; font-weight: 700; font-size: 14px; white-space: nowrap; display: flex; align-items: center; gap: 8px; transition: all 0.2s;"
+                    onmouseover="this.style.background='hsl(38 92% 45%)'; this.style.transform='translateY(-2px)'; this.style.boxShadow='0 4px 12px rgba(0,0,0,0.15)';"
+                    onmouseout="this.style.background='hsl(38 92% 50%)'; this.style.transform='translateY(0)'; this.style.boxShadow='none';">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M1 4v6h6M23 20v-6h-6"/>
+                        <path d="M20.49 9A9 9 0 0 0 5.64 5.64L1 10m22 4l-4.64 4.36A9 9 0 0 1 3.51 15"/>
+                    </svg>
+                    <span>Recuperar Cierres</span>
+                </button>
+            </div>
+
+            <!-- KPIs del Período -->
+            <div id="kpisHistorialCaja" style="margin-bottom: 24px;">
+                <div style="text-align: center; padding: 32px; color: hsl(var(--muted-foreground));">
+                    <p>Cargando estadísticas...</p>
+                </div>
+            </div>
+
+            <!-- Gráfico de Tendencia -->
+            <div style="background: white; padding: 24px; border-radius: 12px; margin-bottom: 24px; box-shadow: 0 2px 8px rgba(0,0,0,0.08); border: 1px solid hsl(var(--border));">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+                    <div>
+                        <h3 style="margin: 0; font-size: 18px; font-weight: 700; display: flex; align-items: center; gap: 8px;">
+                            📈 Tendencia de Ventas y Gastos
+                            <span style="font-size: 12px; font-weight: 500; background: hsl(var(--muted) / 0.5); padding: 2px 8px; border-radius: 4px;">Comparativa</span>
+                        </h3>
+                        <p style="margin: 4px 0 0; font-size: 13px; color: hsl(var(--muted-foreground));">Evolución día a día del período seleccionado</p>
+                    </div>
+                </div>
                 <canvas id="chartHistorialVentas" style="max-height: 300px;"></canvas>
             </div>
 
-            <!-- Tabla de Historial -->
-            <div style="background: white; padding: 24px; border-radius: 12px; box-shadow: 0 2px 8px rgba(0,0,0,0.1);">
-                <h3 style="margin: 0 0 20px; font-size: 18px; font-weight: 700;">📋 Registros de Cierres</h3>
+            <!-- Tabla de Registros -->
+            <div style="background: white; padding: 24px; border-radius: 12px; box-shadow: 0 2px 8px rgba(0,0,0,0.08); border: 1px solid hsl(var(--border));">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+                    <div>
+                        <h3 style="margin: 0; font-size: 18px; font-weight: 700;">📋 Registros de Cierres</h3>
+                        <p style="margin: 4px 0 0; font-size: 13px; color: hsl(var(--muted-foreground));">Click en "Ver Detalles" para información completa de cada día</p>
+                    </div>
+                </div>
                 <div id="tablaHistorialCaja">
                     <div style="text-align: center; padding: 40px; color: hsl(var(--muted-foreground));">
                         <p>Cargando historial...</p>

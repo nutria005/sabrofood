@@ -402,6 +402,7 @@ let chartTopProductos = null;
 // Sistema de cierre automático
 let intervalVerificacionCierre = null;
 let recordatorioMostrado = false;
+let notificacionTempranaMostrada = false; // Para notificación de 19:30
 let notificacionRecordatorio = null;
 
 // ===================================
@@ -1088,6 +1089,7 @@ async function iniciarSesionYCargarApp() {
     // Inicializar sistema de cierre automático
     inicializarSistemaCierreAutomatico();
     verificarCierresAutomaticosPendientes();
+    recuperarCierresPerdidos(); // NUEVO: Recuperar cierres que fallaron
     
     // Notificaciones
     mostrarNotificacion(`Bienvenido, ${currentUser}`, 'success');
@@ -5939,6 +5941,13 @@ let ventasDelDia = {
     transferencia: 0,
     total: 0
 };
+let repartoDelDia = {
+    efectivo: 0,
+    tarjetas: 0,
+    transferencias: 0,
+    transferencias_pendientes: 0,
+    total: 0
+};
 
 /**
  * Cargar datos de caja al entrar a la vista
@@ -6016,8 +6025,12 @@ async function cargarVentasDelDia() {
             efectivo: 0,
             transbank: 0,
             transferencia: 0,
+            transferencia_pendiente: 0, // Transferencias sin boletear
             total: 0
         };
+        
+        let transferenciasBoleteadas = 0;
+        let transferenciasPendientes = 0;
 
         if (!data || data.length === 0) {
             console.log('ℹ️ No hay ventas registradas hoy');
@@ -6029,7 +6042,8 @@ async function cargarVentasDelDia() {
                 console.log('💳 Procesando venta:', {
                     total: venta.total,
                     metodo: venta.metodo_pago,
-                    detallePagos: detallePagos
+                    detallePagos: detallePagos,
+                    boleteada: venta.boleteada
                 });
 
                 // Si es string JSON, parsearlo
@@ -6048,7 +6062,13 @@ async function cargarVentasDelDia() {
                     } else if (detallePagos === 'Tarjeta' || detallePagos === 'Transbank') {
                         ventasDelDia.transbank += venta.total;
                     } else if (detallePagos === 'Transferencia') {
-                        ventasDelDia.transferencia += venta.total;
+                        if (venta.boleteada) {
+                            ventasDelDia.transferencia += venta.total;
+                            transferenciasBoleteadas += venta.total;
+                        } else {
+                            ventasDelDia.transferencia_pendiente += venta.total;
+                            transferenciasPendientes += venta.total;
+                        }
                     }
                 } else if (Array.isArray(detallePagos)) {
                     // Formato nuevo: array de pagos (para pagos mixtos)
@@ -6058,7 +6078,13 @@ async function cargarVentasDelDia() {
                         } else if (pago.metodo === 'Tarjeta' || pago.metodo === 'Transbank') {
                             ventasDelDia.transbank += pago.monto;
                         } else if (pago.metodo === 'Transferencia') {
-                            ventasDelDia.transferencia += pago.monto;
+                            if (venta.boleteada) {
+                                ventasDelDia.transferencia += pago.monto;
+                                transferenciasBoleteadas += pago.monto;
+                            } else {
+                                ventasDelDia.transferencia_pendiente += pago.monto;
+                                transferenciasPendientes += pago.monto;
+                            }
                         }
                     });
                 }
@@ -6066,6 +6092,12 @@ async function cargarVentasDelDia() {
                 ventasDelDia.total += venta.total;
             });
         }
+        
+        console.log('📊 Transferencias POS:', {
+            boleteadas: transferenciasBoleteadas,
+            pendientes: transferenciasPendientes,
+            total: transferenciasBoleteadas + transferenciasPendientes
+        });
 
         // Actualizar UI
         document.getElementById('ventasEfectivo').textContent = '$' + formatoMoneda(ventasDelDia.efectivo);
@@ -6389,12 +6421,107 @@ function actualizarTotalesCaja() {
     // Calcular total de pagos al personal
     const totalPagosPersonal = pagosPersonalDelDia.reduce((sum, pago) => sum + parseFloat(pago.total_pago), 0);
 
-    // Calcular efectivo esperado (ventas en efectivo - gastos - pagos personal)
-    const efectivoEsperado = ventasDelDia.efectivo - totalGastos - totalPagosPersonal;
+    // Obtener efectivo del reparto con limpieza robusta
+    const repartoEfectivoText = document.getElementById('repartoEfectivo')?.textContent || '$0';
+    const limpiarMoneda = (texto) => {
+        return parseFloat(texto.replace(/\$/g, '').replace(/\./g, '').replace(/,/g, '.')) || 0;
+    };
+    const repartoEfectivo = limpiarMoneda(repartoEfectivoText);
+
+    // Calcular efectivo esperado (POS + Reparto - gastos - pagos personal)
+    const efectivoEsperado = ventasDelDia.efectivo + repartoEfectivo - totalGastos - totalPagosPersonal;
     document.getElementById('efectivoEsperado').textContent = '$' + formatoMoneda(efectivoEsperado);
 
     // Recalcular diferencia si hay efectivo real ingresado
     calcularDiferenciaCaja();
+    
+    // Actualizar totales consolidados (POS + Reparto)
+    actualizarTotalesConsolidados();
+}
+
+/**
+ * Actualizar totales consolidados (POS + Reparto)
+ * Esta función suma las ventas del POS con las del sistema de reparto
+ */
+function actualizarTotalesConsolidados() {
+    // Obtener valores del POS
+    const posEfectivo = ventasDelDia.efectivo || 0;
+    const posTarjetas = ventasDelDia.transbank || 0;
+    const posTransferencias = ventasDelDia.transferencia || 0;
+    const posTransferenciasPendientes = ventasDelDia.transferencia_pendiente || 0;
+    const posTotal = ventasDelDia.total || 0;
+
+    // Obtener valores del Reparto (desde variable global)
+    const repartoEfectivo = repartoDelDia.efectivo || 0;
+    const repartoTarjetas = repartoDelDia.tarjetas || 0;
+    const repartoTransferencias = repartoDelDia.transferencias || 0;
+    const repartoTransferenciasPendientes = repartoDelDia.transferencias_pendientes || 0;
+    const repartoTotal = repartoDelDia.total || 0;
+
+    // Calcular consolidados
+    const consolidadoEfectivo = posEfectivo + repartoEfectivo;
+    const consolidadoTarjetas = posTarjetas + repartoTarjetas;
+    const consolidadoTransferencias = posTransferencias + repartoTransferencias;
+    const consolidadoTotal = posTotal + repartoTotal;
+    const totalTransferenciasPendientes = posTransferenciasPendientes + repartoTransferenciasPendientes;
+
+    console.log('📊 Actualizando totales consolidados:', {
+        POS: { efectivo: posEfectivo, tarjetas: posTarjetas, transferencias: posTransferencias, pendientes: posTransferenciasPendientes, total: posTotal },
+        Reparto: { efectivo: repartoEfectivo, tarjetas: repartoTarjetas, transferencias: repartoTransferencias, pendientes: repartoTransferenciasPendientes, total: repartoTotal },
+        Consolidado: { efectivo: consolidadoEfectivo, tarjetas: consolidadoTarjetas, transferencias: consolidadoTransferencias, pendientes: totalTransferenciasPendientes, total: consolidadoTotal }
+    });
+
+    // Actualizar UI - Totales consolidados
+    document.getElementById('consolidadoEfectivo').textContent = '$' + formatoMoneda(consolidadoEfectivo);
+    document.getElementById('consolidadoTarjetas').textContent = '$' + formatoMoneda(consolidadoTarjetas);
+    document.getElementById('consolidadoTransferencias').textContent = '$' + formatoMoneda(consolidadoTransferencias);
+    document.getElementById('totalGeneralConsolidado').textContent = '$' + formatoMoneda(consolidadoTotal);
+
+    // OPCIÓN B: Mostrar transferencias combinadas (POS + Reparto) en la sección Local POS
+    const elVentasTransf = document.getElementById('ventasTransferencia');
+    if (elVentasTransf) elVentasTransf.textContent = '$' + formatoMoneda(consolidadoTransferencias);
+    
+    const elDesgloseBloque = document.getElementById('desgloseTranferenciaReparto');
+    if (elDesgloseBloque) {
+        if (repartoTransferencias > 0) {
+            elDesgloseBloque.style.display = 'flex';
+            document.getElementById('transferenciaLocal').textContent = '$' + formatoMoneda(posTransferencias);
+            document.getElementById('transferenciaReparto').textContent = '$' + formatoMoneda(repartoTransferencias);
+        } else {
+            elDesgloseBloque.style.display = 'none';
+        }
+    }
+
+    // Actualizar desglose POS
+    document.getElementById('consolidadoEfectivoPOS').textContent = '$' + formatoMoneda(posEfectivo);
+    document.getElementById('consolidadoTarjetasPOS').textContent = '$' + formatoMoneda(posTarjetas);
+    document.getElementById('consolidadoTransferenciasPOS').textContent = '$' + formatoMoneda(posTransferencias);
+    document.getElementById('consolidadoTotalPOS').textContent = '$' + formatoMoneda(posTotal);
+
+    // Actualizar desglose Reparto
+    document.getElementById('consolidadoEfectivoRep').textContent = '$' + formatoMoneda(repartoEfectivo);
+    document.getElementById('consolidadoTarjetasRep').textContent = '$' + formatoMoneda(repartoTarjetas);
+    document.getElementById('consolidadoTransferenciasRep').textContent = '$' + formatoMoneda(repartoTransferencias);
+    document.getElementById('consolidadoTotalReparto').textContent = '$' + formatoMoneda(repartoTotal);
+    
+    // Mostrar badge de transferencias pendientes (POS + Reparto) si hay
+    const badgePendientesRep = document.getElementById('badgePendientesReparto');
+    if (badgePendientesRep) {
+        if (totalTransferenciasPendientes > 0) {
+            badgePendientesRep.style.display = 'block';
+            let textoDesglose = '⏳ ';
+            if (posTransferenciasPendientes > 0 && repartoTransferenciasPendientes > 0) {
+                textoDesglose += `$${formatoMoneda(totalTransferenciasPendientes)} pendientes (POS: $${formatoMoneda(posTransferenciasPendientes)} + Reparto: $${formatoMoneda(repartoTransferenciasPendientes)})`;
+            } else if (posTransferenciasPendientes > 0) {
+                textoDesglose += `$${formatoMoneda(posTransferenciasPendientes)} pendientes (POS)`;
+            } else {
+                textoDesglose += `$${formatoMoneda(repartoTransferenciasPendientes)} pendientes (Reparto)`;
+            }
+            badgePendientesRep.textContent = textoDesglose;
+        } else {
+            badgePendientesRep.style.display = 'none';
+        }
+    }
 }
 
 /**
@@ -6411,7 +6538,15 @@ function calcularDiferenciaCaja() {
 
     const totalGastos = gastosDelDia.reduce((sum, gasto) => sum + parseFloat(gasto.monto), 0);
     const totalPagosPersonal = pagosPersonalDelDia.reduce((sum, pago) => sum + parseFloat(pago.total_pago), 0);
-    const efectivoEsperado = ventasDelDia.efectivo - totalGastos - totalPagosPersonal;
+    
+    // Obtener efectivo del reparto
+    const repartoEfectivoText = document.getElementById('repartoEfectivo')?.textContent || '$0';
+    const limpiarMoneda = (texto) => {
+        return parseFloat(texto.replace(/\$/g, '').replace(/\./g, '').replace(/,/g, '.')) || 0;
+    };
+    const repartoEfectivo = limpiarMoneda(repartoEfectivoText);
+    
+    const efectivoEsperado = ventasDelDia.efectivo + repartoEfectivo - totalGastos - totalPagosPersonal;
     const diferencia = efectivoReal - efectivoEsperado;
 
     // Mostrar container
@@ -6456,7 +6591,15 @@ async function cerrarCajaDiaria() {
 
     const totalGastos = gastosDelDia.reduce((sum, gasto) => sum + parseFloat(gasto.monto), 0);
     const totalPagosPersonal = pagosPersonalDelDia.reduce((sum, pago) => sum + parseFloat(pago.total_pago), 0);
-    const efectivoEsperado = ventasDelDia.efectivo - totalGastos - totalPagosPersonal;
+    
+    // Obtener efectivo del reparto
+    const repartoEfectivoText = document.getElementById('repartoEfectivo')?.textContent || '$0';
+    const limpiarMoneda = (texto) => {
+        return parseFloat(texto.replace(/\$/g, '').replace(/\./g, '').replace(/,/g, '.')) || 0;
+    };
+    const repartoEfectivo = limpiarMoneda(repartoEfectivoText);
+    
+    const efectivoEsperado = ventasDelDia.efectivo + repartoEfectivo - totalGastos - totalPagosPersonal;
     const diferencia = efectivoReal - efectivoEsperado;
 
     // Confirmación
@@ -7258,6 +7401,7 @@ function inicializarSistemaCierreAutomatico() {
 
 /**
  * Verificar si es hora de mostrar recordatorio o ejecutar cierre
+ * MEJORADO: Incluye retry y detección de omisión
  */
 function verificarHorariosCierre() {
     const ahora = new Date();
@@ -7271,25 +7415,72 @@ function verificarHorariosCierre() {
         return; // No hacer nada si está deshabilitado
     }
     
-    // Recordatorio a las 20:00 (8:00 PM)
+    // Primera notificación a las 19:30 (1.5 horas antes del cierre)
+    if (horas === 19 && minutos === 30 && !notificacionTempranaMostrada) {
+        mostrarNotificacionTempranaCierre();
+        notificacionTempranaMostrada = true;
+    }
+    
+    // Recordatorio principal a las 20:00 (1 hora antes del cierre)
     if (horas === 20 && minutos === 0 && !recordatorioMostrado) {
         mostrarRecordatorioCierreCaja();
         recordatorioMostrado = true;
     }
     
-    // Resetear flag de recordatorio al día siguiente
+    // Resetear flags de notificaciones al día siguiente
     if (horas === 0 && minutos === 1) {
         recordatorioMostrado = false;
+        notificacionTempranaMostrada = false;
     }
     
-    // Cierre automático a las 00:00 (medianoche)
-    if (horas === 0 && minutos === 0) {
-        ejecutarCierreAutomatico();
+    // MEJORADO: Ventana de ejecución del cierre (21:00 a 21:05)
+    // Cierre a las 9:00 PM - Más práctico para verificar mientras están en el local
+    if (horas === 21 && minutos <= 5) {
+        const ultimoIntento = localStorage.getItem('ultimo_intento_cierre_auto');
+        const hoy = new Date().toISOString().split('T')[0];
+        
+        // Solo ejecutar si no se ha intentado hoy
+        if (ultimoIntento !== hoy) {
+            localStorage.setItem('ultimo_intento_cierre_auto', hoy);
+            ejecutarCierreAutomatico();
+        }
+    }
+    
+    // Verificación adicional a las 22:00 por si falló a las 21:00
+    if (horas === 22 && minutos === 0) {
+        const ultimoIntento = localStorage.getItem('ultimo_intento_cierre_auto');
+        const hoy = new Date().toISOString().split('T')[0];
+        
+        // Si no se intentó hoy, hay un problema
+        if (ultimoIntento !== hoy) {
+            console.warn('⚠️ Cierre automático omitido a las 21:00, intentando recuperación...');
+            ejecutarCierreAutomatico();
+        }
     }
 }
 
 /**
- * Mostrar recordatorio para cerrar la caja a las 20:00
+ * Mostrar notificación temprana a las 19:30 (1.5 horas antes)
+ */
+function mostrarNotificacionTempranaCierre() {
+    // Solo mostrar si es encargado
+    if (currentUserRole !== 'encargado') {
+        return;
+    }
+    
+    mostrarNotificacion(
+        '⏰ Recordatorio: Cierre en 1.5 horas\n\n' +
+        'El cierre automático se ejecutará a las 21:00.\n' +
+        'Prepárate para hacer el arqueo del día.',
+        'info',
+        8000
+    );
+    
+    console.log('⏰ Notificación temprana de cierre mostrada (19:30)');
+}
+
+/**
+ * Mostrar recordatorio principal para cerrar la caja a las 20:00
  */
 function mostrarRecordatorioCierreCaja() {
     // Solo mostrar si es encargado
@@ -7319,8 +7510,8 @@ function mostrarRecordatorioCierreCaja() {
         <div style="display: flex; align-items: start; gap: 16px;">
             <div style="font-size: 32px; animation: bell-ring 1s ease-in-out infinite;">🔔</div>
             <div style="flex: 1;">
-                <h3 style="margin: 0 0 8px; font-size: 18px; font-weight: 700;">Recordatorio: Cerrar Caja</h3>
-                <p style="margin: 0 0 16px; font-size: 14px; opacity: 0.95;">Es hora de cerrar la caja del día. No olvides hacer el arqueo antes de irte.</p>
+                <h3 style="margin: 0 0 8px; font-size: 18px; font-weight: 700;">Recordatorio: Cierre en 1 hora</h3>
+                <p style="margin: 0 0 16px; font-size: 14px; opacity: 0.95;">El cierre automático se ejecutará a las 21:00. Es momento de preparar el arqueo del día.</p>
                 <div style="display: flex; gap: 8px;">
                     <button onclick="irACaja(); cerrarRecordatorio();" style="padding: 8px 16px; background: white; color: hsl(38 92% 45%); border: none; border-radius: 8px; cursor: pointer; font-weight: 700; font-size: 14px;">
                         Ir a Caja
@@ -7386,6 +7577,19 @@ async function ejecutarCierreAutomatico() {
     try {
         console.log('🤖 Ejecutando cierre automático...');
         
+        // MEJORA 1: Verificar conexión a internet
+        if (!navigator.onLine) {
+            console.warn('⚠️ Sin conexión a internet, cierre automático pendiente');
+            const erroresAnteriores = JSON.parse(localStorage.getItem('errores_cierre_automatico') || '[]');
+            erroresAnteriores.push({
+                fecha: new Date().toISOString(),
+                error: 'Sin conexión a internet',
+                tipo: 'network'
+            });
+            localStorage.setItem('errores_cierre_automatico', JSON.stringify(erroresAnteriores.slice(-10)));
+            return;
+        }
+        
         // Verificar si el cierre automático está habilitado
         const habilitado = localStorage.getItem('cierre_automatico_habilitado') !== 'false';
         if (!habilitado) {
@@ -7398,34 +7602,32 @@ async function ejecutarCierreAutomatico() {
             return;
         }
         
-        // Obtener fecha de ayer
-        const ayer = new Date();
-        ayer.setDate(ayer.getDate() - 1);
-        const fechaAyer = ayer.toISOString().split('T')[0];
+        // Obtener fecha de HOY (cierre se hace a las 21:00 del mismo día)
+        const hoy = new Date();
+        const fechaHoy = hoy.toISOString().split('T')[0];
         
-        // Verificar si ya existe un cierre para ayer
+        // Verificar si ya existe un cierre para hoy
         const { data: cierreExistente, error: errorConsulta } = await window.supabaseClient
             .from('cierres_diarios')
             .select('id')
-            .eq('fecha', fechaAyer)
+            .eq('fecha', fechaHoy)
             .single();
         
         if (cierreExistente) {
-            console.log('✅ Ya existe cierre para ayer, saltando cierre automático');
+            console.log('✅ Ya existe cierre para hoy, saltando cierre automático');
             return;
         }
         
-        // Cargar ventas de ayer
-        const inicioAyer = new Date(fechaAyer);
-        inicioAyer.setHours(0, 0, 0, 0);
-        const finAyer = new Date(fechaAyer);
-        finAyer.setHours(23, 59, 59, 999);
+        // Cargar ventas de HOY (desde las 00:00 hasta ahora)
+        const inicioHoy = new Date(fechaHoy);
+        inicioHoy.setHours(0, 0, 0, 0);
+        const finHoy = new Date(); // Hasta ahora (21:00)
         
-        const { data: ventasAyer, error: errorVentas } = await window.supabaseClient
+        const { data: ventasHoy, error: errorVentas } = await window.supabaseClient
             .from('ventas')
             .select('*')
-            .gte('fecha', inicioAyer.toISOString())
-            .lte('fecha', finAyer.toISOString());
+            .gte('fecha', inicioHoy.toISOString())
+            .lte('fecha', finHoy.toISOString());
         
         if (errorVentas) throw errorVentas;
         
@@ -7435,8 +7637,8 @@ async function ejecutarCierreAutomatico() {
         let ventasTransbank = 0;
         let ventasTransferencia = 0;
         
-        if (ventasAyer && ventasAyer.length > 0) {
-            ventasAyer.forEach(venta => {
+        if (ventasHoy && ventasHoy.length > 0) {
+            ventasHoy.forEach(venta => {
                 totalVentas += venta.total;
                 
                 const detallePagos = venta.detalle_pagos;
@@ -7455,67 +7657,555 @@ async function ejecutarCierreAutomatico() {
             });
         }
         
-        // Cargar gastos de ayer
-        const { data: gastosAyer, error: errorGastos } = await window.supabaseClient
+        // Cargar gastos de HOY
+        const { data: gastosHoy, error: errorGastos } = await window.supabaseClient
             .from('gastos')
             .select('*')
-            .gte('fecha', inicioAyer.toISOString())
-            .lte('fecha', finAyer.toISOString());
+            .gte('fecha', inicioHoy.toISOString())
+            .lte('fecha', finHoy.toISOString());
         
         if (errorGastos) throw errorGastos;
         
-        const totalGastos = gastosAyer ? gastosAyer.reduce((sum, g) => sum + parseFloat(g.monto), 0) : 0;
+        const totalGastos = gastosHoy ? gastosHoy.reduce((sum, g) => sum + parseFloat(g.monto), 0) : 0;
         
-        // Cargar pagos al personal de ayer
-        const { data: pagosPersonalAyer, error: errorPagos } = await window.supabaseClient
+        // Cargar pagos al personal de HOY
+        const { data: pagosPersonalHoy, error: errorPagos } = await window.supabaseClient
             .from('pagos_personal')
             .select('*')
-            .gte('fecha', inicioAyer.toISOString())
-            .lte('fecha', finAyer.toISOString());
+            .gte('fecha', inicioHoy.toISOString())
+            .lte('fecha', finHoy.toISOString());
         
         if (errorPagos) throw errorPagos;
         
-        const totalPagosPersonal = pagosPersonalAyer ? pagosPersonalAyer.reduce((sum, p) => sum + parseFloat(p.total_pago), 0) : 0;
+        const totalPagosPersonal = pagosPersonalHoy ? pagosPersonalHoy.reduce((sum, p) => sum + parseFloat(p.total_pago), 0) : 0;
         
-        // Calcular efectivo esperado
-        const efectivoEsperado = ventasEfectivo - totalGastos - totalPagosPersonal;
+        // NUEVO: Cargar datos de reparto de HOY
+        let repartoEfectivo = 0;
+        let repartoTarjetas = 0;
+        let repartoTransferencias = 0;
+        let repartoTotal = 0;
         
-        // Crear cierre automático
+        try {
+            const { data: pedidosReparto, error: errorReparto } = await window.supabaseClient
+                .rpc('obtener_pedidos_dia', { fecha_consulta: fechaHoy });
+            
+            if (!errorReparto && pedidosReparto && pedidosReparto.length > 0) {
+                pedidosReparto.forEach(pedido => {
+                    const metodo = pedido.metodo_pago;
+                    const monto = parseFloat(pedido.total) || 0;
+                    
+                    // Solo contar pedidos confirmados/entregados
+                    const esTransferencia = metodo === 'TP' || metodo === 'TG' || metodo === 'T';
+                    const fechaContabilizar = new Date(pedido.fecha);
+                    
+                    if (esTransferencia && pedido.boleteada && pedido.fecha_boleta) {
+                        fechaContabilizar.setTime(new Date(pedido.fecha_boleta).getTime());
+                    } else if (metodo === 'TG') {
+                        fechaContabilizar.setTime(pedido.fecha_boleta ? new Date(pedido.fecha_boleta).getTime() : new Date(pedido.fecha).getTime());
+                    } else if (metodo === 'TP') {
+                        return; // TP sin confirmar no se cuenta
+                    }
+                    
+                    const fechaContabilizar_str = fechaContabilizar.toISOString().split('T')[0];
+                    if (fechaContabilizar_str === fechaHoy) {
+                        repartoTotal += monto;
+                        if (metodo === 'E') repartoEfectivo += monto;
+                        else if (metodo === 'DC') repartoTarjetas += monto;
+                        else if (esTransferencia) repartoTransferencias += monto;
+                    }
+                });
+            }
+        } catch (errorReparto) {
+            console.warn('⚠️ No se pudieron cargar datos de reparto:', errorReparto);
+            // Continuar sin datos de reparto
+        }
+        
+        // CONSOLIDAR: Sumar POS + Reparto en las columnas existentes
+        const efectivoConsolidado = ventasEfectivo + repartoEfectivo;
+        const transbankConsolidado = ventasTransbank + repartoTarjetas;
+        const transferenciaConsolidada = ventasTransferencia + repartoTransferencias;
+        const totalVentasConsolidado = totalVentas + repartoTotal;
+        
+        // Calcular efectivo esperado con reparto incluido
+        const efectivoEsperado = efectivoConsolidado - totalGastos - totalPagosPersonal;
+        
+        // Preparar detalles para JSON
+        const detalleGastosCompleto = {
+            gastos_operacionales: gastosHoy || [],
+            pagos_personal: pagosPersonalHoy || [],
+            total_pagos_personal: totalPagosPersonal,
+            // Desglose de ventas por origen
+            desglose_ventas: {
+                pos: {
+                    efectivo: ventasEfectivo,
+                    transbank: ventasTransbank,
+                    transferencia: ventasTransferencia,
+                    total: totalVentas,
+                    cantidad_ventas: ventasHoy ? ventasHoy.length : 0
+                },
+                reparto: {
+                    efectivo: repartoEfectivo,
+                    tarjetas: repartoTarjetas,
+                    transferencias: repartoTransferencias,
+                    total: repartoTotal,
+                    cantidad_pedidos: 0 // Se actualizará si hay datos
+                }
+            }
+        };
+        
+        // Crear cierre automático con datos consolidados
         const { data: cierreNuevo, error: errorCierre } = await window.supabaseClient
             .from('cierres_diarios')
             .insert({
-                fecha: fechaAyer,
-                total_ventas: totalVentas,
-                ventas_efectivo: ventasEfectivo,
-                ventas_transferencia: ventasTransferencia,
-                ventas_transbank: ventasTransbank,
+                fecha: fechaHoy,
+                total_ventas: totalVentasConsolidado,
+                ventas_efectivo: efectivoConsolidado,
+                ventas_transferencia: transferenciaConsolidada,
+                ventas_transbank: transbankConsolidado,
                 total_gastos: totalGastos,
-                detalle_gastos_json: {
-                    gastos_operacionales: gastosAyer || [],
-                    pagos_personal: pagosPersonalAyer || [],
-                    total_pagos_personal: totalPagosPersonal
-                },
+                detalle_gastos_json: detalleGastosCompleto,
                 efectivo_esperado: efectivoEsperado,
                 efectivo_real: null,
                 diferencia: null,
                 cerrado_por: 'Sistema Automático',
                 cerrado_at: new Date().toISOString(),
-                notas: `🤖 Cierre automático - Requiere revisión de arqueo | Gastos: $${formatoMoneda(totalGastos)} | Pagos Personal: $${formatoMoneda(totalPagosPersonal)}`,
+                notas: `🤖 Cierre automático a las 21:00 - Requiere revisión de arqueo
+
+📊 RESUMEN CONSOLIDADO:
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+💰 VENTAS TOTAL: $${formatoMoneda(totalVentasConsolidado)}
+
+🏪 POS LOCAL: $${formatoMoneda(totalVentas)}
+   • Efectivo: $${formatoMoneda(ventasEfectivo)}
+   • Tarjetas: $${formatoMoneda(ventasTransbank)}
+   • Transferencias: $${formatoMoneda(ventasTransferencia)}
+   • Ventas registradas: ${ventasHoy ? ventasHoy.length : 0}
+
+🚚 DELIVERY/REPARTO: $${formatoMoneda(repartoTotal)}
+   • Efectivo: $${formatoMoneda(repartoEfectivo)}
+   • Tarjetas: $${formatoMoneda(repartoTarjetas)}
+   • Transferencias: $${formatoMoneda(repartoTransferencias)}
+
+💸 SALIDAS:
+   • Gastos Operacionales: $${formatoMoneda(totalGastos)}
+   • Pagos Personal: $${formatoMoneda(totalPagosPersonal)}
+
+💵 EFECTIVO ESPERADO EN CAJA: $${formatoMoneda(efectivoEsperado)}
+   (Efectivo POS + Delivery - Gastos - Pagos)
+
+⚠️ PENDIENTE: Ingresar efectivo real para completar arqueo`,
                 cierre_automatico: true
             })
             .select();
         
         if (errorCierre) throw errorCierre;
         
-        console.log('✅ Cierre automático ejecutado exitosamente:', cierreNuevo);
+        console.log('✅ Cierre automático ejecutado exitosamente para', fechaHoy);
+        console.log('📊 Consolidado:', {
+            total: totalVentasConsolidado,
+            pos: totalVentas,
+            reparto: repartoTotal,
+            efectivoEsperado: efectivoEsperado
+        });
+        
+        // Guardar en localStorage el último cierre automático exitoso
+        localStorage.setItem('ultimo_cierre_automatico', JSON.stringify({
+            fecha: fechaHoy,
+            timestamp: new Date().toISOString(),
+            exito: true,
+            totales: {
+                ventas: totalVentasConsolidado,
+                efectivo_esperado: efectivoEsperado
+            }
+        }));
+        
+        // MEJORA 2: Notificación al encargado sobre cierre exitoso
+        if (currentUserRole === 'encargado') {
+            // Esperar 2 segundos para asegurar que el cierre se guardó
+            setTimeout(() => {
+                mostrarNotificacion(
+                    `✅ Cierre automático completado para ${new Date(fechaHoy).toLocaleDateString('es-CL')}\n\n` +
+                    `💰 Total ventas: $${formatoMoneda(totalVentasConsolidado)}\n` +
+                    `💵 Efectivo esperado: $${formatoMoneda(efectivoEsperado)}\n\n` +
+                    `⏳ Pendiente: Completar arqueo de efectivo real`,
+                    'success',
+                    12000
+                );
+            }, 2000);
+        }
         
     } catch (error) {
+        console.error('❌ Error en cierre automático:', error);
+        
+        // Guardar error en localStorage para debugging
+        const erroresAnteriores = JSON.parse(localStorage.getItem('errores_cierre_automatico') || '[]');
+        erroresAnteriores.push({
+            fecha: new Date().toISOString(),
+            fechaIntento: hoy?.toISOString().split('T')[0] || 'desconocida',
+            error: error.message,
+            stack: error.stack
+        });
+        // Mantener solo últimos 10 errores
+        if (erroresAnteriores.length > 10) {
+            erroresAnteriores.shift();
+        }
+        localStorage.setItem('errores_cierre_automatico', JSON.stringify(erroresAnteriores));
+        
         manejarError(error, {
             contexto: 'ejecutarCierreAutomatico',
             mensajeUsuario: 'Error en cierre automático del día',
-            mostrarNotificacion: false, // Sistema automático, no molestar al usuario
+            mostrarNotificacion: false,
             esErrorCritico: true
         });
+    }
+}
+
+/**
+ * NUEVO: Recuperar cierres perdidos (días sin cierre registrado)
+ */
+async function recuperarCierresPerdidos() {
+    try {
+        if (!window.supabaseClient) {
+            return;
+        }
+        
+        console.log('🔍 Verificando cierres perdidos...');
+        
+        // Revisar últimos 7 días
+        const hoy = new Date();
+        const hace7Dias = new Date();
+        hace7Dias.setDate(hoy.getDate() - 7);
+        
+        // Obtener todos los cierres de los últimos 7 días
+        const { data: cierresExistentes, error: errorCierres } = await window.supabaseClient
+            .from('cierres_diarios')
+            .select('fecha')
+            .gte('fecha', hace7Dias.toISOString().split('T')[0])
+            .lt('fecha', hoy.toISOString().split('T')[0]);
+        
+        if (errorCierres) throw errorCierres;
+        
+        const fechasConCierre = new Set(cierresExistentes?.map(c => c.fecha) || []);
+        
+        // Detectar días sin cierre
+        const diasSinCierre = [];
+        for (let i = 1; i <= 7; i++) {
+            const fecha = new Date();
+            fecha.setDate(hoy.getDate() - i);
+            const fechaStr = fecha.toISOString().split('T')[0];
+            
+            if (!fechasConCierre.has(fechaStr)) {
+                diasSinCierre.push(fechaStr);
+            }
+        }
+        
+        if (diasSinCierre.length === 0) {
+            console.log('✅ No hay cierres perdidos');
+            return;
+        }
+        
+        console.warn(`⚠️ Se encontraron ${diasSinCierre.length} día(s) sin cierre:`, diasSinCierre);
+        
+        // Crear cierres para días perdidos
+        for (const fechaPerdida of diasSinCierre) {
+            try {
+                await crearCierreRecuperado(fechaPerdida);
+                console.log(`✅ Cierre recuperado para ${fechaPerdida}`);
+            } catch (errorRecuperacion) {
+                console.error(`❌ No se pudo recuperar cierre de ${fechaPerdida}:`, errorRecuperacion);
+            }
+        }
+        
+        // Notificar al encargado si hay cierres recuperados
+        if (currentUserRole === 'encargado' && diasSinCierre.length > 0) {
+            mostrarNotificacion(
+                `Se recuperaron ${diasSinCierre.length} cierre(s) perdido(s). 
+                Revisa el historial para completar arqueos pendientes.`,
+                'warning',
+                8000
+            );
+        }
+        
+    } catch (error) {
+        console.error('❌ Error en recuperación de cierres:', error);
+    }
+}
+
+/**
+ * NUEVO: Crear cierre recuperado para una fecha específica
+ */
+async function crearCierreRecuperado(fecha) {
+    try {
+        const inicioDia = new Date(fecha);
+        inicioDia.setHours(0, 0, 0, 0);
+        const finDia = new Date(fecha);
+        finDia.setHours(23, 59, 59, 999);
+        
+        // Cargar ventas
+        const { data: ventas, error: errorVentas } = await window.supabaseClient
+            .from('ventas')
+            .select('*')
+            .gte('fecha', inicioDia.toISOString())
+            .lte('fecha', finDia.toISOString());
+        
+        if (errorVentas) throw errorVentas;
+        
+        let totalVentas = 0;
+        let ventasEfectivo = 0;
+        let ventasTransbank = 0;
+        let ventasTransferencia = 0;
+        
+        if (ventas && ventas.length > 0) {
+            ventas.forEach(venta => {
+                totalVentas += venta.total;
+                const detallePagos = venta.detalle_pagos;
+                if (typeof detallePagos === 'string' && detallePagos.startsWith('[')) {
+                    const pagos = JSON.parse(detallePagos);
+                    pagos.forEach(pago => {
+                        if (pago.metodo === 'Efectivo') ventasEfectivo += pago.monto;
+                        else if (pago.metodo === 'Tarjeta' || pago.metodo === 'Transbank') ventasTransbank += pago.monto;
+                        else if (pago.metodo === 'Transferencia') ventasTransferencia += pago.monto;
+                    });
+                } else if (typeof detallePagos === 'string') {
+                    if (detallePagos === 'Efectivo') ventasEfectivo += venta.total;
+                    else if (detallePagos === 'Tarjeta' || detallePagos === 'Transbank') ventasTransbank += venta.total;
+                    else if (detallePagos === 'Transferencia') ventasTransferencia += venta.total;
+                }
+            });
+        }
+        
+        // Cargar gastos
+        const { data: gastos, error: errorGastos } = await window.supabaseClient
+            .from('gastos')
+            .select('*')
+            .gte('fecha', inicioDia.toISOString())
+            .lte('fecha', finDia.toISOString());
+        
+        if (errorGastos) throw errorGastos;
+        const totalGastos = gastos ? gastos.reduce((sum, g) => sum + parseFloat(g.monto), 0) : 0;
+        
+        // Cargar pagos personal
+        const { data: pagosPersonal, error: errorPagos } = await window.supabaseClient
+            .from('pagos_personal')
+            .select('*')
+            .gte('fecha', inicioDia.toISOString())
+            .lte('fecha', finDia.toISOString());
+        
+        if (errorPagos) throw errorPagos;
+        const totalPagosPersonal = pagosPersonal ? pagosPersonal.reduce((sum, p) => sum + parseFloat(p.total_pago), 0) : 0;
+        
+        // Cargar reparto
+        let repartoEfectivo = 0;
+        let repartoTarjetas = 0;
+        let repartoTransferencias = 0;
+        let repartoTotal = 0;
+        
+        try {
+            const { data: pedidosReparto, error: errorReparto } = await window.supabaseClient
+                .rpc('obtener_pedidos_dia', { fecha_consulta: fecha });
+            
+            if (!errorReparto && pedidosReparto && pedidosReparto.length > 0) {
+                pedidosReparto.forEach(pedido => {
+                    const metodo = pedido.metodo_pago;
+                    const monto = parseFloat(pedido.total) || 0;
+                    const esTransferencia = metodo === 'TP' || metodo === 'TG' || metodo === 'T';
+                    const fechaContabilizar = new Date(pedido.fecha);
+                    
+                    if (esTransferencia && pedido.boleteada && pedido.fecha_boleta) {
+                        fechaContabilizar.setTime(new Date(pedido.fecha_boleta).getTime());
+                    } else if (metodo === 'TG') {
+                        fechaContabilizar.setTime(pedido.fecha_boleta ? new Date(pedido.fecha_boleta).getTime() : new Date(pedido.fecha).getTime());
+                    } else if (metodo === 'TP') {
+                        return;
+                    }
+                    
+                    const fechaContabilizar_str = fechaContabilizar.toISOString().split('T')[0];
+                    if (fechaContabilizar_str === fecha) {
+                        repartoTotal += monto;
+                        if (metodo === 'E') repartoEfectivo += monto;
+                        else if (metodo === 'DC') repartoTarjetas += monto;
+                        else if (esTransferencia) repartoTransferencias += monto;
+                    }
+                });
+            }
+        } catch (errorReparto) {
+            console.warn('⚠️ No se pudieron cargar datos de reparto para recuperación:', errorReparto);
+        }
+        
+        const totalVentasConsolidado = totalVentas + repartoTotal;
+        const efectivoEsperado = ventasEfectivo + repartoEfectivo - totalGastos - totalPagosPersonal;
+        
+        // Preparar detalles formateados para JSON
+        const detalleGastos = gastos ? gastos.map(g => ({
+            id: g.id,
+            monto: g.monto,
+            descripcion: g.descripcion,
+            asignado_a: g.asignado_a,
+            hora: new Date(g.fecha).toLocaleTimeString('es-CL', { hour: '2-digit', minute: '2-digit' })
+        })) : [];
+
+        const detallePagosPersonal = pagosPersonal ? pagosPersonal.map(p => ({
+            id: p.id,
+            empleado: p.nombre_empleado,
+            puesto: p.puesto,
+            turno: p.turno,
+            pago_jornada: p.pago_jornada,
+            pago_almuerzo: p.pago_almuerzo,
+            total: p.total_pago
+        })) : [];
+        
+        // Insertar cierre recuperado
+        const { error: errorInsert } = await window.supabaseClient
+            .from('cierres_diarios')
+            .insert({
+                fecha: fecha,
+                total_ventas: totalVentasConsolidado,
+                ventas_efectivo: ventasEfectivo,
+                ventas_transferencia: ventasTransferencia,
+                ventas_transbank: ventasTransbank,
+                reparto_efectivo: repartoEfectivo,
+                reparto_tarjetas: repartoTarjetas,
+                reparto_transferencias: repartoTransferencias,
+                total_gastos: totalGastos,
+                detalle_gastos_json: {
+                    gastos_operacionales: detalleGastos,
+                    pagos_personal: detallePagosPersonal,
+                    total_pagos_personal: totalPagosPersonal
+                },
+                efectivo_esperado: efectivoEsperado,
+                efectivo_real: null,
+                diferencia: null,
+                cerrado_por: 'Sistema de Recuperación',
+                cerrado_at: new Date().toISOString(),
+                notas: `🔄 Cierre recuperado automáticamente - Requiere revisión
+
+📅 Fecha original: ${fecha}
+🕐 Recuperado: ${new Date().toLocaleString('es-CL')}
+
+📊 Datos recuperados:
+• Ventas Local: $${formatoMoneda(totalVentas)} (${ventas ? ventas.length : 0} ventas)
+• Reparto: $${formatoMoneda(repartoTotal)} (${pedidosReparto ? pedidosReparto.length : 0} pedidos)
+  - Efectivo: $${formatoMoneda(repartoEfectivo)}
+  - Tarjetas: $${formatoMoneda(repartoTarjetas)}
+  - Transferencias: $${formatoMoneda(repartoTransferencias)}
+• Gastos: $${formatoMoneda(totalGastos)} (${detalleGastos.length} registros)
+• Pagos Personal: $${formatoMoneda(totalPagosPersonal)} (${detallePagosPersonal.length} empleados)
+• Efectivo Esperado: $${formatoMoneda(efectivoEsperado)}
+
+⚠️ IMPORTANTE: Este cierre fue creado automáticamente porque no existía registro.
+Verifica que los datos sean correctos y completa el arqueo de efectivo real.`,
+                cierre_automatico: true
+            });
+        
+        if (errorInsert) throw errorInsert;
+        
+        return true;
+        
+    } catch (error) {
+        throw error;
+    }
+}
+
+/**
+ * NUEVO: Recuperación manual de cierres (con UI mejorada)
+ * Llamada desde el botón en el modal de historial
+ */
+async function recuperarCierresManuales() {
+    try {
+        // Validar conexión
+        if (!window.supabaseClient) {
+            mostrarNotificacion('Error: No hay conexión a la base de datos', 'error', 5000);
+            return;
+        }
+        
+        // Notificación de inicio
+        mostrarNotificacion('🔍 Escaneando últimos 7 días en busca de cierres perdidos...', 'info', 3000);
+        
+        console.log('🔍 Recuperación manual iniciada por usuario');
+        
+        // Revisar últimos 7 días
+        const hoy = new Date();
+        const hace7Dias = new Date();
+        hace7Dias.setDate(hoy.getDate() - 7);
+        
+        // Obtener todos los cierres de los últimos 7 días
+        const { data: cierresExistentes, error: errorCierres } = await window.supabaseClient
+            .from('cierres_diarios')
+            .select('fecha')
+            .gte('fecha', hace7Dias.toISOString().split('T')[0])
+            .lt('fecha', hoy.toISOString().split('T')[0]);
+        
+        if (errorCierres) {
+            console.error('❌ Error al consultar cierres:', errorCierres);
+            mostrarNotificacion('Error al verificar cierres: ' + errorCierres.message, 'error', 6000);
+            return;
+        }
+        
+        const fechasConCierre = new Set(cierresExistentes?.map(c => c.fecha) || []);
+        
+        // Detectar días sin cierre
+        const diasSinCierre = [];
+        for (let i = 1; i <= 7; i++) {
+            const fecha = new Date();
+            fecha.setDate(hoy.getDate() - i);
+            const fechaStr = fecha.toISOString().split('T')[0];
+            
+            if (!fechasConCierre.has(fechaStr)) {
+                diasSinCierre.push(fechaStr);
+            }
+        }
+        
+        // Si no hay cierres perdidos
+        if (diasSinCierre.length === 0) {
+            console.log('✅ No se encontraron cierres perdidos');
+            mostrarNotificacion('✅ No se encontraron cierres perdidos en los últimos 7 días', 'success', 5000);
+            return;
+        }
+        
+        console.warn(`⚠️ Se encontraron ${diasSinCierre.length} día(s) sin cierre:`, diasSinCierre);
+        
+        // Notificación de progreso
+        mostrarNotificacion(`📦 Recuperando ${diasSinCierre.length} cierre(s)... Por favor espera.`, 'info', 4000);
+        
+        let recuperados = 0;
+        let fallidos = 0;
+        
+        // Crear cierres para días perdidos
+        for (const fechaPerdida of diasSinCierre) {
+            try {
+                await crearCierreRecuperado(fechaPerdida);
+                console.log(`✅ Cierre recuperado para ${fechaPerdida}`);
+                recuperados++;
+            } catch (errorRecuperacion) {
+                console.error(`❌ No se pudo recuperar cierre de ${fechaPerdida}:`, errorRecuperacion);
+                fallidos++;
+            }
+        }
+        
+        // Notificación de resultados
+        if (recuperados > 0) {
+            mostrarNotificacion(
+                `✅ Se recuperaron ${recuperados} cierre(s) exitosamente. ${fallidos > 0 ? `(${fallidos} fallaron)` : ''}\n\nRevisa el historial para completar los arqueos pendientes.`,
+                recuperados > 0 && fallidos === 0 ? 'success' : 'warning',
+                8000
+            );
+            
+            // Recargar historial si está abierto
+            if (document.getElementById('modalHistorialCaja').style.display === 'flex') {
+                console.log('🔄 Recargando historial...');
+                cargarHistorialCaja();
+            }
+        } else {
+            mostrarNotificacion(
+                `❌ No se pudo recuperar ningún cierre. Revisa la consola para más detalles.`,
+                'error',
+                6000
+            );
+        }
+        
+    } catch (error) {
+        console.error('❌ Error en recuperación manual de cierres:', error);
+        mostrarNotificacion('Error inesperado: ' + error.message, 'error', 6000);
     }
 }
 
@@ -7754,7 +8444,8 @@ async function cargarHistorialCaja() {
         
         datosHistorialCaja = data || [];
         
-        // Renderizar gráfico y tabla
+        // Renderizar KPIs, gráfico y tabla
+        renderKPIsHistorial();
         renderChartHistorial();
         renderTablaHistorialCaja();
         
@@ -7765,6 +8456,256 @@ async function cargarHistorialCaja() {
             contexto: 'cargarHistorialCaja',
             mensajeUsuario: 'Error al cargar historial de caja'
         });
+    }
+}
+
+/**
+ * Calcular y renderizar KPIs del historial
+ */
+function renderKPIsHistorial() {
+    const container = document.getElementById('kpisHistorialCaja');
+    
+    if (!container) {
+        console.warn('⚠️ Contenedor de KPIs no encontrado');
+        return;
+    }
+    
+    if (datosHistorialCaja.length === 0) {
+        container.innerHTML = `
+            <div style="text-align: center; padding: 32px; color: hsl(var(--muted-foreground));">
+                <p>No hay datos para calcular estadísticas</p>
+            </div>
+        `;
+        return;
+    }
+    
+    // Calcular KPIs
+    const totalVentas = datosHistorialCaja.reduce((sum, d) => sum + (d.total_ventas || 0), 0);
+    const totalGastos = datosHistorialCaja.reduce((sum, d) => sum + (d.total_gastos || 0), 0);
+    const promedioDiario = totalVentas / datosHistorialCaja.length;
+    
+    // Mejor y peor día
+    let mejorDia = datosHistorialCaja[0];
+    let peorDia = datosHistorialCaja[0];
+    
+    datosHistorialCaja.forEach(dia => {
+        if ((dia.total_ventas || 0) > (mejorDia.total_ventas || 0)) mejorDia = dia;
+        if ((dia.total_ventas || 0) < (peorDia.total_ventas || 0)) peorDia = dia;
+    });
+    
+    // Calcular tendencia (comparar primera mitad vs segunda mitad)
+    let tendencia = 0;
+    let tendenciaTexto = 'Sin cambios';
+    let tendenciaIcon = '➡️';
+    let tendenciaColor = 'hsl(var(--muted-foreground))';
+    
+    if (datosHistorialCaja.length >= 4) {
+        const mitad = Math.floor(datosHistorialCaja.length / 2);
+        const segundaMitad = datosHistorialCaja.slice(0, mitad);
+        const primeraMitad = datosHistorialCaja.slice(mitad);
+        
+        const promedioReciente = segundaMitad.reduce((sum, d) => sum + (d.total_ventas || 0), 0) / segundaMitad.length;
+        const promedioAnterior = primeraMitad.reduce((sum, d) => sum + (d.total_ventas || 0), 0) / primeraMitad.length;
+        
+        if (promedioAnterior > 0) {
+            tendencia = ((promedioReciente - promedioAnterior) / promedioAnterior) * 100;
+            
+            if (tendencia > 5) {
+                tendenciaTexto = `+${tendencia.toFixed(1)}% vs período anterior`;
+                tendenciaIcon = '📈';
+                tendenciaColor = 'hsl(142 76% 36%)';
+            } else if (tendencia < -5) {
+                tendenciaTexto = `${tendencia.toFixed(1)}% vs período anterior`;
+                tendenciaIcon = '📉';
+                tendenciaColor = 'hsl(0 84% 60%)';
+            } else {
+                tendenciaTexto = 'Estable';
+                tendenciaIcon = '➡️';
+            }
+        }
+    }
+    
+    // Días cuadrados vs con diferencia
+    const diasCuadrados = datosHistorialCaja.filter(d => (d.diferencia || 0) === 0).length;
+    const diasConDiferencia = datosHistorialCaja.length - diasCuadrados;
+    const porcentajeCuadrados = (diasCuadrados / datosHistorialCaja.length) * 100;
+    
+    // Formatear fechas
+    const formatearFecha = (fechaStr) => {
+        const fecha = new Date(fechaStr);
+        return fecha.toLocaleDateString('es-CL', { 
+            weekday: 'short', 
+            day: '2-digit', 
+            month: 'short' 
+        });
+    };
+    
+    // HTML de KPIs
+    container.innerHTML = `
+        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 16px;">
+            
+            <!-- Total Vendido -->
+            <div style="background: linear-gradient(135deg, hsl(142 76% 36% / 0.1), hsl(142 76% 36% / 0.05)); border: 2px solid hsl(142 76% 36% / 0.3); border-radius: 12px; padding: 20px; position: relative; overflow: hidden;">
+                <div style="position: absolute; top: -10px; right: -10px; font-size: 60px; opacity: 0.1;">💰</div>
+                <p style="margin: 0; font-size: 13px; color: hsl(var(--muted-foreground)); font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px;">Total Vendido</p>
+                <p style="margin: 8px 0 4px; font-size: 32px; font-weight: 900; color: hsl(142 76% 36%); line-height: 1;">$${formatoMoneda(totalVentas)}</p>
+                <p style="margin: 0; font-size: 12px; color: hsl(var(--muted-foreground));">
+                    en ${datosHistorialCaja.length} día${datosHistorialCaja.length !== 1 ? 's' : ''}
+                </p>
+            </div>
+            
+            <!-- Promedio Diario -->
+            <div style="background: linear-gradient(135deg, hsl(var(--primary) / 0.1), hsl(var(--primary) / 0.05)); border: 2px solid hsl(var(--primary) / 0.3); border-radius: 12px; padding: 20px; position: relative; overflow: hidden;">
+                <div style="position: absolute; top: -10px; right: -10px; font-size: 60px; opacity: 0.1;">📊</div>
+                <p style="margin: 0; font-size: 13px; color: hsl(var(--muted-foreground)); font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px;">Promedio Diario</p>
+                <p style="margin: 8px 0 4px; font-size: 32px; font-weight: 900; color: hsl(var(--primary)); line-height: 1;">$${formatoMoneda(promedioDiario)}</p>
+                <p style="margin: 0; font-size: 12px; color: hsl(var(--muted-foreground));">
+                    Gastos: $${formatoMoneda(totalGastos / datosHistorialCaja.length)}
+                </p>
+            </div>
+            
+            <!-- Mejor Día -->
+            <div style="background: linear-gradient(135deg, hsl(38 92% 50% / 0.15), hsl(38 92% 50% / 0.05)); border: 2px solid hsl(38 92% 50% / 0.3); border-radius: 12px; padding: 20px; position: relative; overflow: hidden;">
+                <div style="position: absolute; top: -10px; right: -10px; font-size: 60px; opacity: 0.1;">🏆</div>
+                <p style="margin: 0; font-size: 13px; color: hsl(var(--muted-foreground)); font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px;">Mejor Día</p>
+                <p style="margin: 8px 0 4px; font-size: 32px; font-weight: 900; color: hsl(38 92% 50%); line-height: 1;">$${formatoMoneda(mejorDia.total_ventas || 0)}</p>
+                <p style="margin: 0; font-size: 12px; color: hsl(var(--muted-foreground));">
+                    ${formatearFecha(mejorDia.fecha)}
+                </p>
+            </div>
+            
+            <!-- Tendencia -->
+            <div style="background: linear-gradient(135deg, ${tendencia >= 0 ? 'hsl(142 76% 36% / 0.1)' : 'hsl(0 84% 60% / 0.1)'}, transparent); border: 2px solid ${tendencia >= 0 ? 'hsl(142 76% 36% / 0.3)' : 'hsl(0 84% 60% / 0.3)'}; border-radius: 12px; padding: 20px; position: relative; overflow: hidden;">
+                <div style="position: absolute; top: -10px; right: -10px; font-size: 60px; opacity: 0.1;">${tendenciaIcon}</div>
+                <p style="margin: 0; font-size: 13px; color: hsl(var(--muted-foreground)); font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px;">Tendencia</p>
+                <p style="margin: 8px 0 4px; font-size: 24px; font-weight: 900; color: ${tendenciaColor}; line-height: 1;">${tendenciaIcon} ${tendenciaTexto}</p>
+                <p style="margin: 0; font-size: 12px; color: hsl(var(--muted-foreground));">
+                    ${diasCuadrados} día${diasCuadrados !== 1 ? 's' : ''} cuadrado${diasCuadrados !== 1 ? 's' : ''} (${porcentajeCuadrados.toFixed(0)}%)
+                </p>
+            </div>
+            
+        </div>
+    `;
+}
+
+/**
+ * Búsqueda inteligente en historial
+ */
+function buscarEnHistorial() {
+    const query = document.getElementById('busquedaInteligente').value.toLowerCase().trim();
+    
+    if (!query) {
+        // Si está vacío, mostrar todos
+        renderTablaHistorialCaja();
+        return;
+    }
+    
+    const hoy = new Date();
+    let filtrados = [...datosHistorialCaja];
+    
+    // Búsqueda por día de semana
+    const diasSemana = {
+        'lunes': 1, 'martes': 2, 'miercoles': 3, 'miércoles': 3,
+        'jueves': 4, 'viernes': 5, 'sabado': 6, 'sábado': 6, 'domingo': 0
+    };
+    
+    if (diasSemana.hasOwnProperty(query)) {
+        const diaNum = diasSemana[query];
+        filtrados = datosHistorialCaja.filter(cierre => {
+            const fecha = new Date(cierre.fecha);
+            return fecha.getDay() === diaNum;
+        });
+    }
+    // Búsqueda por "semana pasada"
+    else if (query.includes('semana pasada') || query.includes('semana anterior')) {
+        const inicioSemana = new Date(hoy);
+        inicioSemana.setDate(hoy.getDate() - hoy.getDay() - 6); // Lunes de semana pasada
+        const finSemana = new Date(inicioSemana);
+        finSemana.setDate(inicioSemana.getDate() + 6); // Domingo de semana pasada
+        
+        filtrados = datosHistorialCaja.filter(cierre => {
+            const fecha = new Date(cierre.fecha);
+            return fecha >= inicioSemana && fecha <= finSemana;
+        });
+    }
+    // Búsqueda por "esta semana"
+    else if (query.includes('esta semana') || query.includes('semana actual')) {
+        const inicioSemana = new Date(hoy);
+        inicioSemana.setDate(hoy.getDate() - hoy.getDay() + 1); // Lunes de esta semana
+        
+        filtrados = datosHistorialCaja.filter(cierre => {
+            const fecha = new Date(cierre.fecha);
+            return fecha >= inicioSemana;
+        });
+    }
+    // Búsqueda por número (día del mes)
+    else if (/^\d{1,2}$/.test(query)) {
+        const dia = parseInt(query);
+        filtrados = datosHistorialCaja.filter(cierre => {
+            const fecha = new Date(cierre.fecha);
+            return fecha.getDate() === dia;
+        });
+    }
+    // Búsqueda por estado
+    else if (query.includes('cuadrado') || query.includes('cuadrados')) {
+        filtrados = datosHistorialCaja.filter(cierre => (cierre.diferencia || 0) === 0);
+    }
+    else if (query.includes('sobrante') || query.includes('sobrantes')) {
+        filtrados = datosHistorialCaja.filter(cierre => (cierre.diferencia || 0) > 0);
+    }
+    else if (query.includes('faltante') || query.includes('faltantes')) {
+        filtrados = datosHistorialCaja.filter(cierre => (cierre.diferencia || 0) < 0);
+    }
+    else if (query.includes('pendiente') || query.includes('pendientes')) {
+        filtrados = datosHistorialCaja.filter(cierre => 
+            cierre.cierre_automatico === true && 
+            (cierre.efectivo_real === null || cierre.efectivo_real === undefined)
+        );
+    }
+    // Búsqueda por texto en fecha
+    else {
+        filtrados = datosHistorialCaja.filter(cierre => {
+            const fecha = new Date(cierre.fecha);
+            const fechaStr = fecha.toLocaleDateString('es-CL', { 
+                weekday: 'long', 
+                day: '2-digit', 
+                month: 'long', 
+                year: 'numeric' 
+            }).toLowerCase();
+            return fechaStr.includes(query);
+        });
+    }
+    
+    // Actualizar resultados
+    const badge = document.getElementById('resultadosBusqueda');
+    if (badge) {
+        if (filtrados.length === datosHistorialCaja.length) {
+            badge.style.display = 'none';
+        } else {
+            badge.style.display = 'inline-block';
+            badge.textContent = `${filtrados.length} resultado${filtrados.length !== 1 ? 's' : ''}`;
+        }
+    }
+    
+    // Renderizar tabla filtrada
+    const temp = datosHistorialCaja;
+    datosHistorialCaja = filtrados;
+    renderTablaHistorialCaja();
+    datosHistorialCaja = temp;
+    
+    // Mostrar mensaje si no hay resultados
+    if (filtrados.length === 0) {
+        const container = document.getElementById('tablaHistorialCaja');
+        container.innerHTML = `
+            <div style="text-align: center; padding: 40px; color: hsl(var(--muted-foreground));">
+                <svg width="64" height="64" viewBox="0 0 24 24" fill="none" style="opacity: 0.3; margin: 0 auto 16px;">
+                    <circle cx="11" cy="11" r="8" stroke="currentColor" stroke-width="2"/>
+                    <path d="M21 21l-4.35-4.35" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+                </svg>
+                <p style="font-size: 16px; font-weight: 600; margin: 0 0 8px;">No se encontraron resultados</p>
+                <p style="margin: 0;">Intenta con: "lunes", "semana pasada", "15", "cuadrados"</p>
+            </div>
+        `;
     }
 }
 
@@ -7956,7 +8897,24 @@ function renderTablaHistorialCaja() {
                 <tbody>
     `;
     
+    // Helper: Extraer valores del desglose cuando existan (cierres consolidados)
+    const obtenerDatosConsolidados = (cierre) => {
+        const desglose = cierre.detalle_gastos_json?.desglose_ventas;
+        
+        return {
+            // Reparto (puede venir de columnas o del JSON)
+            reparto_efectivo: cierre.reparto_efectivo || desglose?.reparto?.efectivo || 0,
+            reparto_tarjetas: cierre.reparto_tarjetas || desglose?.reparto?.tarjetas || 0,
+            reparto_transferencias: cierre.reparto_transferencias || desglose?.reparto?.transferencias || 0,
+            // Pagos personal (en JSON para cierres automáticos)
+            pagos_personal: cierre.pagos_personal || cierre.detalle_gastos_json?.total_pagos_personal || 0
+        };
+    };
+    
     datosHistorialCaja.forEach((cierre, index) => {
+        // Extraer datos consolidados
+        const datos = obtenerDatosConsolidados(cierre);
+        
         const fecha = new Date(cierre.fecha);
         const fechaFormato = fecha.toLocaleDateString('es-CL', { 
             weekday: 'short', 
@@ -7972,9 +8930,10 @@ function renderTablaHistorialCaja() {
         const diferencia = cierre.diferencia || 0;
         let estadoIcon, estadoTexto, estadoColor;
         
+        // MEJORA 3: Indicador visual mejorado para cierres automáticos pendientes
         if (esAutomatico && esPendiente) {
-            estadoIcon = '🤖';
-            estadoTexto = 'Pendiente';
+            estadoIcon = '⏳';
+            estadoTexto = 'Pendiente Arqueo';
             estadoColor = 'hsl(38 92% 50%)';
         } else if (diferencia === 0) {
             estadoIcon = '✅';
@@ -7991,12 +8950,17 @@ function renderTablaHistorialCaja() {
         }
         
         html += `
-            <tr style="border-bottom: 1px solid hsl(var(--border)); transition: background 0.2s; ${esAutomatico && esPendiente ? 'background: hsl(38 92% 50% / 0.05);' : ''}" 
+            <tr style="border-bottom: 1px solid hsl(var(--border)); transition: background 0.2s; ${esAutomatico && esPendiente ? 'background: hsl(38 92% 50% / 0.08); border-left: 4px solid hsl(38 92% 50%);' : ''}" 
                 onmouseover="this.style.background='hsl(var(--muted) / 0.3)'" 
-                onmouseout="this.style.background='${esAutomatico && esPendiente ? 'hsl(38 92% 50% / 0.05)' : 'transparent'}'">
+                onmouseout="this.style.background='${esAutomatico && esPendiente ? 'hsl(38 92% 50% / 0.08)' : 'transparent'}'">
                 <td style="padding: 16px; font-weight: 600;">
-                    ${esAutomatico ? '🤖 ' : ''}${fechaFormato}
-                    ${esAutomatico && esPendiente ? '<br><span style="font-size: 11px; color: hsl(38 92% 50%); font-weight: 700;">Requiere revisión</span>' : ''}
+                    <div style="display: flex; align-items: center; gap: 8px;">
+                        ${esAutomatico ? '<span style="font-size: 20px;" title="Cierre automático">🤖</span>' : ''}
+                        <div>
+                            ${fechaFormato}
+                            ${esAutomatico && esPendiente ? '<br><span style="display: inline-block; margin-top: 4px; padding: 2px 8px; background: hsl(38 92% 50%); color: white; border-radius: 4px; font-size: 11px; font-weight: 700; animation: pulse 2s ease-in-out infinite;">⚠️ Requiere arqueo</span>' : ''}
+                        </div>
+                    </div>
                 </td>
                 <td style="padding: 16px; text-align: right; font-weight: 600; color: hsl(142 76% 36%);">$${formatoMoneda(cierre.total_ventas || 0)}</td>
                 <td style="padding: 16px; text-align: right; color: hsl(0 84% 60%);">$${formatoMoneda(cierre.total_gastos || 0)}</td>
@@ -8026,32 +8990,79 @@ function renderTablaHistorialCaja() {
         html += `
             <tr id="detalles-${index}" style="display: none; background: hsl(var(--muted) / 0.2);">
                 <td colspan="6" style="padding: 24px;">
-                    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 20px;">
-                        <!-- Ventas por Método -->
-                        <div style="background: white; padding: 16px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.05);">
-                            <h4 style="margin: 0 0 12px; font-size: 15px; font-weight: 700;">💳 Desglose de Ventas</h4>
+                    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 20px;">
+                        
+                        <!-- Ventas Local POS -->
+                        <div style="background: white; padding: 16px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.05); border-left: 4px solid hsl(142 76% 36%);">
+                            <h4 style="margin: 0 0 12px; font-size: 15px; font-weight: 700; color: hsl(142 76% 36%);">🏪 Ventas Local (POS)</h4>
                             <div style="display: flex; flex-direction: column; gap: 8px; font-size: 14px;">
                                 <div style="display: flex; justify-content: space-between;">
-                                    <span>Efectivo:</span>
+                                    <span>💵 Efectivo:</span>
                                     <strong>$${formatoMoneda(cierre.ventas_efectivo || 0)}</strong>
                                 </div>
                                 <div style="display: flex; justify-content: space-between;">
-                                    <span>Tarjeta:</span>
+                                    <span>💳 Tarjeta:</span>
                                     <strong>$${formatoMoneda(cierre.ventas_transbank || 0)}</strong>
                                 </div>
                                 <div style="display: flex; justify-content: space-between;">
-                                    <span>Transferencia:</span>
+                                    <span>🏦 Transferencia:</span>
                                     <strong>$${formatoMoneda(cierre.ventas_transferencia || 0)}</strong>
                                 </div>
                                 <div style="display: flex; justify-content: space-between; padding-top: 8px; border-top: 2px solid hsl(var(--border)); margin-top: 4px;">
-                                    <strong>Total:</strong>
-                                    <strong style="color: hsl(142 76% 36%);">$${formatoMoneda(cierre.total_ventas || 0)}</strong>
+                                    <strong>Total Local:</strong>
+                                    <strong style="color: hsl(142 76% 36%);">$${formatoMoneda((cierre.ventas_efectivo || 0) + (cierre.ventas_transbank || 0) + (cierre.ventas_transferencia || 0))}</strong>
                                 </div>
                             </div>
                         </div>
                         
-                        <!-- Arqueo -->
-                        <div style="background: white; padding: 16px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.05);">
+                        <!-- Reparto / Delivery -->
+                        <div style="background: white; padding: 16px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.05); border-left: 4px solid hsl(var(--primary));">
+                            <h4 style="margin: 0 0 12px; font-size: 15px; font-weight: 700; color: hsl(var(--primary));">🚚 Reparto / Delivery</h4>
+                            <div style="display: flex; flex-direction: column; gap: 8px; font-size: 14px;">
+                                <div style="display: flex; justify-content: space-between;">
+                                    <span>💵 Efectivo:</span>
+                                    <strong>$${formatoMoneda(datos.reparto_efectivo)}</strong>
+                                </div>
+                                <div style="display: flex; justify-content: space-between;">
+                                    <span>💳 Tarjetas:</span>
+                                    <strong>$${formatoMoneda(datos.reparto_tarjetas)}</strong>
+                                </div>
+                                <div style="display: flex; justify-content: space-between;">
+                                    <span>🏦 Transferencias:</span>
+                                    <strong>$${formatoMoneda(datos.reparto_transferencias)}</strong>
+                                </div>
+                                <div style="display: flex; justify-content: space-between; padding-top: 8px; border-top: 2px solid hsl(var(--border)); margin-top: 4px;">
+                                    <strong>Total Reparto:</strong>
+                                    <strong style="color: hsl(var(--primary));">$${formatoMoneda(datos.reparto_efectivo + datos.reparto_tarjetas + datos.reparto_transferencias)}</strong>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <!-- Consolidado Total -->
+                        <div style="background: linear-gradient(135deg, hsl(142 76% 36% / 0.1), hsl(var(--primary) / 0.1)); padding: 16px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.05); border: 2px solid hsl(142 76% 36% / 0.3);">
+                            <h4 style="margin: 0 0 12px; font-size: 15px; font-weight: 700;">📊 Consolidado del Día</h4>
+                            <div style="display: flex; flex-direction: column; gap: 8px; font-size: 14px;">
+                                <div style="display: flex; justify-content: space-between;">
+                                    <span>💵 Total Efectivo:</span>
+                                    <strong>$${formatoMoneda((cierre.ventas_efectivo || 0) + datos.reparto_efectivo)}</strong>
+                                </div>
+                                <div style="display: flex; justify-content: space-between;">
+                                    <span>💳 Total Tarjetas:</span>
+                                    <strong>$${formatoMoneda((cierre.ventas_transbank || 0) + datos.reparto_tarjetas)}</strong>
+                                </div>
+                                <div style="display: flex; justify-content: space-between;">
+                                    <span>🏦 Total Transferencias:</span>
+                                    <strong>$${formatoMoneda((cierre.ventas_transferencia || 0) + datos.reparto_transferencias)}</strong>
+                                </div>
+                                <div style="display: flex; justify-content: space-between; padding: 12px 0 8px; border-top: 3px double hsl(var(--border)); margin-top: 4px;">
+                                    <strong style="font-size: 16px;">💰 TOTAL VENTAS:</strong>
+                                    <strong style="color: hsl(142 76% 36%); font-size: 18px;">$${formatoMoneda(cierre.total_ventas || 0)}</strong>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <!-- Arqueo de Caja -->
+                        <div style="background: white; padding: 16px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.05); border-left: 4px solid ${estadoColor};">
                             <h4 style="margin: 0 0 12px; font-size: 15px; font-weight: 700;">🔍 Arqueo de Caja</h4>
                             <div style="display: flex; flex-direction: column; gap: 8px; font-size: 14px;">
                                 <div style="display: flex; justify-content: space-between;">
@@ -8060,18 +9071,86 @@ function renderTablaHistorialCaja() {
                                 </div>
                                 <div style="display: flex; justify-content: space-between;">
                                     <span>Efectivo Real:</span>
-                                    <strong>$${formatoMoneda(cierre.efectivo_real || 0)}</strong>
+                                    <strong>${esPendiente ? '<span style="color: hsl(38 92% 50%);">Sin registrar</span>' : '$' + formatoMoneda(cierre.efectivo_real || 0)}</strong>
                                 </div>
                                 <div style="display: flex; justify-content: space-between; padding-top: 8px; border-top: 2px solid hsl(var(--border)); margin-top: 4px;">
                                     <strong>Diferencia:</strong>
-                                    <strong style="color: ${estadoColor};">${diferencia >= 0 ? '+' : ''}$${formatoMoneda(Math.abs(diferencia))}</strong>
+                                    <strong style="color: ${estadoColor};">${esPendiente ? 'Pendiente' : (diferencia >= 0 ? '+' : '') + '$' + formatoMoneda(Math.abs(diferencia))}</strong>
+                                </div>
+                                <div style="margin-top: 8px; padding: 8px; background: ${estadoColor}15; border-radius: 6px; text-align: center;">
+                                    <span style="font-size: 13px; font-weight: 700; color: ${estadoColor};">
+                                        ${estadoIcon} ${estadoTexto}
+                                    </span>
                                 </div>
                             </div>
                         </div>
                         
-                        <!-- Información Adicional -->
+                        ${esAutomatico && esPendiente ? `
+                        <!-- Completar Arqueo Pendiente -->
+                        <div style="background: linear-gradient(135deg, hsl(38 92% 50% / 0.15), hsl(38 92% 50% / 0.05)); padding: 20px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.05); border: 2px solid hsl(38 92% 50%);">
+                            <h4 style="margin: 0 0 12px; font-size: 15px; font-weight: 700; color: hsl(38 92% 40%); display: flex; align-items: center; gap: 8px;">
+                                <span style="font-size: 20px;">⏳</span>
+                                Completar Arqueo
+                            </h4>
+                            <p style="margin: 0 0 16px; font-size: 13px; color: hsl(var(--muted-foreground));">
+                                Este cierre fue creado automáticamente. Ingresa el efectivo real contado en caja para completar el arqueo.
+                            </p>
+                            <div style="padding: 10px; background: hsl(199 89% 48% / 0.1); border-left: 3px solid hsl(199 89% 48%); border-radius: 4px; margin-bottom: 12px;">
+                                <p style="margin: 0; font-size: 12px; color: hsl(199 89% 35%); font-weight: 600;">
+                                    💾 Se guarda automáticamente como borrador mientras escribes.<br>
+                                    ⚠️ Para confirmar y guardar definitivamente, haz clic en "Completar Arqueo".
+                                </p>
+                            </div>
+                            <div style="margin-bottom: 12px;">
+                                <label style="display: block; margin-bottom: 6px; font-size: 13px; font-weight: 600;">💵 Efectivo Real Contado:</label>
+                                <input 
+                                    id="efectivoRealArqueo-${index}"
+                                    type="number" 
+                                    placeholder="Ej: 950000"
+                                    style="width: 100%; padding: 10px; border: 2px solid hsl(var(--border)); border-radius: 6px; font-size: 14px;"
+                                    oninput="guardarBorradorArqueo('${cierre.fecha}', ${index}, ${cierre.efectivo_esperado || 0})">
+                            </div>
+                            <div id="previaDiferencia-${index}" style="display: none; padding: 12px; background: white; border-radius: 6px; margin-bottom: 12px; border-left: 4px solid hsl(var(--primary));">
+                                <div style="display: flex; justify-content: space-between; font-size: 14px;">
+                                    <span style="font-weight: 600;">Diferencia:</span>
+                                    <strong id="diferenciaMonto-${index}"></strong>
+                                </div>
+                            </div>
+                            <button 
+                                onclick="completarArqueoPendiente('${cierre.fecha}', ${index})"
+                                style="width: 100%; padding: 12px; background: hsl(38 92% 50%); color: white; border: none; border-radius: 8px; cursor: pointer; font-weight: 700; font-size: 14px; display: flex; align-items: center; justify-content: center; gap: 8px; transition: all 0.2s;"
+                                onmouseover="this.style.background='hsl(38 92% 45%)'; this.style.transform='translateY(-2px)'"
+                                onmouseout="this.style.background='hsl(38 92% 50%)'; this.style.transform='translateY(0)'">
+                                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                    <path d="M20 6L9 17l-5-5"/>
+                                </svg>
+                                Completar Arqueo
+                            </button>
+                        </div>
+                        ` : ''}
+                        
+                        <!-- Gastos del Día -->
+                        <div style="background: white; padding: 16px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.05); border-left: 4px solid hsl(0 84% 60%);">
+                            <h4 style="margin: 0 0 12px; font-size: 15px; font-weight: 700; color: hsl(0 84% 60%);">💸 Gastos y Salidas</h4>
+                            <div style="display: flex; flex-direction: column; gap: 8px; font-size: 14px;">
+                                <div style="display: flex; justify-content: space-between;">
+                                    <span>Gastos Operacionales:</span>
+                                    <strong>$${formatoMoneda(cierre.total_gastos || 0)}</strong>
+                                </div>
+                                <div style="display: flex; justify-content: space-between;">
+                                    <span>Pagos Personal:</span>
+                                    <strong>$${formatoMoneda(datos.pagos_personal)}</strong>
+                                </div>
+                                <div style="display: flex; justify-content: space-between; padding-top: 8px; border-top: 2px solid hsl(var(--border)); margin-top: 4px;">
+                                    <strong>Total Salidas:</strong>
+                                    <strong style="color: hsl(0 84% 60%);">$${formatoMoneda((cierre.total_gastos || 0) + datos.pagos_personal)}</strong>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <!-- Información del Cierre -->
                         <div style="background: white; padding: 16px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.05);">
-                            <h4 style="margin: 0 0 12px; font-size: 15px; font-weight: 700;">ℹ️ Información</h4>
+                            <h4 style="margin: 0 0 12px; font-size: 15px; font-weight: 700;">ℹ️ Información del Cierre</h4>
                             <div style="display: flex; flex-direction: column; gap: 8px; font-size: 14px;">
                                 <div style="display: flex; justify-content: space-between;">
                                     <span>Cerrado por:</span>
@@ -8081,13 +9160,18 @@ function renderTablaHistorialCaja() {
                                     <span>Hora de cierre:</span>
                                     <strong>${cierre.cerrado_at ? new Date(cierre.cerrado_at).toLocaleTimeString('es-CL', { hour: '2-digit', minute: '2-digit' }) : 'N/A'}</strong>
                                 </div>
+                                <div style="display: flex; justify-content: space-between;">
+                                    <span>Tipo:</span>
+                                    <strong>${esAutomatico ? '🤖 Automático' : '👤 Manual'}</strong>
+                                </div>
                                 ${cierre.notas ? `
                                 <div style="margin-top: 8px; padding-top: 8px; border-top: 1px solid hsl(var(--border));">
-                                    <span style="font-size: 12px; color: hsl(var(--muted-foreground));">${cierre.notas}</span>
+                                    <span style="font-size: 12px; color: hsl(var(--muted-foreground)); font-style: italic;">"${cierre.notas}"</span>
                                 </div>
                                 ` : ''}
                             </div>
                         </div>
+                        
                     </div>
                 </td>
             </tr>
@@ -8118,6 +9202,185 @@ function verDetallesCierre(index) {
     // Toggle del seleccionado
     if (!isVisible) {
         detallesRow.style.display = 'table-row';
+        
+        // Intentar recuperar borrador si existe
+        const cierre = datosHistorialCaja[index];
+        if (cierre && cierre.cierre_automatico && !cierre.efectivo_real) {
+            // Esperar un poco para que el DOM se actualice
+            setTimeout(() => {
+                recuperarBorradorArqueo(cierre.fecha, index, cierre.efectivo_esperado || 0);
+            }, 100);
+        }
+    }
+}
+
+/**
+ * Guardar borrador de arqueo en localStorage y calcular diferencia
+ */
+function guardarBorradorArqueo(fecha, index, efectivoEsperado) {
+    const input = document.getElementById(`efectivoRealArqueo-${index}`);
+    const efectivoReal = parseFloat(input.value) || 0;
+    
+    // Guardar como borrador en localStorage
+    if (efectivoReal > 0) {
+        const claveBorrador = `borrador_arqueo_${fecha}`;
+        localStorage.setItem(claveBorrador, efectivoReal.toString());
+        console.log('💾 Borrador guardado:', { fecha, efectivoReal });
+    }
+    
+    // Calcular y mostrar diferencia
+    calcularDiferenciaArqueo(index, efectivoEsperado, efectivoReal);
+}
+
+/**
+ * Recuperar borrador de arqueo desde localStorage
+ */
+function recuperarBorradorArqueo(fecha, index, efectivoEsperado) {
+    const claveBorrador = `borrador_arqueo_${fecha}`;
+    const borradorGuardado = localStorage.getItem(claveBorrador);
+    
+    if (borradorGuardado) {
+        const input = document.getElementById(`efectivoRealArqueo-${index}`);
+        if (input) {
+            input.value = borradorGuardado;
+            // Mostrar diferencia con el valor recuperado
+            calcularDiferenciaArqueo(index, efectivoEsperado, parseFloat(borradorGuardado));
+            console.log('📂 Borrador recuperado:', { fecha, valor: borradorGuardado });
+            
+            // Mostrar notificación al usuario
+            setTimeout(() => {
+                mostrarNotificacion(
+                    `📂 Borrador recuperado\n\nSe encontró un valor previo: $${formatoMoneda(parseFloat(borradorGuardado))}\n\nRevísalo y haz clic en "Completar Arqueo" para confirmar.`,
+                    'info',
+                    6000
+                );
+            }, 500);
+        }
+    }
+}
+
+/**
+ * Limpiar borrador de arqueo de localStorage
+ */
+function limpiarBorradorArqueo(fecha) {
+    const claveBorrador = `borrador_arqueo_${fecha}`;
+    localStorage.removeItem(claveBorrador);
+    console.log('🗑️ Borrador eliminado:', { fecha });
+}
+
+/**
+ * Calcular diferencia en tiempo real al ingresar efectivo real
+ */
+function calcularDiferenciaArqueo(index, efectivoEsperado, efectivoRealParam) {
+    // Usar el parámetro si se proporciona, sino leer del input
+    const efectivoReal = efectivoRealParam !== undefined ? efectivoRealParam : (parseFloat(document.getElementById(`efectivoRealArqueo-${index}`)?.value) || 0);
+    
+    if (efectivoReal === 0) {
+        document.getElementById(`previaDiferencia-${index}`).style.display = 'none';
+        return;
+    }
+    
+    const diferencia = efectivoReal - efectivoEsperado;
+    const container = document.getElementById(`previaDiferencia-${index}`);
+    const montoElement = document.getElementById(`diferenciaMonto-${index}`);
+    
+    container.style.display = 'block';
+    
+    if (diferencia === 0) {
+        // Cuadrado (verde)
+        container.style.borderLeftColor = 'hsl(142 76% 36%)';
+        container.style.background = 'hsl(142 76% 36% / 0.1)';
+        montoElement.style.color = 'hsl(142 76% 36%)';
+        montoElement.textContent = '✅ ¡Cuadrado! ($0)';
+    } else if (diferencia > 0) {
+        // Sobrante (azul)
+        container.style.borderLeftColor = 'hsl(199 89% 48%)';
+        container.style.background = 'hsl(199 89% 48% / 0.1)';
+        montoElement.style.color = 'hsl(199 89% 48%)';
+        montoElement.textContent = '📈 Sobrante: +$' + formatoMoneda(diferencia);
+    } else {
+        // Faltante (rojo)
+        container.style.borderLeftColor = 'hsl(0 84% 60%)';
+        container.style.background = 'hsl(0 84% 60% / 0.1)';
+        montoElement.style.color = 'hsl(0 84% 60%)';
+        montoElement.textContent = '⚠️ Faltante: -$' + formatoMoneda(Math.abs(diferencia));
+    }
+}
+
+/**
+ * Completar arqueo pendiente de cierre automático
+ */
+async function completarArqueoPendiente(fecha, index) {
+    try {
+        const input = document.getElementById(`efectivoRealArqueo-${index}`);
+        const efectivoReal = parseFloat(input.value);
+        
+        // Validaciones
+        if (!efectivoReal && efectivoReal !== 0) {
+            mostrarNotificacion('⚠️ Ingresa el efectivo real contado en caja', 'warning', 4000);
+            input.focus();
+            return;
+        }
+        
+        if (efectivoReal < 0) {
+            mostrarNotificacion('⚠️ El efectivo real no puede ser negativo', 'warning', 4000);
+            return;
+        }
+        
+        // Obtener cierre actual
+        const cierre = datosHistorialCaja[index];
+        const efectivoEsperado = cierre.efectivo_esperado || 0;
+        const diferencia = efectivoReal - efectivoEsperado;
+        
+        // Confirmación
+        let estadoTexto = '';
+        if (diferencia === 0) estadoTexto = '✅ Cuadrado';
+        else if (diferencia > 0) estadoTexto = '📈 Sobrante: +$' + formatoMoneda(diferencia);
+        else estadoTexto = '⚠️ Faltante: -$' + formatoMoneda(Math.abs(diferencia));
+        
+        const confirmar = confirm(
+            `¿Confirmar arqueo del cierre automático?\\n\\n` +
+            `📅 Fecha: ${new Date(fecha).toLocaleDateString('es-CL')}\\n` +
+            `💰 Total Ventas: $${formatoMoneda(cierre.total_ventas || 0)}\\n\\n` +
+            `💵 Efectivo Esperado: $${formatoMoneda(efectivoEsperado)}\\n` +
+            `💵 Efectivo Real: $${formatoMoneda(efectivoReal)}\\n` +
+            `📊 Diferencia: ${estadoTexto}\\n\\n` +
+            `Esta acción completará el cierre automático.`
+        );
+        
+        if (!confirmar) return;
+        
+        // Actualizar en la base de datos
+        const { data, error } = await window.supabaseClient
+            .from('cierres_diarios')
+            .update({
+                efectivo_real: efectivoReal,
+                diferencia: diferencia,
+                notas: (cierre.notas || '') + `\\n\\n✅ Arqueo completado manualmente el ${new Date().toLocaleString('es-CL')} por ${currentUser}`
+            })
+            .eq('fecha', fecha)
+            .select();
+        
+        if (error) throw error;
+        
+        // Limpiar borrador de localStorage
+        limpiarBorradorArqueo(fecha);
+        
+        mostrarNotificacion(
+            `✅ Arqueo completado exitosamente\\n\\n` +
+            `${estadoTexto}`,
+            diferencia === 0 ? 'success' : (diferencia > 0 ? 'info' : 'warning'),
+            6000
+        );
+        
+        // Recargar historial para reflejar cambios
+        await cargarHistorialCaja();
+        
+        console.log('✅ Arqueo completado:', { fecha, efectivoReal, diferencia });
+        
+    } catch (error) {
+        console.error('❌ Error completando arqueo:', error);
+        mostrarNotificacion('❌ Error al completar arqueo: ' + error.message, 'error', 5000);
     }
 }
 
@@ -8326,7 +9589,7 @@ function actualizarResumenPagosPersonal() {
  */
 async function cargarDatosReparto() {
     try {
-        console.log('🚚 Cargando datos de reparto...');
+        console.log('🚚 Cargando datos de reparto con lógica de contabilización...');
 
         if (!window.supabaseClient) {
             console.warn('⚠️ Supabase no configurado, omitiendo datos de reparto');
@@ -8334,30 +9597,46 @@ async function cargarDatosReparto() {
             return;
         }
 
-        const hoy = new Date().toISOString().split('T')[0]; // YYYY-MM-DD
+        const hoy = new Date();
+        const fechaHoy = hoy.toISOString().split('T')[0]; // YYYY-MM-DD
 
-        // Consultar pedidos del día
+        console.log(`📅 Consultando pedidos del día vía RPC...`);
+        console.log(`   Fecha: ${fechaHoy}`);
+
+        // USAR FUNCIÓN RPC (bypasea políticas RLS, igual que obtener_transferencias_dia)
         const { data: pedidos, error } = await window.supabaseClient
-            .from('pedidos')
-            .select('*')
-            .eq('fecha', hoy);
+            .rpc('obtener_pedidos_dia', { fecha_consulta: fechaHoy });
 
         if (error) {
-            console.warn('⚠️ No se pudo acceder a datos de reparto:', error.message);
+            console.error('❌ Error en RPC obtener_pedidos_dia:', error);
+            
+            // Si la función no existe, mostrar instrucciones claras
+            if (error.code === '42883' || error.message?.includes('function')) {
+                console.error('⚠️ CONFIGURACIÓN PENDIENTE:');
+                console.error('   Debes ejecutar el script SQL:');
+                console.error('   CREAR_FUNCION_RPC_OBTENER_PEDIDOS_DIA.sql');
+                console.error('   en el SQL Editor de Supabase.');
+                mostrarNotificacion('Configuración pendiente: Ejecuta script SQL en Supabase', 'warning');
+            } else {
+                console.error('   Código:', error.code);
+                console.error('   Mensaje:', error.message);
+            }
+            
             actualizarResumenReparto(null);
             return;
         }
 
         if (!pedidos || pedidos.length === 0) {
-            console.log('ℹ️ No hay pedidos de reparto para hoy');
-            actualizarResumenReparto([]);
+            console.log('ℹ️ No hay pedidos relevantes para hoy');
+            actualizarResumenReparto([], fechaHoy);
             return;
         }
 
-        console.log(`✅ ${pedidos.length} pedidos de reparto encontrados`);
-        actualizarResumenReparto(pedidos);
+        console.log(`✅ ${pedidos.length} pedidos encontrados vía RPC (filtrando para ${fechaHoy})`);
+        actualizarResumenReparto(pedidos, fechaHoy);
 
     } catch (error) {
+        console.error('❌ Error en cargarDatosReparto:', error);
         manejarError(error, {
             contexto: 'cargarDatosReparto',
             mensajeUsuario: 'Error cargando datos de reparto',
@@ -8368,9 +9647,9 @@ async function cargarDatosReparto() {
 }
 
 /**
- * Actualizar resumen de reparto en el panel
+ * Actualizar resumen de reparto en el panel con lógica de contabilización
  */
-function actualizarResumenReparto(pedidos) {
+function actualizarResumenReparto(pedidos, fechaHoy) {
     if (pedidos === null) {
         // Error o no disponible
         document.getElementById('totalRecaudadoReparto').textContent = 'N/A';
@@ -8395,62 +9674,142 @@ function actualizarResumenReparto(pedidos) {
         return;
     }
 
-    // Calcular estadísticas
+    // Calcular estadísticas con lógica de contabilización
     let efectivo = 0;
     let tarjetas = 0;
     let transferencias = 0;
     let pendientes = [];
-    let entregadas = [];
+    let contabilizadosHoy = [];
+
+    const hoy = fechaHoy ? new Date(fechaHoy + 'T00:00:00') : new Date();
+    const mañana = new Date(hoy);
+    mañana.setDate(mañana.getDate() + 1);
+
+    console.log('📅 Fecha de contabilización:', hoy.toLocaleDateString('es-CL'));
+    console.log(`🔍 Procesando ${pedidos.length} pedidos para filtrar...`);
 
     pedidos.forEach(pedido => {
-        const total = pedido.total || 0;
-        const entregado = pedido.entregado === true;
-
-        // Separar por estado
-        if (entregado) {
-            entregadas.push(pedido);
-        } else {
-            pendientes.push(pedido);
+       // Solo contar pedidos entregados Y NO anulados
+        if (!pedido.entregado || pedido.estado === 'ANULADO') {
+            if (!pedido.entregado) {
+                pendientes.push(pedido);
+            }
+            return;
         }
 
-        // Solo contar en recaudación los entregados
-        if (entregado) {
-            // Método de pago: E=Efectivo, T=Tarjeta, TR=Transferencia
-            const metodoPago = pedido.metodo_pago || 'E';
-            
-            if (metodoPago === 'E' || metodoPago.toLowerCase().includes('efectivo')) {
+        const total = pedido.total || 0;
+        const metodo = pedido.metodo_pago || pedido.metodo || 'E';
+
+        console.log(`🔎 Evaluando: ${pedido.nombre} | Método: ${metodo} | Total: $${total} | Entregado: ${pedido.entregado} | Boleteada: ${pedido.boleteada}`);
+
+        // ============================================================
+        // LÓGICA DE FECHA DE CONTABILIZACIÓN (IGUAL QUE EN REPARTO)
+        // ============================================================
+        let fechaContabilizar;
+        const esTransferencia = ['TP', 'TG', 'T', 'P'].includes(metodo) || metodo.includes('TRANSF');
+
+        if (esTransferencia && pedido.boleteada && pedido.fecha_boleta) {
+            // CASO 1: TP→TG (confirmada) → cuenta día de CONFIRMACIÓN
+            fechaContabilizar = new Date(pedido.fecha_boleta);
+            console.log(`💰 Transferencia CONFIRMADA: ${pedido.nombre} - $${total} cuenta para ${fechaContabilizar.toLocaleDateString('es-CL')}`);
+        } else if (metodo === 'TG' || metodo.includes('TRANSF')) {
+            // CASO 2: TG (Transferencia Pagada) → cuenta día de ENTREGA (si está entregado)
+            if (pedido.fecha_boleta) {
+                fechaContabilizar = new Date(pedido.fecha_boleta);
+                console.log(`✅ Transferencia PAGADA con fecha_boleta: ${pedido.nombre} - $${total} cuenta para ${fechaContabilizar.toLocaleDateString('es-CL')}`);
+            } else if (pedido.fecha) {
+                fechaContabilizar = new Date(pedido.fecha + 'T00:00:00');
+                console.log(`✅ Transferencia PAGADA entregada: ${pedido.nombre} - $${total} cuenta para ${fechaContabilizar.toLocaleDateString('es-CL')}`);
+            } else {
+                fechaContabilizar = new Date(pedido.created_at);
+                console.log(`✅ Transferencia PAGADA desde inicio: ${pedido.nombre} - $${total} cuenta para ${fechaContabilizar.toLocaleDateString('es-CL')}`);
+            }
+        } else if (metodo === 'TP' || metodo === 'T') {
+            // CASO 3: TP (Transferencia Pendiente) → SÍ CUENTA usando fecha del pedido
+            fechaContabilizar = new Date(pedido.fecha + 'T00:00:00');
+            console.log(`💸 Transferencia PENDIENTE (sin boleta): ${pedido.nombre} - $${total} cuenta para ${fechaContabilizar.toLocaleDateString('es-CL')}`);
+        } else {
+            // CASO 4: Otros métodos (E, DC) → cuenta día de ENTREGA
+            fechaContabilizar = new Date(pedido.fecha + 'T00:00:00');
+        }
+
+        // Verificar si cuenta para HOY
+        if (fechaContabilizar >= hoy && fechaContabilizar < mañana) {
+            contabilizadosHoy.push(pedido);
+
+            // Contabilizar por método de pago (IGUAL QUE EN REPARTO)
+            if (metodo === 'E' || metodo.toLowerCase().includes('efectivo')) {
                 efectivo += total;
-            } else if (metodoPago === 'T' || metodoPago.toLowerCase().includes('tarjeta')) {
+            } else if (metodo === 'DC' || metodo.toLowerCase().includes('tarjeta') || metodo.toLowerCase().includes('debito') || metodo.toLowerCase().includes('credito')) {
                 tarjetas += total;
-            } else if (metodoPago === 'TR' || metodoPago.toLowerCase().includes('transferencia')) {
+            } else if (esTransferencia) {
                 transferencias += total;
             } else {
                 // Por defecto contar como efectivo
                 efectivo += total;
             }
+
+            console.log(`✅ CUENTA HOY: ${pedido.nombre} - ${metodo} - $${total}`);
+        } else {
+            console.log(`⏭️ NO cuenta hoy (fecha: ${fechaContabilizar ? fechaContabilizar.toLocaleDateString('es-CL') : 'N/A'}): ${pedido.nombre} - ${metodo} - $${total}`);
         }
     });
 
     const totalRecaudado = efectivo + tarjetas + transferencias;
     const montoPendientes = pendientes.reduce((sum, p) => sum + (p.total || 0), 0);
-    const montoPagadas = entregadas.reduce((sum, p) => sum + (p.total || 0), 0);
+    
+    // Calcular transferencias pendientes del total de pendientes
+    const transferenciasPendientes = pendientes.filter(p => {
+        const metodo = p.metodo_pago || p.metodo || 'E';
+        return ['TP', 'TG', 'T', 'P'].includes(metodo) || metodo.includes('TRANSF');
+    }).reduce((sum, p) => sum + (p.total || 0), 0);
+
+    console.log('═══════════════════════════════════════════════');
+    console.log(`📊 RESUMEN REPARTO CONTABILIZACIÓN:`);
+    console.log(`   📥 Pedidos recibidos: ${pedidos.length}`);
+    console.log(`   ✅ Contabilizados HOY: ${contabilizadosHoy.length}`);
+    console.log(`   ⏳ Pendientes: ${pendientes.length}`);
+    console.log(`   💵 Efectivo: $${efectivo.toLocaleString('es-CL')}`);
+    console.log(`   💳 Tarjetas: $${tarjetas.toLocaleString('es-CL')}`);
+    console.log(`   🏦 Transferencias: $${transferencias.toLocaleString('es-CL')}`);
+    console.log(`   ⏳ Transf. Pendientes: $${transferenciasPendientes.toLocaleString('es-CL')}`);
+    console.log(`   💰 TOTAL RECAUDADO: $${totalRecaudado.toLocaleString('es-CL')}`);
+    console.log('═══════════════════════════════════════════════');
+    
+    // Guardar en variable global
+    repartoDelDia = {
+        efectivo,
+        tarjetas,
+        transferencias,
+        transferencias_pendientes: transferenciasPendientes,
+        total: totalRecaudado
+    };
 
     // Actualizar UI
     document.getElementById('totalRecaudadoReparto').textContent = '$' + formatoMoneda(totalRecaudado);
     document.getElementById('repartoEfectivo').textContent = '$' + formatoMoneda(efectivo);
     document.getElementById('repartoTarjetas').textContent = '$' + formatoMoneda(tarjetas);
+    const elRepartoTransf = document.getElementById('repartoTransferencias');
+    if (elRepartoTransf) elRepartoTransf.textContent = '$' + formatoMoneda(transferencias);
     document.getElementById('repartoPendientesCantidad').textContent = pendientes.length;
     document.getElementById('repartoPendientesMonto').textContent = '$' + formatoMoneda(montoPendientes);
-    document.getElementById('repartoPagadasCantidad').textContent = entregadas.length;
-    document.getElementById('repartoPagadasMonto').textContent = '$' + formatoMoneda(montoPagadas);
+    document.getElementById('repartoPagadasCantidad').textContent = contabilizadosHoy.length;
+    document.getElementById('repartoPagadasMonto').textContent = '$' + formatoMoneda(totalRecaudado);
 
     console.log('📊 Resumen reparto actualizado:', {
         total: totalRecaudado,
         efectivo,
         tarjetas,
+        transferencias,
+        transferencias_pendientes: transferenciasPendientes,
         pendientes: pendientes.length,
-        entregadas: entregadas.length
+        contabilizadosHoy: contabilizadosHoy.length
     });
+    
+    // Actualizar totales consolidados (POS + Reparto)
+    if (typeof actualizarTotalesConsolidados === 'function') {
+        actualizarTotalesConsolidados();
+    }
 }
 
 /**
@@ -9270,67 +10629,94 @@ let marcaEditando = null;
  * Inicializar marcas desde localStorage
  * FUSIONA marcas guardadas con las base (sin duplicar)
  */
-function inicializarMarcas() {
-    // Marcas base (siempre deben estar)
-    const marcasBase = [
-        'Master', 'Dog Chow', 'Cat Chow', 'Bravery', 'Champion', 'Pedigree',
-        'Whiskas', 'Brit Care', 'Brit', 'Pro Plan', 'Royal Canin', '9 Lives',
-        'Excellent', 'Felix', 'Friskies', 'Balanced', 'Raza', 'Ganador',
-        'Mimaskot', 'Sabrosano', 'Eukanuba', 'IAMS', 'Nutrience', 'Canbo',
-        'Bravecto', 'Nexgard', 'Simparica', 'Frontline', 'Advantage', 'Apoquel'
-    ];
-
-    const marcasGuardadas = localStorage.getItem('marcas_sabrofood');
-    
-    if (marcasGuardadas) {
-        try {
-            const guardadas = JSON.parse(marcasGuardadas);
-            
-            // Fusionar: primero las guardadas, luego agregar las que falten de la base
-            marcasActuales = [...guardadas];
-            
-            // Agregar marcas base que no estén en guardadas
-            marcasBase.forEach(marca => {
-                if (!marcasActuales.includes(marca)) {
-                    marcasActuales.push(marca);
-                }
-            });
-            
-            guardarMarcasEnStorage();
-            
-        } catch (e) {
-            console.error('Error al parsear marcas guardadas:', e);
-            marcasActuales = marcasBase;
+/**
+ * Inicializar marcas desde Supabase
+ * Patrón copiado de proveedores
+ */
+async function inicializarMarcas() {
+    try {
+        if (!window.supabaseClient) {
+            console.error('supabaseClient no está definido');
+            marcasActuales = [];
+            return;
         }
-    } else {
-        // Primera vez: usar marcas base
-        marcasActuales = marcasBase;
-        guardarMarcasEnStorage();
+        
+        // Cargar marcas desde Supabase
+        const { data, error } = await window.supabaseClient
+            .from('marcas')
+            .select('nombre')
+            .eq('activo', true)
+            .order('nombre', { ascending: true });
+        
+        if (error) {
+            console.error('Error cargando marcas:', error);
+            mostrarNotificacion('Error al cargar marcas', 'error');
+            marcasActuales = [];
+            return;
+        }
+        
+        if (!data || data.length === 0) {
+            console.warn('No hay marcas activas en la base de datos');
+            marcasActuales = [];
+        } else {
+            marcasActuales = data.map(m => m.nombre);
+            console.log('✅ Marcas cargadas desde Supabase:', marcasActuales.length);
+        }
+        
+    } catch (error) {
+        manejarError(error, {
+            contexto: 'inicializarMarcas',
+            mensajeUsuario: 'Error al inicializar marcas'
+        });
+        marcasActuales = [];
     }
     
-    console.log('✅ Marcas inicializadas:', marcasActuales.length);
+    // Actualizar select de marcas
+    actualizarSelectMarcas();
 }
 
 /**
- * Guardar marcas en localStorage
+ * Recargar marcas desde Supabase
  */
-function guardarMarcasEnStorage() {
-    localStorage.setItem('marcas_sabrofood', JSON.stringify(marcasActuales));
+async function recargarMarcas() {
+    try {
+        const { data, error } = await window.supabaseClient
+            .from('marcas')
+            .select('nombre')
+            .eq('activo', true)
+            .order('nombre', { ascending: true });
+        
+        if (error) throw error;
+        
+        marcasActuales = data.map(m => m.nombre);
+        actualizarSelectMarcas();
+        
+    } catch (error) {
+        manejarError(error, {
+            contexto: 'recargarMarcas',
+            mensajeUsuario: 'Error recargando marcas',
+            mostrarNotificacion: false // Función interna, no interrumpir UX
+        });
+    }
 }
 
 /**
  * Abrir modal de gestión de marcas
  */
-function abrirModalMarcas() {
+async function abrirModalMarcas() {
     if (currentUserRole !== 'encargado') {
         mostrarNotificacion('Solo el encargado puede gestionar marcas', 'warning');
         return;
     }
     
-    // Re-inicializar marcas para asegurar que estén cargadas
-    if (marcasActuales.length === 0) {
-        inicializarMarcas();
-    }
+    // Recargar marcas desde Supabase para tener datos actualizados
+    await recargarMarcas();
+    
+    marcaEditando = null;
+    document.getElementById('inputNombreMarca').value = '';
+    document.getElementById('tituloFormMarca').textContent = '➕ Agregar Marca';
+    document.getElementById('textoBotonMarca').textContent = 'Agregar';
+    document.getElementById('btnCancelarEditMarca').style.display = 'none';
     
     renderizarListaMarcas();
     
@@ -9390,9 +10776,9 @@ function renderizarListaMarcas() {
 }
 
 /**
- * Guardar nueva marca o editar existente
+ * Guardar marca (crear o actualizar)
  */
-function guardarMarca() {
+async function guardarMarca() {
     // Validar permisos de administrador
     if (!requireAdminRole('Gestionar marcas')) {
         return;
@@ -9402,45 +10788,76 @@ function guardarMarca() {
     const nombreMarca = input.value.trim();
     
     if (!nombreMarca) {
-        mostrarNotificacion('Debes ingresar un nombre de marca', 'warning');
+        mostrarNotificacion('Por favor ingresa el nombre de la marca', 'warning');
         input.focus();
         return;
     }
     
-    // Modo editar
-    if (marcaEditando !== null) {
-        const index = marcasActuales.indexOf(marcaEditando);
-        
-        // Validar que no exista otra marca con ese nombre
-        if (nombreMarca !== marcaEditando && marcasActuales.includes(nombreMarca)) {
-            mostrarNotificacion('Ya existe una marca con ese nombre', 'warning');
-            return;
-        }
-        
-        if (index !== -1) {
-            marcasActuales[index] = nombreMarca;
+    try {
+        if (marcaEditando !== null) {
+            // Editar marca existente
+            if (nombreMarca !== marcaEditando) {
+                // Verificar si el nuevo nombre ya existe
+                const { data: existente } = await window.supabaseClient
+                    .from('marcas')
+                    .select('id')
+                    .eq('nombre', nombreMarca)
+                    .eq('activo', true)
+                    .single();
+                
+                if (existente) {
+                    mostrarNotificacion('Ya existe una marca con ese nombre', 'warning');
+                    return;
+                }
+                
+                // Actualizar nombre de la marca
+                const { error } = await window.supabaseClient
+                    .from('marcas')
+                    .update({ 
+                        nombre: nombreMarca,
+                        updated_at: new Date().toISOString()
+                    })
+                    .eq('nombre', marcaEditando);
+                
+                if (error) throw error;
+            }
+            
             mostrarNotificacion('Marca actualizada exitosamente', 'success');
-        }
-    } 
-    // Modo agregar
-    else {
-        // Validar que no exista
-        if (marcasActuales.includes(nombreMarca)) {
-            mostrarNotificacion('Esa marca ya existe', 'warning');
-            return;
+        } else {
+            // Agregar nueva marca
+            const { error } = await window.supabaseClient
+                .from('marcas')
+                .insert([{ nombre: nombreMarca }]);
+            
+            if (error) {
+                if (error.code === '23505') { // Duplicate key
+                    mostrarNotificacion('Ya existe una marca con ese nombre', 'warning');
+                } else {
+                    throw error;
+                }
+                return;
+            }
+            
+            mostrarNotificacion('Marca agregada exitosamente', 'success');
         }
         
-        marcasActuales.push(nombreMarca);
-        mostrarNotificacion('Marca agregada exitosamente', 'success');
+        // Recargar lista desde Supabase
+        await recargarMarcas();
+        renderizarListaMarcas();
+        
+        // Limpiar formulario
+        input.value = '';
+        marcaEditando = null;
+        document.getElementById('tituloFormMarca').textContent = '➕ Agregar Marca';
+        document.getElementById('textoBotonMarca').textContent = 'Agregar';
+        document.getElementById('btnCancelarEditMarca').style.display = 'none';
+        
+    } catch (error) {
+        manejarError(error, {
+            contexto: 'guardarMarca',
+            mensajeUsuario: 'Error al guardar marca'
+        });
     }
-    
-    guardarMarcasEnStorage();
-    actualizarSelectMarcas(); // Actualizar filtro de marcas
-    renderizarListaMarcas();
-    
-    // Limpiar formulario
-    input.value = '';
-    cancelarEditarMarca();
 }
 
 /**
@@ -9451,8 +10868,10 @@ function editarMarca(nombreMarca) {
     
     document.getElementById('inputNombreMarca').value = nombreMarca;
     document.getElementById('tituloFormMarca').textContent = '✏️ Editar Marca';
-    document.getElementById('textoBotonMarca').textContent = 'Guardar';
+    document.getElementById('textoBotonMarca').textContent = 'Guardar Cambios';
     document.getElementById('btnCancelarEditMarca').style.display = 'inline-block';
+    
+    // Scroll al formulario
     document.getElementById('inputNombreMarca').focus();
 }
 
@@ -9469,9 +10888,9 @@ function cancelarEditarMarca() {
 }
 
 /**
- * Eliminar marca
+ * Eliminar marca (desactivar)
  */
-function eliminarMarca(nombreMarca) {
+async function eliminarMarca(nombreMarca) {
     // Validar permisos de administrador
     if (!requireAdminRole('Eliminar marcas')) {
         return;
@@ -9481,13 +10900,29 @@ function eliminarMarca(nombreMarca) {
         return;
     }
     
-    const index = marcasActuales.indexOf(nombreMarca);
-    if (index !== -1) {
-        marcasActuales.splice(index, 1);
-        guardarMarcasEnStorage();
-        actualizarSelectMarcas();
+    try {
+        // Desactivar marca (soft delete)
+        const { error } = await window.supabaseClient
+            .from('marcas')
+            .update({ 
+                activo: false,
+                updated_at: new Date().toISOString()
+            })
+            .eq('nombre', nombreMarca);
+        
+        if (error) throw error;
+        
+        // Recargar lista desde Supabase
+        await recargarMarcas();
         renderizarListaMarcas();
+        
         mostrarNotificacion('Marca eliminada exitosamente', 'success');
+        
+    } catch (error) {
+        manejarError(error, {
+            contexto: 'eliminarMarca',
+            mensajeUsuario: 'Error al eliminar marca'
+        });
     }
 }
 
