@@ -1715,7 +1715,10 @@ function renderProductos() {
     }
 
     console.log(`📊 [RENDER] Iniciando render con ${productos.length} productos totales`);
-    let productosFiltrados = productos;
+    // Los productos granel se venden exclusivamente desde el modal 🌾 — no aparecen en la grilla
+    let productosFiltrados = productos.filter(p =>
+        !p.nombre?.toLowerCase().includes('(granel)') && p.tipo !== 'granel'
+    );
 
     // Filtrar por categoría
     if (categoriaActual !== 'Todos') {
@@ -5320,48 +5323,35 @@ function filtrarProductosGranel() {
 
 function seleccionarProductoGranel(idProducto) {
     productoGranelSeleccionado = productosGranel.find(p => p.id === idProducto);
-    
     if (!productoGranelSeleccionado) return;
 
-    // Actualizar UI
+    // Resaltar selección en lista
     mostrarProductosGranel(productosGranel);
-    
-    // Mostrar sección de monto
+
+    // Mostrar info del producto
     document.getElementById('granelSeleccionado').style.display = 'block';
     document.getElementById('granelNombreSeleccionado').textContent = productoGranelSeleccionado.nombre;
-    document.getElementById('granelPrecioKg').textContent = `Precio: $${formatoMoneda(productoGranelSeleccionado.precio)}/kg`;
-    document.getElementById('granelMonto').value = '';
+    document.getElementById('granelPrecioKg').textContent = `$${formatoMoneda(productoGranelSeleccionado.precio)} / kg`;
     document.getElementById('pesoEstimado').textContent = '0 kg';
-    document.getElementById('btnAgregarGranel').disabled = true;
-    
+
+    // Ocultar placeholder, mostrar calculadora
+    document.getElementById('granelPlaceholder').style.display = 'none';
+    document.getElementById('granelCalc').style.display = 'flex';
+
     // Limpiar calculadora
+    document.getElementById('granelMonto').value = '';
     limpiarCalculadoraGranel();
-    
-    // Focus en input de monto + Scroll automático para móviles
-    setTimeout(() => {
-        const inputMonto = document.getElementById('granelMonto');
-        inputMonto.focus();
-        
-        // Scroll suave hacia el input en dispositivos móviles
-        inputMonto.scrollIntoView({ 
-            behavior: 'smooth', 
-            block: 'center',
-            inline: 'nearest'
-        });
-    }, 150);
 }
 
 function calcularPesoEstimado() {
     const monto = parseFloat(document.getElementById('granelMonto').value) || 0;
     const precioKg = productoGranelSeleccionado?.precio || 0;
-    
+    const pesoEl = document.getElementById('pesoEstimado');
+
     if (monto > 0 && precioKg > 0) {
-        const pesoKg = (monto / precioKg).toFixed(2);
-        document.getElementById('pesoEstimado').textContent = `${pesoKg} kg`;
-        document.getElementById('btnAgregarGranel').disabled = false;
+        pesoEl.textContent = `${(monto / precioKg).toFixed(2)} kg`;
     } else {
-        document.getElementById('pesoEstimado').textContent = '0 kg';
-        document.getElementById('btnAgregarGranel').disabled = true;
+        pesoEl.textContent = '0 kg';
     }
 }
 
@@ -5404,7 +5394,7 @@ function agregarGranelAlCarrito() {
 }
 
 // ===================================
-// CALCULADORA NORMAL PARA GRANEL
+// CALCULADORA GRANEL (rediseñada)
 // ===================================
 
 let displayCalc = '0';
@@ -5412,55 +5402,84 @@ let operacionActual = '';
 let valorAnterior = null;
 let nuevoNumero = true;
 
+function _actualizarDisplayCalc() {
+    const spanValor = document.getElementById('displayValor');
+    const spanOp    = document.getElementById('displayOp');
+    const display   = document.getElementById('displayCalculadora');
+    const btnMonto  = document.getElementById('displayMontoBtn');
+    const btnOk     = document.getElementById('btnCalcularAplicar');
+
+    if (!spanValor) return;
+
+    const num = parseFloat(displayCalc);
+
+    spanValor.textContent = isNaN(num) ? displayCalc : formatoMoneda(Math.round(num));
+    spanOp.textContent  = valorAnterior !== null ? `${formatoMoneda(valorAnterior)} ${_opSimbol(operacionActual)}` : '';
+
+    // Calcular monto final (o preview si hay operación pendiente con 2° número ya ingresado)
+    let montoFinal = 0;
+    if (valorAnterior === null && !isNaN(num) && num > 0) {
+        // Resultado limpio
+        montoFinal = Math.round(num);
+    } else if (valorAnterior !== null && !nuevoNumero && operacionActual && !isNaN(num)) {
+        // Operación completa (ej: 890 × 5) — calcular preview
+        let preview = 0;
+        switch (operacionActual) {
+            case '+': preview = valorAnterior + num; break;
+            case '-': preview = valorAnterior - num; break;
+            case '*': preview = valorAnterior * num; break;
+            case '/': preview = num !== 0 ? valorAnterior / num : 0; break;
+        }
+        montoFinal = Math.round(preview);
+    }
+
+    // Display verde cuando hay un resultado aplicable
+    display.classList.toggle('has-value', montoFinal > 0);
+
+    if (btnMonto) btnMonto.textContent = formatoMoneda(montoFinal);
+    if (btnOk) btnOk.disabled = !(montoFinal > 0);
+
+    // Sincronizar campo directo con el valor calculado (sin disparar oninput)
+    const inputDirecto = document.getElementById('granelMontoDirecto');
+    if (inputDirecto && document.activeElement !== inputDirecto) {
+        inputDirecto.value = (montoFinal > 0) ? montoFinal : '';
+    }
+}
+
+function _opSimbol(op) {
+    return { '+': '+', '-': '−', '*': '×', '/': '÷' }[op] || op;
+}
+
 function agregarNumeroCalc(numero) {
-    const display = document.getElementById('displayCalculadora');
-    
     if (nuevoNumero) {
         displayCalc = numero;
         nuevoNumero = false;
     } else {
-        if (displayCalc === '0') {
-            displayCalc = numero;
-        } else {
-            displayCalc += numero;
-        }
+        displayCalc = displayCalc === '0' ? numero : displayCalc + numero;
     }
-    
-    display.textContent = displayCalc;
+    _actualizarDisplayCalc();
 }
 
 function agregarOperacionCalc(operacion) {
-    const display = document.getElementById('displayCalculadora');
-    
     if (valorAnterior !== null && !nuevoNumero) {
         calcularResultado();
     }
-    
     valorAnterior = parseFloat(displayCalc);
     operacionActual = operacion;
     nuevoNumero = true;
+    _actualizarDisplayCalc();
 }
 
 function calcularResultado() {
-    const display = document.getElementById('displayCalculadora');
-    
-    if (valorAnterior === null || nuevoNumero) {
-        return;
-    }
-    
+    if (valorAnterior === null || nuevoNumero) return;
+
     const valorActual = parseFloat(displayCalc);
     let resultado = 0;
-    
+
     switch (operacionActual) {
-        case '+':
-            resultado = valorAnterior + valorActual;
-            break;
-        case '-':
-            resultado = valorAnterior - valorActual;
-            break;
-        case '*':
-            resultado = valorAnterior * valorActual;
-            break;
+        case '+': resultado = valorAnterior + valorActual; break;
+        case '-': resultado = valorAnterior - valorActual; break;
+        case '*': resultado = valorAnterior * valorActual; break;
         case '/':
             if (valorActual === 0) {
                 mostrarNotificacion('No se puede dividir por cero', 'error');
@@ -5469,19 +5488,15 @@ function calcularResultado() {
             }
             resultado = valorAnterior / valorActual;
             break;
-        default:
-            return;
+        default: return;
     }
-    
-    // Redondear a 2 decimales
+
     resultado = Math.round(resultado * 100) / 100;
-    
     displayCalc = resultado.toString();
-    display.textContent = displayCalc;
-    
     valorAnterior = null;
     operacionActual = '';
     nuevoNumero = true;
+    _actualizarDisplayCalc();
 }
 
 function limpiarCalculadoraGranel() {
@@ -5489,78 +5504,96 @@ function limpiarCalculadoraGranel() {
     operacionActual = '';
     valorAnterior = null;
     nuevoNumero = true;
-    
-    const display = document.getElementById('displayCalculadora');
-    if (display) {
-        display.textContent = '0';
-    }
+    _actualizarDisplayCalc();
+    const inputDirecto = document.getElementById('granelMontoDirecto');
+    if (inputDirecto) inputDirecto.value = '';
+    const pesoEl = document.getElementById('pesoEstimado');
+    if (pesoEl) pesoEl.textContent = '0 kg';
 }
 
 function borrarUltimoDigitoCalc() {
-    const display = document.getElementById('displayCalculadora');
-    
     if (displayCalc.length > 1) {
         displayCalc = displayCalc.slice(0, -1);
     } else {
         displayCalc = '0';
+        nuevoNumero = true;
     }
-    
-    display.textContent = displayCalc;
+    _actualizarDisplayCalc();
 }
 
+/** Ingreso directo de monto sin usar el teclado calculadora */
+function ingresarMontoDirecto(valor) {
+    const soloDigitos = valor.replace(/\D/g, '');
+    if (soloDigitos === '' || soloDigitos === '0') {
+        displayCalc = '0';
+        valorAnterior = null;
+        operacionActual = '';
+        nuevoNumero = true;
+    } else {
+        displayCalc = soloDigitos;
+        valorAnterior = null;
+        operacionActual = '';
+        nuevoNumero = false;
+    }
+    // Actualizar UI sin tocar el inputDirecto (evita loop)
+    const num = parseFloat(displayCalc);
+    const montoFinal = (!isNaN(num) && num > 0) ? Math.round(num) : 0;
+    const spanValor = document.getElementById('displayValor');
+    const spanOp    = document.getElementById('displayOp');
+    const display   = document.getElementById('displayCalculadora');
+    const btnMonto  = document.getElementById('displayMontoBtn');
+    const btnOk     = document.getElementById('btnCalcularAplicar');
+    if (spanValor) spanValor.textContent = montoFinal > 0 ? formatoMoneda(montoFinal) : '0';
+    if (spanOp)    spanOp.textContent = '';
+    if (display)   display.classList.toggle('has-value', montoFinal > 0);
+    if (btnMonto)  btnMonto.textContent = formatoMoneda(montoFinal);
+    if (btnOk)     btnOk.disabled = !(montoFinal > 0);
+    // Actualizar peso en tiempo real
+    document.getElementById('granelMonto').value = montoFinal > 0 ? montoFinal : '';
+    calcularPesoEstimado();
+}
+
+/** @deprecated — reemplazada por calcularYAplicar() — conservada por si hay referencias */
 function aplicarCalculadora() {
-    // Si hay una operación pendiente, calcularla primero
+    calcularYAplicar();
+}
+
+/** Botón "=" — calcula y agrega directamente al carrito */
+function calcularYAplicar() {
     if (valorAnterior !== null && !nuevoNumero) {
         calcularResultado();
     }
-    
+
     const resultado = parseFloat(displayCalc);
-    
     if (isNaN(resultado) || resultado <= 0) {
-        mostrarNotificacion('Calcula un monto válido primero', 'warning');
+        mostrarNotificacion('Ingresa un monto válido primero', 'warning');
         return;
     }
-    
-    // Redondear al entero más cercano
+
     const montoFinal = Math.round(resultado);
-    
-    // Aplicar al input de monto
+    // Sincroniza input oculto y dispara lógica de peso
     document.getElementById('granelMonto').value = montoFinal;
     calcularPesoEstimado();
-    
-    mostrarNotificacion(`✓ $${formatoMoneda(montoFinal)} aplicado al monto`, 'success');
-    
-    // Scroll al input de monto
-    setTimeout(() => {
-        document.getElementById('granelMonto').scrollIntoView({ 
-            behavior: 'smooth', 
-            block: 'center' 
-        });
-    }, 100);
+    // Agrega al carrito directamente
+    agregarGranelAlCarrito();
 }
 
 function abrirModalGranel() {
-    // Resetear estado
     productoGranelSeleccionado = null;
     document.getElementById('searchGranelInput').value = '';
     document.getElementById('granelSeleccionado').style.display = 'none';
+    document.getElementById('granelPlaceholder').style.display = 'flex';
+    document.getElementById('granelCalc').style.display = 'none';
     document.getElementById('granelMonto').value = '';
-    
-    // Resetear calculadora
+
     limpiarCalculadoraGranel();
-    
-    // Cargar productos granel
     cargarProductosGranel();
-    
-    // Mostrar modal
+
     const modal = document.getElementById('modalGranel');
     modal.style.display = 'flex';
     modal.classList.add('show');
-    
-    // Focus en búsqueda
-    setTimeout(() => {
-        document.getElementById('searchGranelInput').focus();
-    }, 100);
+
+    setTimeout(() => document.getElementById('searchGranelInput').focus(), 100);
 }
 
 function cerrarModalGranel() {
@@ -6062,10 +6095,12 @@ async function cargarVentasDelDia() {
                     } else if (detallePagos === 'Tarjeta' || detallePagos === 'Transbank') {
                         ventasDelDia.transbank += venta.total;
                     } else if (detallePagos === 'Transferencia') {
+                        // Siempre cuenta en el total (la plata ya entró)
+                        ventasDelDia.transferencia += venta.total;
                         if (venta.boleteada) {
-                            ventasDelDia.transferencia += venta.total;
                             transferenciasBoleteadas += venta.total;
                         } else {
+                            // Sin boleta: suma al badge de pendientes pero ya está en el total
                             ventasDelDia.transferencia_pendiente += venta.total;
                             transferenciasPendientes += venta.total;
                         }
@@ -6078,10 +6113,12 @@ async function cargarVentasDelDia() {
                         } else if (pago.metodo === 'Tarjeta' || pago.metodo === 'Transbank') {
                             ventasDelDia.transbank += pago.monto;
                         } else if (pago.metodo === 'Transferencia') {
+                            // Siempre cuenta en el total (la plata ya entró)
+                            ventasDelDia.transferencia += pago.monto;
                             if (venta.boleteada) {
-                                ventasDelDia.transferencia += pago.monto;
                                 transferenciasBoleteadas += pago.monto;
                             } else {
+                                // Sin boleta: suma al badge de pendientes pero ya está en el total
                                 ventasDelDia.transferencia_pendiente += pago.monto;
                                 transferenciasPendientes += pago.monto;
                             }
@@ -7641,7 +7678,7 @@ async function ejecutarCierreAutomatico() {
             ventasHoy.forEach(venta => {
                 totalVentas += venta.total;
                 
-                const detallePagos = venta.detalle_pagos;
+                let detallePagos = venta.pagos_detalle || venta.detalle_pagos || venta.metodo_pago;
                 if (typeof detallePagos === 'string' && detallePagos.startsWith('[')) {
                     const pagos = JSON.parse(detallePagos);
                     pagos.forEach(pago => {
@@ -7703,7 +7740,8 @@ async function ejecutarCierreAutomatico() {
                     } else if (metodo === 'TG') {
                         fechaContabilizar.setTime(pedido.fecha_boleta ? new Date(pedido.fecha_boleta).getTime() : new Date(pedido.fecha).getTime());
                     } else if (metodo === 'TP') {
-                        return; // TP sin confirmar no se cuenta
+                        // TP sin boletear: cuenta en fecha del pedido (igual que actualizarResumenReparto)
+                        fechaContabilizar.setTime(new Date(pedido.fecha + 'T00:00:00').getTime());
                     }
                     
                     const fechaContabilizar_str = fechaContabilizar.toISOString().split('T')[0];
@@ -7841,7 +7879,7 @@ async function ejecutarCierreAutomatico() {
         const erroresAnteriores = JSON.parse(localStorage.getItem('errores_cierre_automatico') || '[]');
         erroresAnteriores.push({
             fecha: new Date().toISOString(),
-            fechaIntento: hoy?.toISOString().split('T')[0] || 'desconocida',
+            fechaIntento: new Date().toISOString().split('T')[0],
             error: error.message,
             stack: error.stack
         });
@@ -7958,7 +7996,7 @@ async function crearCierreRecuperado(fecha) {
         if (ventas && ventas.length > 0) {
             ventas.forEach(venta => {
                 totalVentas += venta.total;
-                const detallePagos = venta.detalle_pagos;
+                let detallePagos = venta.pagos_detalle || venta.detalle_pagos || venta.metodo_pago;
                 if (typeof detallePagos === 'string' && detallePagos.startsWith('[')) {
                     const pagos = JSON.parse(detallePagos);
                     pagos.forEach(pago => {
@@ -7999,12 +8037,14 @@ async function crearCierreRecuperado(fecha) {
         let repartoTarjetas = 0;
         let repartoTransferencias = 0;
         let repartoTotal = 0;
+        let cantidadPedidosReparto = 0;
         
         try {
             const { data: pedidosReparto, error: errorReparto } = await window.supabaseClient
                 .rpc('obtener_pedidos_dia', { fecha_consulta: fecha });
             
             if (!errorReparto && pedidosReparto && pedidosReparto.length > 0) {
+                cantidadPedidosReparto = pedidosReparto.length;
                 pedidosReparto.forEach(pedido => {
                     const metodo = pedido.metodo_pago;
                     const monto = parseFloat(pedido.total) || 0;
@@ -8016,7 +8056,8 @@ async function crearCierreRecuperado(fecha) {
                     } else if (metodo === 'TG') {
                         fechaContabilizar.setTime(pedido.fecha_boleta ? new Date(pedido.fecha_boleta).getTime() : new Date(pedido.fecha).getTime());
                     } else if (metodo === 'TP') {
-                        return;
+                        // TP sin boletear: cuenta en fecha del pedido (igual que actualizarResumenReparto)
+                        fechaContabilizar.setTime(new Date(pedido.fecha + 'T00:00:00').getTime());
                     }
                     
                     const fechaContabilizar_str = fechaContabilizar.toISOString().split('T')[0];
@@ -8054,23 +8095,40 @@ async function crearCierreRecuperado(fecha) {
             total: p.total_pago
         })) : [];
         
+        // Consolidar POS + Reparto en columnas existentes (igual que ejecutarCierreAutomatico)
+        const efectivoConsolidado = ventasEfectivo + repartoEfectivo;
+        const transbankConsolidado = ventasTransbank + repartoTarjetas;
+        const transferenciaConsolidada = ventasTransferencia + repartoTransferencias;
+
         // Insertar cierre recuperado
         const { error: errorInsert } = await window.supabaseClient
             .from('cierres_diarios')
             .insert({
                 fecha: fecha,
                 total_ventas: totalVentasConsolidado,
-                ventas_efectivo: ventasEfectivo,
-                ventas_transferencia: ventasTransferencia,
-                ventas_transbank: ventasTransbank,
-                reparto_efectivo: repartoEfectivo,
-                reparto_tarjetas: repartoTarjetas,
-                reparto_transferencias: repartoTransferencias,
+                ventas_efectivo: efectivoConsolidado,
+                ventas_transferencia: transferenciaConsolidada,
+                ventas_transbank: transbankConsolidado,
                 total_gastos: totalGastos,
                 detalle_gastos_json: {
                     gastos_operacionales: detalleGastos,
                     pagos_personal: detallePagosPersonal,
-                    total_pagos_personal: totalPagosPersonal
+                    total_pagos_personal: totalPagosPersonal,
+                    desglose_ventas: {
+                        pos: {
+                            efectivo: ventasEfectivo,
+                            transbank: ventasTransbank,
+                            transferencia: ventasTransferencia,
+                            total: totalVentas
+                        },
+                        reparto: {
+                            efectivo: repartoEfectivo,
+                            tarjetas: repartoTarjetas,
+                            transferencias: repartoTransferencias,
+                            total: repartoTotal,
+                            cantidad_pedidos: cantidadPedidosReparto
+                        }
+                    }
                 },
                 efectivo_esperado: efectivoEsperado,
                 efectivo_real: null,
@@ -8084,10 +8142,11 @@ async function crearCierreRecuperado(fecha) {
 
 📊 Datos recuperados:
 • Ventas Local: $${formatoMoneda(totalVentas)} (${ventas ? ventas.length : 0} ventas)
-• Reparto: $${formatoMoneda(repartoTotal)} (${pedidosReparto ? pedidosReparto.length : 0} pedidos)
+• Reparto: $${formatoMoneda(repartoTotal)} (${cantidadPedidosReparto} pedidos)
   - Efectivo: $${formatoMoneda(repartoEfectivo)}
   - Tarjetas: $${formatoMoneda(repartoTarjetas)}
   - Transferencias: $${formatoMoneda(repartoTransferencias)}
+• TOTAL CONSOLIDADO: $${formatoMoneda(totalVentasConsolidado)}
 • Gastos: $${formatoMoneda(totalGastos)} (${detalleGastos.length} registros)
 • Pagos Personal: $${formatoMoneda(totalPagosPersonal)} (${detallePagosPersonal.length} empleados)
 • Efectivo Esperado: $${formatoMoneda(efectivoEsperado)}
@@ -8871,7 +8930,7 @@ function renderTablaHistorialCaja() {
     if (datosHistorialCaja.length === 0) {
         container.innerHTML = `
             <div style="text-align: center; padding: 40px; color: hsl(var(--muted-foreground));">
-                <svg width="64" height="64" viewBox="0 0 24 24" fill="none" style="opacity: 0.3; margin: 0 auto 16px;">
+                <svg width="64" height="64" viewBox="0 0 24 24" fill="none" style="opacity: 0.3; margin: 0 auto 16px; display:block;">
                     <rect x="3" y="4" width="18" height="18" rx="2" stroke="currentColor" stroke-width="2"/>
                     <path d="M16 2v4M8 2v4M3 10h18" stroke="currentColor" stroke-width="2"/>
                 </svg>
@@ -8881,332 +8940,229 @@ function renderTablaHistorialCaja() {
         return;
     }
     
-    let html = `
-        <div style="overflow-x: auto;">
-            <table style="width: 100%; border-collapse: collapse;">
-                <thead>
-                    <tr style="background: hsl(var(--muted) / 0.5); border-bottom: 2px solid hsl(var(--border));">
-                        <th style="padding: 12px; text-align: left; font-weight: 600; font-size: 13px;">Fecha</th>
-                        <th style="padding: 12px; text-align: right; font-weight: 600; font-size: 13px;">Total Ventas</th>
-                        <th style="padding: 12px; text-align: right; font-weight: 600; font-size: 13px;">Gastos</th>
-                        <th style="padding: 12px; text-align: right; font-weight: 600; font-size: 13px;">Diferencia</th>
-                        <th style="padding: 12px; text-align: center; font-weight: 600; font-size: 13px;">Estado</th>
-                        <th style="padding: 12px; text-align: center; font-weight: 600; font-size: 13px;">Acciones</th>
-                    </tr>
-                </thead>
-                <tbody>
-    `;
-    
-    // Helper: Extraer valores del desglose cuando existan (cierres consolidados)
+    let html = `<div style="display: flex; flex-direction: column; gap: 12px;">`;
+
+    // Helper: extraer datos consolidados del JSON
     const obtenerDatosConsolidados = (cierre) => {
         const desglose = cierre.detalle_gastos_json?.desglose_ventas;
-        
         return {
-            // Reparto (puede venir de columnas o del JSON)
             reparto_efectivo: cierre.reparto_efectivo || desglose?.reparto?.efectivo || 0,
             reparto_tarjetas: cierre.reparto_tarjetas || desglose?.reparto?.tarjetas || 0,
             reparto_transferencias: cierre.reparto_transferencias || desglose?.reparto?.transferencias || 0,
-            // Pagos personal (en JSON para cierres automáticos)
             pagos_personal: cierre.pagos_personal || cierre.detalle_gastos_json?.total_pagos_personal || 0
         };
     };
-    
+
     datosHistorialCaja.forEach((cierre, index) => {
-        // Extraer datos consolidados
         const datos = obtenerDatosConsolidados(cierre);
-        
-        const fecha = new Date(cierre.fecha);
-        const fechaFormato = fecha.toLocaleDateString('es-CL', { 
-            weekday: 'short', 
-            day: '2-digit', 
-            month: 'short', 
-            year: 'numeric' 
-        });
-        
-        // Verificar si es cierre automático pendiente
+
+        // Fecha formateada
+        const fecha = new Date(cierre.fecha + 'T12:00:00');
+        const fechaCorta = fecha.toLocaleDateString('es-CL', { weekday: 'short', day: '2-digit', month: 'short', year: 'numeric' });
+
         const esAutomatico = cierre.cierre_automatico === true;
         const esPendiente = cierre.efectivo_real === null || cierre.efectivo_real === undefined;
-        
         const diferencia = cierre.diferencia || 0;
-        let estadoIcon, estadoTexto, estadoColor;
-        
-        // MEJORA 3: Indicador visual mejorado para cierres automáticos pendientes
+
+        // Estado
+        let estadoBg, estadoColor, estadoTexto, estadoIcon;
         if (esAutomatico && esPendiente) {
+            estadoBg = 'hsl(38 92% 50% / 0.12)';
+            estadoColor = 'hsl(38 92% 40%)';
+            estadoTexto = 'Pendiente arqueo';
             estadoIcon = '⏳';
-            estadoTexto = 'Pendiente Arqueo';
-            estadoColor = 'hsl(38 92% 50%)';
         } else if (diferencia === 0) {
-            estadoIcon = '✅';
-            estadoTexto = 'Cuadrado';
+            estadoBg = 'hsl(142 76% 36% / 0.1)';
             estadoColor = 'hsl(142 76% 36%)';
+            estadoTexto = 'Cuadrado';
+            estadoIcon = '✅';
         } else if (diferencia > 0) {
+            estadoBg = 'hsl(199 89% 48% / 0.1)';
+            estadoColor = 'hsl(199 89% 40%)';
+            estadoTexto = `Sobrante +$${formatoMoneda(diferencia)}`;
             estadoIcon = '📈';
-            estadoTexto = 'Sobrante';
-            estadoColor = 'hsl(199 89% 48%)';
         } else {
+            estadoBg = 'hsl(0 84% 60% / 0.1)';
+            estadoColor = 'hsl(0 84% 50%)';
+            estadoTexto = `Faltante -$${formatoMoneda(Math.abs(diferencia))}`;
             estadoIcon = '⚠️';
-            estadoTexto = 'Faltante';
-            estadoColor = 'hsl(0 84% 60%)';
         }
-        
+
+        // Borde izquierdo según estado
+        const borderColor = esAutomatico && esPendiente ? 'hsl(38 92% 50%)' :
+                            diferencia === 0 ? 'hsl(142 76% 36%)' :
+                            diferencia > 0 ? 'hsl(199 89% 48%)' : 'hsl(0 84% 60%)';
+
         html += `
-            <tr style="border-bottom: 1px solid hsl(var(--border)); transition: background 0.2s; ${esAutomatico && esPendiente ? 'background: hsl(38 92% 50% / 0.08); border-left: 4px solid hsl(38 92% 50%);' : ''}" 
-                onmouseover="this.style.background='hsl(var(--muted) / 0.3)'" 
-                onmouseout="this.style.background='${esAutomatico && esPendiente ? 'hsl(38 92% 50% / 0.08)' : 'transparent'}'">
-                <td style="padding: 16px; font-weight: 600;">
-                    <div style="display: flex; align-items: center; gap: 8px;">
-                        ${esAutomatico ? '<span style="font-size: 20px;" title="Cierre automático">🤖</span>' : ''}
-                        <div>
-                            ${fechaFormato}
-                            ${esAutomatico && esPendiente ? '<br><span style="display: inline-block; margin-top: 4px; padding: 2px 8px; background: hsl(38 92% 50%); color: white; border-radius: 4px; font-size: 11px; font-weight: 700; animation: pulse 2s ease-in-out infinite;">⚠️ Requiere arqueo</span>' : ''}
-                        </div>
+        <!-- TARJETA DÍA ${index} -->
+        <div style="background: white; border-radius: 12px; border: 1px solid hsl(var(--border)); border-left: 5px solid ${borderColor}; overflow: hidden; box-shadow: 0 1px 4px rgba(0,0,0,0.06);">
+            
+            <!-- CABECERA DE LA TARJETA (siempre visible) -->
+            <div style="display: flex; align-items: center; gap: 16px; padding: 16px 20px; cursor: pointer;"
+                 onclick="verDetallesCierre(${index})">
+                
+                <!-- Fecha + tipo -->
+                <div style="flex: 0 0 auto; min-width: 130px;">
+                    <div style="display: flex; align-items: center; gap: 6px; margin-bottom: 4px;">
+                        ${esAutomatico ? `<span title="Cierre automático" style="font-size:16px;">🤖</span>` : `<span style="font-size:16px;">📋</span>`}
+                        <span style="font-weight: 700; font-size: 14px;">${fechaCorta}</span>
                     </div>
-                </td>
-                <td style="padding: 16px; text-align: right; font-weight: 600; color: hsl(142 76% 36%);">$${formatoMoneda(cierre.total_ventas || 0)}</td>
-                <td style="padding: 16px; text-align: right; color: hsl(0 84% 60%);">$${formatoMoneda(cierre.total_gastos || 0)}</td>
-                <td style="padding: 16px; text-align: right; font-weight: 600; color: ${estadoColor};">
-                    ${esPendiente ? 'Pendiente' : (diferencia >= 0 ? '+' : '') + '$' + formatoMoneda(Math.abs(diferencia))}
-                </td>
-                <td style="padding: 16px; text-align: center;">
-                    <span style="background: ${estadoColor}15; color: ${estadoColor}; padding: 4px 12px; border-radius: 6px; font-size: 13px; font-weight: 600;">
+                    <span style="font-size: 11px; color: hsl(var(--muted-foreground));">
+                        ${cierre.cerrado_at ? new Date(cierre.cerrado_at).toLocaleTimeString('es-CL', {hour:'2-digit', minute:'2-digit'}) : '--:--'}
+                        · ${esAutomatico ? 'Automático' : (cierre.cerrado_por || 'Manual')}
+                    </span>
+                </div>
+
+                <!-- Total ventas (protagonista) -->
+                <div style="flex: 1; text-align: center;">
+                    <div style="font-size: 11px; color: hsl(var(--muted-foreground)); font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px;">Total Ventas</div>
+                    <div style="font-size: 26px; font-weight: 900; color: hsl(142 76% 36%); line-height: 1.2;">
+                        $${formatoMoneda(cierre.total_ventas || 0)}
+                    </div>
+                </div>
+
+                <!-- Gastos -->
+                <div style="flex: 0 0 auto; text-align: right; min-width: 90px; display: none;" class="col-gastos-historial">
+                    <div style="font-size: 11px; color: hsl(var(--muted-foreground)); font-weight: 600; text-transform: uppercase;">Gastos</div>
+                    <div style="font-size: 15px; font-weight: 700; color: hsl(0 84% 60%);">-$${formatoMoneda(cierre.total_gastos || 0)}</div>
+                </div>
+
+                <!-- Estado badge -->
+                <div style="flex: 0 0 auto;">
+                    <span style="display: inline-flex; align-items: center; gap: 5px; padding: 6px 14px; background: ${estadoBg}; color: ${estadoColor}; border-radius: 20px; font-size: 13px; font-weight: 700; white-space: nowrap;">
                         ${estadoIcon} ${estadoTexto}
                     </span>
-                </td>
-                <td style="padding: 16px; text-align: center;">
-                    <button onclick="verDetallesCierre(${index})" 
-                            class="btn btn-sm" 
-                            style="padding: 6px 12px; background: hsl(var(--primary)); color: white; border: none; border-radius: 6px; cursor: pointer; font-size: 13px;"
-                            title="Ver detalles completos">
-                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" style="display: inline-block; vertical-align: middle;">
-                            <path d="M9 18l6-6-6-6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-                        </svg>
-                        Ver Detalles
-                    </button>
-                </td>
-            </tr>
-        `;
-        
-        // Fila de detalles (oculta por defecto)
-        html += `
-            <tr id="detalles-${index}" style="display: none; background: hsl(var(--muted) / 0.2);">
-                <td colspan="6" style="padding: 24px;">
-                    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 20px;">
-                        
-                        <!-- Ventas Local POS -->
-                        <div style="background: white; padding: 16px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.05); border-left: 4px solid hsl(142 76% 36%);">
-                            <h4 style="margin: 0 0 12px; font-size: 15px; font-weight: 700; color: hsl(142 76% 36%);">🏪 Ventas Local (POS)</h4>
-                            <div style="display: flex; flex-direction: column; gap: 8px; font-size: 14px;">
-                                <div style="display: flex; justify-content: space-between;">
-                                    <span>💵 Efectivo:</span>
-                                    <strong>$${formatoMoneda(cierre.ventas_efectivo || 0)}</strong>
-                                </div>
-                                <div style="display: flex; justify-content: space-between;">
-                                    <span>💳 Tarjeta:</span>
-                                    <strong>$${formatoMoneda(cierre.ventas_transbank || 0)}</strong>
-                                </div>
-                                <div style="display: flex; justify-content: space-between;">
-                                    <span>🏦 Transferencia:</span>
-                                    <strong>$${formatoMoneda(cierre.ventas_transferencia || 0)}</strong>
-                                </div>
-                                <div style="display: flex; justify-content: space-between; padding-top: 8px; border-top: 2px solid hsl(var(--border)); margin-top: 4px;">
-                                    <strong>Total Local:</strong>
-                                    <strong style="color: hsl(142 76% 36%);">$${formatoMoneda((cierre.ventas_efectivo || 0) + (cierre.ventas_transbank || 0) + (cierre.ventas_transferencia || 0))}</strong>
-                                </div>
-                            </div>
+                </div>
+
+                <!-- Chevron -->
+                <div id="chevron-${index}" style="flex: 0 0 auto; color: hsl(var(--muted-foreground)); transition: transform 0.2s;">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none"><path d="M6 9l6 6 6-6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                </div>
+            </div>
+
+            <!-- DETALLE EXPANDIBLE -->
+            <div id="detalles-${index}" style="display: none; border-top: 1px solid hsl(var(--border)); padding: 20px; background: hsl(var(--muted) / 0.2);">
+                
+                <!-- FILA 1: Ventas por método -->
+                <div style="margin-bottom: 16px;">
+                    <p style="margin: 0 0 10px; font-size: 12px; font-weight: 700; color: hsl(var(--muted-foreground)); text-transform: uppercase; letter-spacing: 0.5px;">💰 Ingresos del día</p>
+                    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 10px;">
+                        <div style="background: white; border-radius: 8px; padding: 12px; text-align: center; border: 1px solid hsl(var(--border));">
+                            <div style="font-size: 11px; color: hsl(var(--muted-foreground)); margin-bottom: 4px;">💵 Efectivo</div>
+                            <div style="font-size: 16px; font-weight: 700;">$${formatoMoneda((cierre.ventas_efectivo || 0) + datos.reparto_efectivo)}</div>
+                            ${datos.reparto_efectivo > 0 ? `<div style="font-size: 10px; color: hsl(var(--muted-foreground)); margin-top: 2px;">Local $${formatoMoneda(cierre.ventas_efectivo||0)} + Rep. $${formatoMoneda(datos.reparto_efectivo)}</div>` : ''}
                         </div>
-                        
-                        <!-- Reparto / Delivery -->
-                        <div style="background: white; padding: 16px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.05); border-left: 4px solid hsl(var(--primary));">
-                            <h4 style="margin: 0 0 12px; font-size: 15px; font-weight: 700; color: hsl(var(--primary));">🚚 Reparto / Delivery</h4>
-                            <div style="display: flex; flex-direction: column; gap: 8px; font-size: 14px;">
-                                <div style="display: flex; justify-content: space-between;">
-                                    <span>💵 Efectivo:</span>
-                                    <strong>$${formatoMoneda(datos.reparto_efectivo)}</strong>
-                                </div>
-                                <div style="display: flex; justify-content: space-between;">
-                                    <span>💳 Tarjetas:</span>
-                                    <strong>$${formatoMoneda(datos.reparto_tarjetas)}</strong>
-                                </div>
-                                <div style="display: flex; justify-content: space-between;">
-                                    <span>🏦 Transferencias:</span>
-                                    <strong>$${formatoMoneda(datos.reparto_transferencias)}</strong>
-                                </div>
-                                <div style="display: flex; justify-content: space-between; padding-top: 8px; border-top: 2px solid hsl(var(--border)); margin-top: 4px;">
-                                    <strong>Total Reparto:</strong>
-                                    <strong style="color: hsl(var(--primary));">$${formatoMoneda(datos.reparto_efectivo + datos.reparto_tarjetas + datos.reparto_transferencias)}</strong>
-                                </div>
-                            </div>
+                        <div style="background: white; border-radius: 8px; padding: 12px; text-align: center; border: 1px solid hsl(var(--border));">
+                            <div style="font-size: 11px; color: hsl(var(--muted-foreground)); margin-bottom: 4px;">💳 Tarjeta</div>
+                            <div style="font-size: 16px; font-weight: 700;">$${formatoMoneda((cierre.ventas_transbank || 0) + datos.reparto_tarjetas)}</div>
+                            ${datos.reparto_tarjetas > 0 ? `<div style="font-size: 10px; color: hsl(var(--muted-foreground)); margin-top: 2px;">Local $${formatoMoneda(cierre.ventas_transbank||0)} + Rep. $${formatoMoneda(datos.reparto_tarjetas)}</div>` : ''}
                         </div>
-                        
-                        <!-- Consolidado Total -->
-                        <div style="background: linear-gradient(135deg, hsl(142 76% 36% / 0.1), hsl(var(--primary) / 0.1)); padding: 16px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.05); border: 2px solid hsl(142 76% 36% / 0.3);">
-                            <h4 style="margin: 0 0 12px; font-size: 15px; font-weight: 700;">📊 Consolidado del Día</h4>
-                            <div style="display: flex; flex-direction: column; gap: 8px; font-size: 14px;">
-                                <div style="display: flex; justify-content: space-between;">
-                                    <span>💵 Total Efectivo:</span>
-                                    <strong>$${formatoMoneda((cierre.ventas_efectivo || 0) + datos.reparto_efectivo)}</strong>
-                                </div>
-                                <div style="display: flex; justify-content: space-between;">
-                                    <span>💳 Total Tarjetas:</span>
-                                    <strong>$${formatoMoneda((cierre.ventas_transbank || 0) + datos.reparto_tarjetas)}</strong>
-                                </div>
-                                <div style="display: flex; justify-content: space-between;">
-                                    <span>🏦 Total Transferencias:</span>
-                                    <strong>$${formatoMoneda((cierre.ventas_transferencia || 0) + datos.reparto_transferencias)}</strong>
-                                </div>
-                                <div style="display: flex; justify-content: space-between; padding: 12px 0 8px; border-top: 3px double hsl(var(--border)); margin-top: 4px;">
-                                    <strong style="font-size: 16px;">💰 TOTAL VENTAS:</strong>
-                                    <strong style="color: hsl(142 76% 36%); font-size: 18px;">$${formatoMoneda(cierre.total_ventas || 0)}</strong>
-                                </div>
-                            </div>
+                        <div style="background: white; border-radius: 8px; padding: 12px; text-align: center; border: 1px solid hsl(var(--border));">
+                            <div style="font-size: 11px; color: hsl(var(--muted-foreground)); margin-bottom: 4px;">🏦 Transferencia</div>
+                            <div style="font-size: 16px; font-weight: 700;">$${formatoMoneda((cierre.ventas_transferencia || 0) + datos.reparto_transferencias)}</div>
+                            ${datos.reparto_transferencias > 0 ? `<div style="font-size: 10px; color: hsl(var(--muted-foreground)); margin-top: 2px;">Local $${formatoMoneda(cierre.ventas_transferencia||0)} + Rep. $${formatoMoneda(datos.reparto_transferencias)}</div>` : ''}
                         </div>
-                        
-                        <!-- Arqueo de Caja -->
-                        <div style="background: white; padding: 16px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.05); border-left: 4px solid ${estadoColor};">
-                            <h4 style="margin: 0 0 12px; font-size: 15px; font-weight: 700;">🔍 Arqueo de Caja</h4>
-                            <div style="display: flex; flex-direction: column; gap: 8px; font-size: 14px;">
-                                <div style="display: flex; justify-content: space-between;">
-                                    <span>Efectivo Esperado:</span>
-                                    <strong>$${formatoMoneda(cierre.efectivo_esperado || 0)}</strong>
-                                </div>
-                                <div style="display: flex; justify-content: space-between;">
-                                    <span>Efectivo Real:</span>
-                                    <strong>${esPendiente ? '<span style="color: hsl(38 92% 50%);">Sin registrar</span>' : '$' + formatoMoneda(cierre.efectivo_real || 0)}</strong>
-                                </div>
-                                <div style="display: flex; justify-content: space-between; padding-top: 8px; border-top: 2px solid hsl(var(--border)); margin-top: 4px;">
-                                    <strong>Diferencia:</strong>
-                                    <strong style="color: ${estadoColor};">${esPendiente ? 'Pendiente' : (diferencia >= 0 ? '+' : '') + '$' + formatoMoneda(Math.abs(diferencia))}</strong>
-                                </div>
-                                <div style="margin-top: 8px; padding: 8px; background: ${estadoColor}15; border-radius: 6px; text-align: center;">
-                                    <span style="font-size: 13px; font-weight: 700; color: ${estadoColor};">
-                                        ${estadoIcon} ${estadoTexto}
-                                    </span>
-                                </div>
-                            </div>
+                        <div style="background: hsl(142 76% 36% / 0.08); border-radius: 8px; padding: 12px; text-align: center; border: 2px solid hsl(142 76% 36% / 0.3);">
+                            <div style="font-size: 11px; color: hsl(142 76% 36%); font-weight: 700; margin-bottom: 4px;">📊 TOTAL</div>
+                            <div style="font-size: 18px; font-weight: 900; color: hsl(142 76% 36%);">$${formatoMoneda(cierre.total_ventas || 0)}</div>
                         </div>
-                        
-                        ${esAutomatico && esPendiente ? `
-                        <!-- Completar Arqueo Pendiente -->
-                        <div style="background: linear-gradient(135deg, hsl(38 92% 50% / 0.15), hsl(38 92% 50% / 0.05)); padding: 20px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.05); border: 2px solid hsl(38 92% 50%);">
-                            <h4 style="margin: 0 0 12px; font-size: 15px; font-weight: 700; color: hsl(38 92% 40%); display: flex; align-items: center; gap: 8px;">
-                                <span style="font-size: 20px;">⏳</span>
-                                Completar Arqueo
-                            </h4>
-                            <p style="margin: 0 0 16px; font-size: 13px; color: hsl(var(--muted-foreground));">
-                                Este cierre fue creado automáticamente. Ingresa el efectivo real contado en caja para completar el arqueo.
-                            </p>
-                            <div style="padding: 10px; background: hsl(199 89% 48% / 0.1); border-left: 3px solid hsl(199 89% 48%); border-radius: 4px; margin-bottom: 12px;">
-                                <p style="margin: 0; font-size: 12px; color: hsl(199 89% 35%); font-weight: 600;">
-                                    💾 Se guarda automáticamente como borrador mientras escribes.<br>
-                                    ⚠️ Para confirmar y guardar definitivamente, haz clic en "Completar Arqueo".
-                                </p>
-                            </div>
-                            <div style="margin-bottom: 12px;">
-                                <label style="display: block; margin-bottom: 6px; font-size: 13px; font-weight: 600;">💵 Efectivo Real Contado:</label>
-                                <input 
-                                    id="efectivoRealArqueo-${index}"
-                                    type="number" 
-                                    placeholder="Ej: 950000"
-                                    style="width: 100%; padding: 10px; border: 2px solid hsl(var(--border)); border-radius: 6px; font-size: 14px;"
-                                    oninput="guardarBorradorArqueo('${cierre.fecha}', ${index}, ${cierre.efectivo_esperado || 0})">
-                            </div>
-                            <div id="previaDiferencia-${index}" style="display: none; padding: 12px; background: white; border-radius: 6px; margin-bottom: 12px; border-left: 4px solid hsl(var(--primary));">
-                                <div style="display: flex; justify-content: space-between; font-size: 14px;">
-                                    <span style="font-weight: 600;">Diferencia:</span>
-                                    <strong id="diferenciaMonto-${index}"></strong>
-                                </div>
-                            </div>
-                            <button 
-                                onclick="completarArqueoPendiente('${cierre.fecha}', ${index})"
-                                style="width: 100%; padding: 12px; background: hsl(38 92% 50%); color: white; border: none; border-radius: 8px; cursor: pointer; font-weight: 700; font-size: 14px; display: flex; align-items: center; justify-content: center; gap: 8px; transition: all 0.2s;"
-                                onmouseover="this.style.background='hsl(38 92% 45%)'; this.style.transform='translateY(-2px)'"
-                                onmouseout="this.style.background='hsl(38 92% 50%)'; this.style.transform='translateY(0)'">
-                                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                                    <path d="M20 6L9 17l-5-5"/>
-                                </svg>
-                                Completar Arqueo
-                            </button>
-                        </div>
-                        ` : ''}
-                        
-                        <!-- Gastos del Día -->
-                        <div style="background: white; padding: 16px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.05); border-left: 4px solid hsl(0 84% 60%);">
-                            <h4 style="margin: 0 0 12px; font-size: 15px; font-weight: 700; color: hsl(0 84% 60%);">💸 Gastos y Salidas</h4>
-                            <div style="display: flex; flex-direction: column; gap: 8px; font-size: 14px;">
-                                <div style="display: flex; justify-content: space-between;">
-                                    <span>Gastos Operacionales:</span>
-                                    <strong>$${formatoMoneda(cierre.total_gastos || 0)}</strong>
-                                </div>
-                                <div style="display: flex; justify-content: space-between;">
-                                    <span>Pagos Personal:</span>
-                                    <strong>$${formatoMoneda(datos.pagos_personal)}</strong>
-                                </div>
-                                <div style="display: flex; justify-content: space-between; padding-top: 8px; border-top: 2px solid hsl(var(--border)); margin-top: 4px;">
-                                    <strong>Total Salidas:</strong>
-                                    <strong style="color: hsl(0 84% 60%);">$${formatoMoneda((cierre.total_gastos || 0) + datos.pagos_personal)}</strong>
-                                </div>
-                            </div>
-                        </div>
-                        
-                        <!-- Información del Cierre -->
-                        <div style="background: white; padding: 16px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.05);">
-                            <h4 style="margin: 0 0 12px; font-size: 15px; font-weight: 700;">ℹ️ Información del Cierre</h4>
-                            <div style="display: flex; flex-direction: column; gap: 8px; font-size: 14px;">
-                                <div style="display: flex; justify-content: space-between;">
-                                    <span>Cerrado por:</span>
-                                    <strong>${cierre.cerrado_por || 'N/A'}</strong>
-                                </div>
-                                <div style="display: flex; justify-content: space-between;">
-                                    <span>Hora de cierre:</span>
-                                    <strong>${cierre.cerrado_at ? new Date(cierre.cerrado_at).toLocaleTimeString('es-CL', { hour: '2-digit', minute: '2-digit' }) : 'N/A'}</strong>
-                                </div>
-                                <div style="display: flex; justify-content: space-between;">
-                                    <span>Tipo:</span>
-                                    <strong>${esAutomatico ? '🤖 Automático' : '👤 Manual'}</strong>
-                                </div>
-                                ${cierre.notas ? `
-                                <div style="margin-top: 8px; padding-top: 8px; border-top: 1px solid hsl(var(--border));">
-                                    <span style="font-size: 12px; color: hsl(var(--muted-foreground)); font-style: italic;">"${cierre.notas}"</span>
-                                </div>
-                                ` : ''}
-                            </div>
-                        </div>
-                        
                     </div>
-                </td>
-            </tr>
+                </div>
+
+                <!-- FILA 2: Gastos + Arqueo en línea -->
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: ${(esAutomatico && esPendiente) ? '16px' : '0'};">
+                    
+                    <!-- Gastos -->
+                    <div style="background: white; border-radius: 8px; padding: 14px; border: 1px solid hsl(var(--border));">
+                        <p style="margin: 0 0 10px; font-size: 12px; font-weight: 700; color: hsl(var(--muted-foreground)); text-transform: uppercase; letter-spacing: 0.5px;">💸 Salidas</p>
+                        <div style="display: flex; justify-content: space-between; font-size: 13px; margin-bottom: 6px;">
+                            <span>Gastos operac.</span>
+                            <strong style="color: hsl(0 84% 55%);">-$${formatoMoneda(cierre.total_gastos || 0)}</strong>
+                        </div>
+                        ${datos.pagos_personal > 0 ? `
+                        <div style="display: flex; justify-content: space-between; font-size: 13px; margin-bottom: 6px;">
+                            <span>Pagos personal</span>
+                            <strong style="color: hsl(0 84% 55%);">-$${formatoMoneda(datos.pagos_personal)}</strong>
+                        </div>` : ''}
+                        <div style="display: flex; justify-content: space-between; font-size: 13px; padding-top: 8px; border-top: 1px solid hsl(var(--border)); margin-top: 4px;">
+                            <strong>Total salidas</strong>
+                            <strong style="color: hsl(0 84% 55%);">-$${formatoMoneda((cierre.total_gastos || 0) + datos.pagos_personal)}</strong>
+                        </div>
+                    </div>
+                    
+                    <!-- Arqueo -->
+                    <div style="background: white; border-radius: 8px; padding: 14px; border: 1px solid hsl(var(--border));">
+                        <p style="margin: 0 0 10px; font-size: 12px; font-weight: 700; color: hsl(var(--muted-foreground)); text-transform: uppercase; letter-spacing: 0.5px;">🔍 Arqueo de caja</p>
+                        <div style="display: flex; justify-content: space-between; font-size: 13px; margin-bottom: 6px;">
+                            <span>Esperado</span>
+                            <strong>$${formatoMoneda(cierre.efectivo_esperado || 0)}</strong>
+                        </div>
+                        <div style="display: flex; justify-content: space-between; font-size: 13px; margin-bottom: 8px;">
+                            <span>Real contado</span>
+                            <strong>${esPendiente ? `<span style="color:hsl(38 92% 50%);">Sin registrar</span>` : `$${formatoMoneda(cierre.efectivo_real || 0)}`}</strong>
+                        </div>
+                        <div style="padding: 8px 12px; background: ${estadoBg}; border-radius: 6px; text-align: center;">
+                            <span style="font-size: 13px; font-weight: 700; color: ${estadoColor};">${estadoIcon} ${estadoTexto}</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- COMPLETAR ARQUEO (solo si es automático y pendiente) -->
+                ${esAutomatico && esPendiente ? `
+                <div style="background: linear-gradient(135deg, hsl(38 92% 50% / 0.12), hsl(38 92% 50% / 0.04)); border: 2px solid hsl(38 92% 50%); border-radius: 10px; padding: 18px;">
+                    <p style="margin: 0 0 6px; font-size: 14px; font-weight: 700; color: hsl(38 92% 40%);">⏳ Completar arqueo pendiente</p>
+                    <p style="margin: 0 0 12px; font-size: 12px; color: hsl(var(--muted-foreground));">💾 Se guarda como borrador automáticamente mientras escribes.</p>
+                    <div style="display: flex; gap: 10px; align-items: flex-end;">
+                        <div style="flex: 1;">
+                            <label style="display: block; margin-bottom: 5px; font-size: 12px; font-weight: 600;">💵 Efectivo real contado:</label>
+                            <input id="efectivoRealArqueo-${index}" type="number" placeholder="Ej: 950000"
+                                   style="width: 100%; padding: 10px 12px; border: 2px solid hsl(var(--border)); border-radius: 8px; font-size: 14px; box-sizing: border-box;"
+                                   oninput="guardarBorradorArqueo('${cierre.fecha}', ${index}, ${cierre.efectivo_esperado || 0})">
+                        </div>
+                        <button onclick="completarArqueoPendiente('${cierre.fecha}', ${index})"
+                                style="padding: 10px 20px; background: hsl(38 92% 50%); color: white; border: none; border-radius: 8px; cursor: pointer; font-weight: 700; font-size: 14px; white-space: nowrap;">
+                            ✓ Confirmar
+                        </button>
+                    </div>
+                    <div id="previaDiferencia-${index}" style="display:none; margin-top: 10px; padding: 8px 12px; border-radius: 6px; border-left: 4px solid hsl(var(--primary));">
+                        <span id="diferenciaMonto-${index}" style="font-size: 14px; font-weight: 700;"></span>
+                    </div>
+                </div>
+                ` : ''}
+            </div>
+        </div>
         `;
     });
-    
-    html += `
-                </tbody>
-            </table>
-        </div>
-    `;
-    
+
+    html += `</div>`;
     container.innerHTML = html;
 }
 
 /**
- * Ver detalles de un cierre específico
+ * Ver/ocultar detalles de un cierre especifico
  */
 function verDetallesCierre(index) {
-    const detallesRow = document.getElementById(`detalles-${index}`);
-    const isVisible = detallesRow.style.display !== 'none';
-    
-    // Ocultar todos los detalles
-    document.querySelectorAll('[id^="detalles-"]').forEach(row => {
-        row.style.display = 'none';
+    const detallesDiv = document.getElementById(`detalles-${index}`);
+    if (!detallesDiv) return;
+    const isVisible = detallesDiv.style.display !== 'none';
+
+    // Colapsar todos los abiertos y resetear chevrons
+    document.querySelectorAll('[id^="detalles-"]').forEach(div => {
+        div.style.display = 'none';
     });
-    
+    document.querySelectorAll('[id^="chevron-"]').forEach(ch => {
+        ch.style.transform = 'rotate(0deg)';
+    });
+
     // Toggle del seleccionado
     if (!isVisible) {
-        detallesRow.style.display = 'table-row';
-        
-        // Intentar recuperar borrador si existe
+        detallesDiv.style.display = 'block';
+        const chevron = document.getElementById(`chevron-${index}`);
+        if (chevron) chevron.style.transform = 'rotate(180deg)';
+
+        // Recuperar borrador si aplica
         const cierre = datosHistorialCaja[index];
         if (cierre && cierre.cierre_automatico && !cierre.efectivo_real) {
-            // Esperar un poco para que el DOM se actualice
             setTimeout(() => {
                 recuperarBorradorArqueo(cierre.fecha, index, cierre.efectivo_esperado || 0);
             }, 100);
@@ -9225,7 +9181,7 @@ function guardarBorradorArqueo(fecha, index, efectivoEsperado) {
     if (efectivoReal > 0) {
         const claveBorrador = `borrador_arqueo_${fecha}`;
         localStorage.setItem(claveBorrador, efectivoReal.toString());
-        console.log('💾 Borrador guardado:', { fecha, efectivoReal });
+        console.log('­ƒÆ¥ Borrador guardado:', { fecha, efectivoReal });
     }
     
     // Calcular y mostrar diferencia
@@ -9245,12 +9201,12 @@ function recuperarBorradorArqueo(fecha, index, efectivoEsperado) {
             input.value = borradorGuardado;
             // Mostrar diferencia con el valor recuperado
             calcularDiferenciaArqueo(index, efectivoEsperado, parseFloat(borradorGuardado));
-            console.log('📂 Borrador recuperado:', { fecha, valor: borradorGuardado });
+            console.log('­ƒôé Borrador recuperado:', { fecha, valor: borradorGuardado });
             
             // Mostrar notificación al usuario
             setTimeout(() => {
                 mostrarNotificacion(
-                    `📂 Borrador recuperado\n\nSe encontró un valor previo: $${formatoMoneda(parseFloat(borradorGuardado))}\n\nRevísalo y haz clic en "Completar Arqueo" para confirmar.`,
+                    `­ƒôé Borrador recuperado\n\nSe encontró un valor previo: $${formatoMoneda(parseFloat(borradorGuardado))}\n\nRevísalo y haz clic en "Completar Arqueo" para confirmar.`,
                     'info',
                     6000
                 );
@@ -9265,7 +9221,7 @@ function recuperarBorradorArqueo(fecha, index, efectivoEsperado) {
 function limpiarBorradorArqueo(fecha) {
     const claveBorrador = `borrador_arqueo_${fecha}`;
     localStorage.removeItem(claveBorrador);
-    console.log('🗑️ Borrador eliminado:', { fecha });
+    console.log('­ƒùæ´©Å Borrador eliminado:', { fecha });
 }
 
 /**
@@ -9291,19 +9247,19 @@ function calcularDiferenciaArqueo(index, efectivoEsperado, efectivoRealParam) {
         container.style.borderLeftColor = 'hsl(142 76% 36%)';
         container.style.background = 'hsl(142 76% 36% / 0.1)';
         montoElement.style.color = 'hsl(142 76% 36%)';
-        montoElement.textContent = '✅ ¡Cuadrado! ($0)';
+        montoElement.textContent = 'Ô£à ¡Cuadrado! ($0)';
     } else if (diferencia > 0) {
         // Sobrante (azul)
         container.style.borderLeftColor = 'hsl(199 89% 48%)';
         container.style.background = 'hsl(199 89% 48% / 0.1)';
         montoElement.style.color = 'hsl(199 89% 48%)';
-        montoElement.textContent = '📈 Sobrante: +$' + formatoMoneda(diferencia);
+        montoElement.textContent = '­ƒôê Sobrante: +$' + formatoMoneda(diferencia);
     } else {
         // Faltante (rojo)
         container.style.borderLeftColor = 'hsl(0 84% 60%)';
         container.style.background = 'hsl(0 84% 60% / 0.1)';
         montoElement.style.color = 'hsl(0 84% 60%)';
-        montoElement.textContent = '⚠️ Faltante: -$' + formatoMoneda(Math.abs(diferencia));
+        montoElement.textContent = 'ÔÜá´©Å Faltante: -$' + formatoMoneda(Math.abs(diferencia));
     }
 }
 
@@ -9317,13 +9273,13 @@ async function completarArqueoPendiente(fecha, index) {
         
         // Validaciones
         if (!efectivoReal && efectivoReal !== 0) {
-            mostrarNotificacion('⚠️ Ingresa el efectivo real contado en caja', 'warning', 4000);
+            mostrarNotificacion('ÔÜá´©Å Ingresa el efectivo real contado en caja', 'warning', 4000);
             input.focus();
             return;
         }
         
         if (efectivoReal < 0) {
-            mostrarNotificacion('⚠️ El efectivo real no puede ser negativo', 'warning', 4000);
+            mostrarNotificacion('ÔÜá´©Å El efectivo real no puede ser negativo', 'warning', 4000);
             return;
         }
         
@@ -9334,17 +9290,17 @@ async function completarArqueoPendiente(fecha, index) {
         
         // Confirmación
         let estadoTexto = '';
-        if (diferencia === 0) estadoTexto = '✅ Cuadrado';
-        else if (diferencia > 0) estadoTexto = '📈 Sobrante: +$' + formatoMoneda(diferencia);
-        else estadoTexto = '⚠️ Faltante: -$' + formatoMoneda(Math.abs(diferencia));
+        if (diferencia === 0) estadoTexto = 'Ô£à Cuadrado';
+        else if (diferencia > 0) estadoTexto = '­ƒôê Sobrante: +$' + formatoMoneda(diferencia);
+        else estadoTexto = 'ÔÜá´©Å Faltante: -$' + formatoMoneda(Math.abs(diferencia));
         
         const confirmar = confirm(
             `¿Confirmar arqueo del cierre automático?\\n\\n` +
-            `📅 Fecha: ${new Date(fecha).toLocaleDateString('es-CL')}\\n` +
-            `💰 Total Ventas: $${formatoMoneda(cierre.total_ventas || 0)}\\n\\n` +
-            `💵 Efectivo Esperado: $${formatoMoneda(efectivoEsperado)}\\n` +
-            `💵 Efectivo Real: $${formatoMoneda(efectivoReal)}\\n` +
-            `📊 Diferencia: ${estadoTexto}\\n\\n` +
+            `­ƒôà Fecha: ${new Date(fecha).toLocaleDateString('es-CL')}\\n` +
+            `­ƒÆ░ Total Ventas: $${formatoMoneda(cierre.total_ventas || 0)}\\n\\n` +
+            `­ƒÆÁ Efectivo Esperado: $${formatoMoneda(efectivoEsperado)}\\n` +
+            `­ƒÆÁ Efectivo Real: $${formatoMoneda(efectivoReal)}\\n` +
+            `­ƒôè Diferencia: ${estadoTexto}\\n\\n` +
             `Esta acción completará el cierre automático.`
         );
         
@@ -9356,7 +9312,7 @@ async function completarArqueoPendiente(fecha, index) {
             .update({
                 efectivo_real: efectivoReal,
                 diferencia: diferencia,
-                notas: (cierre.notas || '') + `\\n\\n✅ Arqueo completado manualmente el ${new Date().toLocaleString('es-CL')} por ${currentUser}`
+                notas: (cierre.notas || '') + `\\n\\nÔ£à Arqueo completado manualmente el ${new Date().toLocaleString('es-CL')} por ${currentUser}`
             })
             .eq('fecha', fecha)
             .select();
@@ -9367,7 +9323,7 @@ async function completarArqueoPendiente(fecha, index) {
         limpiarBorradorArqueo(fecha);
         
         mostrarNotificacion(
-            `✅ Arqueo completado exitosamente\\n\\n` +
+            `Ô£à Arqueo completado exitosamente\\n\\n` +
             `${estadoTexto}`,
             diferencia === 0 ? 'success' : (diferencia > 0 ? 'info' : 'warning'),
             6000
@@ -9376,11 +9332,11 @@ async function completarArqueoPendiente(fecha, index) {
         // Recargar historial para reflejar cambios
         await cargarHistorialCaja();
         
-        console.log('✅ Arqueo completado:', { fecha, efectivoReal, diferencia });
+        console.log('Ô£à Arqueo completado:', { fecha, efectivoReal, diferencia });
         
     } catch (error) {
-        console.error('❌ Error completando arqueo:', error);
-        mostrarNotificacion('❌ Error al completar arqueo: ' + error.message, 'error', 5000);
+        console.error('ÔØî Error completando arqueo:', error);
+        mostrarNotificacion('ÔØî Error al completar arqueo: ' + error.message, 'error', 5000);
     }
 }
 
@@ -9474,12 +9430,12 @@ async function registrarPagoPersonal(event) {
     // Confirmar pago
     const confirmar = confirm(
         `¿Registrar pago al personal?\n\n` +
-        `👤 Empleado: ${empleado}\n` +
-        `💼 Puesto: ${puesto}\n` +
-        `🕐 Turno: ${turno}\n` +
-        `💵 Pago Jornada: $${formatoMoneda(pagoJornada)}\n` +
-        `🍽️ Pago Almuerzo: $${formatoMoneda(pagoAlmuerzo)}\n` +
-        `💰 Total: $${formatoMoneda(totalPago)}`
+        `­ƒæñ Empleado: ${empleado}\n` +
+        `­ƒÆ╝ Puesto: ${puesto}\n` +
+        `­ƒòÉ Turno: ${turno}\n` +
+        `­ƒÆÁ Pago Jornada: $${formatoMoneda(pagoJornada)}\n` +
+        `­ƒì¢´©Å Pago Almuerzo: $${formatoMoneda(pagoAlmuerzo)}\n` +
+        `­ƒÆ░ Total: $${formatoMoneda(totalPago)}`
     );
 
     if (!confirmar) return;
@@ -9506,7 +9462,7 @@ async function registrarPagoPersonal(event) {
 
         if (error) throw error;
 
-        mostrarNotificacion(`✅ Pago registrado exitosamente para ${empleado}`, 'success');
+        mostrarNotificacion(`Ô£à Pago registrado exitosamente para ${empleado}`, 'success');
 
         // Cerrar modal
         cerrarModalPagoPersonal();
@@ -9529,7 +9485,7 @@ async function registrarPagoPersonal(event) {
 async function cargarPagosPersonalDelDia() {
     try {
         if (!window.supabaseClient) {
-            console.warn('⚠️ Supabase no configurado, omitiendo pagos personal');
+            console.warn('ÔÜá´©Å Supabase no configurado, omitiendo pagos personal');
             pagosPersonalDelDia = [];
             actualizarResumenPagosPersonal();
             return;
@@ -9546,12 +9502,12 @@ async function cargarPagosPersonalDelDia() {
             .order('created_at', { ascending: false });
 
         if (error) {
-            console.error('❌ Error consultando pagos personal:', error);
+            console.error('ÔØî Error consultando pagos personal:', error);
             throw error;
         }
 
         pagosPersonalDelDia = data || [];
-        console.log(`✅ ${pagosPersonalDelDia.length} pagos al personal hoy`);
+        console.log(`Ô£à ${pagosPersonalDelDia.length} pagos al personal hoy`);
 
         // Actualizar el panel de resumen
         actualizarResumenPagosPersonal();
@@ -9589,10 +9545,10 @@ function actualizarResumenPagosPersonal() {
  */
 async function cargarDatosReparto() {
     try {
-        console.log('🚚 Cargando datos de reparto con lógica de contabilización...');
+        console.log('­ƒÜÜ Cargando datos de reparto con lógica de contabilización...');
 
         if (!window.supabaseClient) {
-            console.warn('⚠️ Supabase no configurado, omitiendo datos de reparto');
+            console.warn('ÔÜá´©Å Supabase no configurado, omitiendo datos de reparto');
             actualizarResumenReparto(null);
             return;
         }
@@ -9600,7 +9556,7 @@ async function cargarDatosReparto() {
         const hoy = new Date();
         const fechaHoy = hoy.toISOString().split('T')[0]; // YYYY-MM-DD
 
-        console.log(`📅 Consultando pedidos del día vía RPC...`);
+        console.log(`­ƒôà Consultando pedidos del día vía RPC...`);
         console.log(`   Fecha: ${fechaHoy}`);
 
         // USAR FUNCIÓN RPC (bypasea políticas RLS, igual que obtener_transferencias_dia)
@@ -9608,11 +9564,11 @@ async function cargarDatosReparto() {
             .rpc('obtener_pedidos_dia', { fecha_consulta: fechaHoy });
 
         if (error) {
-            console.error('❌ Error en RPC obtener_pedidos_dia:', error);
+            console.error('ÔØî Error en RPC obtener_pedidos_dia:', error);
             
             // Si la función no existe, mostrar instrucciones claras
             if (error.code === '42883' || error.message?.includes('function')) {
-                console.error('⚠️ CONFIGURACIÓN PENDIENTE:');
+                console.error('ÔÜá´©Å CONFIGURACIÓN PENDIENTE:');
                 console.error('   Debes ejecutar el script SQL:');
                 console.error('   CREAR_FUNCION_RPC_OBTENER_PEDIDOS_DIA.sql');
                 console.error('   en el SQL Editor de Supabase.');
@@ -9627,16 +9583,16 @@ async function cargarDatosReparto() {
         }
 
         if (!pedidos || pedidos.length === 0) {
-            console.log('ℹ️ No hay pedidos relevantes para hoy');
+            console.log('Ôä╣´©Å No hay pedidos relevantes para hoy');
             actualizarResumenReparto([], fechaHoy);
             return;
         }
 
-        console.log(`✅ ${pedidos.length} pedidos encontrados vía RPC (filtrando para ${fechaHoy})`);
+        console.log(`Ô£à ${pedidos.length} pedidos encontrados vía RPC (filtrando para ${fechaHoy})`);
         actualizarResumenReparto(pedidos, fechaHoy);
 
     } catch (error) {
-        console.error('❌ Error en cargarDatosReparto:', error);
+        console.error('ÔØî Error en cargarDatosReparto:', error);
         manejarError(error, {
             contexto: 'cargarDatosReparto',
             mensajeUsuario: 'Error cargando datos de reparto',
@@ -9682,11 +9638,11 @@ function actualizarResumenReparto(pedidos, fechaHoy) {
     let contabilizadosHoy = [];
 
     const hoy = fechaHoy ? new Date(fechaHoy + 'T00:00:00') : new Date();
-    const mañana = new Date(hoy);
-    mañana.setDate(mañana.getDate() + 1);
+    const manana = new Date(hoy);
+    manana.setDate(manana.getDate() + 1);
 
-    console.log('📅 Fecha de contabilización:', hoy.toLocaleDateString('es-CL'));
-    console.log(`🔍 Procesando ${pedidos.length} pedidos para filtrar...`);
+    console.log('­ƒôà Fecha de contabilización:', hoy.toLocaleDateString('es-CL'));
+    console.log(`­ƒöì Procesando ${pedidos.length} pedidos para filtrar...`);
 
     pedidos.forEach(pedido => {
        // Solo contar pedidos entregados Y NO anulados
@@ -9700,7 +9656,7 @@ function actualizarResumenReparto(pedidos, fechaHoy) {
         const total = pedido.total || 0;
         const metodo = pedido.metodo_pago || pedido.metodo || 'E';
 
-        console.log(`🔎 Evaluando: ${pedido.nombre} | Método: ${metodo} | Total: $${total} | Entregado: ${pedido.entregado} | Boleteada: ${pedido.boleteada}`);
+        console.log(`­ƒöÄ Evaluando: ${pedido.nombre} | Método: ${metodo} | Total: $${total} | Entregado: ${pedido.entregado} | Boleteada: ${pedido.boleteada}`);
 
         // ============================================================
         // LÓGICA DE FECHA DE CONTABILIZACIÓN (IGUAL QUE EN REPARTO)
@@ -9709,32 +9665,32 @@ function actualizarResumenReparto(pedidos, fechaHoy) {
         const esTransferencia = ['TP', 'TG', 'T', 'P'].includes(metodo) || metodo.includes('TRANSF');
 
         if (esTransferencia && pedido.boleteada && pedido.fecha_boleta) {
-            // CASO 1: TP→TG (confirmada) → cuenta día de CONFIRMACIÓN
+            // CASO 1: TPÔåÆTG (confirmada) ÔåÆ cuenta día de CONFIRMACIÓN
             fechaContabilizar = new Date(pedido.fecha_boleta);
-            console.log(`💰 Transferencia CONFIRMADA: ${pedido.nombre} - $${total} cuenta para ${fechaContabilizar.toLocaleDateString('es-CL')}`);
+            console.log(`­ƒÆ░ Transferencia CONFIRMADA: ${pedido.nombre} - $${total} cuenta para ${fechaContabilizar.toLocaleDateString('es-CL')}`);
         } else if (metodo === 'TG' || metodo.includes('TRANSF')) {
-            // CASO 2: TG (Transferencia Pagada) → cuenta día de ENTREGA (si está entregado)
+            // CASO 2: TG (Transferencia Pagada) ÔåÆ cuenta día de ENTREGA (si está entregado)
             if (pedido.fecha_boleta) {
                 fechaContabilizar = new Date(pedido.fecha_boleta);
-                console.log(`✅ Transferencia PAGADA con fecha_boleta: ${pedido.nombre} - $${total} cuenta para ${fechaContabilizar.toLocaleDateString('es-CL')}`);
+                console.log(`Ô£à Transferencia PAGADA con fecha_boleta: ${pedido.nombre} - $${total} cuenta para ${fechaContabilizar.toLocaleDateString('es-CL')}`);
             } else if (pedido.fecha) {
                 fechaContabilizar = new Date(pedido.fecha + 'T00:00:00');
-                console.log(`✅ Transferencia PAGADA entregada: ${pedido.nombre} - $${total} cuenta para ${fechaContabilizar.toLocaleDateString('es-CL')}`);
+                console.log(`Ô£à Transferencia PAGADA entregada: ${pedido.nombre} - $${total} cuenta para ${fechaContabilizar.toLocaleDateString('es-CL')}`);
             } else {
                 fechaContabilizar = new Date(pedido.created_at);
-                console.log(`✅ Transferencia PAGADA desde inicio: ${pedido.nombre} - $${total} cuenta para ${fechaContabilizar.toLocaleDateString('es-CL')}`);
+                console.log(`Ô£à Transferencia PAGADA desde inicio: ${pedido.nombre} - $${total} cuenta para ${fechaContabilizar.toLocaleDateString('es-CL')}`);
             }
         } else if (metodo === 'TP' || metodo === 'T') {
-            // CASO 3: TP (Transferencia Pendiente) → SÍ CUENTA usando fecha del pedido
+            // CASO 3: TP (Transferencia Pendiente) ÔåÆ SÍ CUENTA usando fecha del pedido
             fechaContabilizar = new Date(pedido.fecha + 'T00:00:00');
-            console.log(`💸 Transferencia PENDIENTE (sin boleta): ${pedido.nombre} - $${total} cuenta para ${fechaContabilizar.toLocaleDateString('es-CL')}`);
+            console.log(`­ƒÆ© Transferencia PENDIENTE (sin boleta): ${pedido.nombre} - $${total} cuenta para ${fechaContabilizar.toLocaleDateString('es-CL')}`);
         } else {
-            // CASO 4: Otros métodos (E, DC) → cuenta día de ENTREGA
+            // CASO 4: Otros métodos (E, DC) ÔåÆ cuenta día de ENTREGA
             fechaContabilizar = new Date(pedido.fecha + 'T00:00:00');
         }
 
         // Verificar si cuenta para HOY
-        if (fechaContabilizar >= hoy && fechaContabilizar < mañana) {
+        if (fechaContabilizar >= hoy && fechaContabilizar < manana) {
             contabilizadosHoy.push(pedido);
 
             // Contabilizar por método de pago (IGUAL QUE EN REPARTO)
@@ -9749,9 +9705,9 @@ function actualizarResumenReparto(pedidos, fechaHoy) {
                 efectivo += total;
             }
 
-            console.log(`✅ CUENTA HOY: ${pedido.nombre} - ${metodo} - $${total}`);
+            console.log(`Ô£à CUENTA HOY: ${pedido.nombre} - ${metodo} - $${total}`);
         } else {
-            console.log(`⏭️ NO cuenta hoy (fecha: ${fechaContabilizar ? fechaContabilizar.toLocaleDateString('es-CL') : 'N/A'}): ${pedido.nombre} - ${metodo} - $${total}`);
+            console.log(`ÔÅ¡´©Å NO cuenta hoy (fecha: ${fechaContabilizar ? fechaContabilizar.toLocaleDateString('es-CL') : 'N/A'}): ${pedido.nombre} - ${metodo} - $${total}`);
         }
     });
 
@@ -9764,17 +9720,17 @@ function actualizarResumenReparto(pedidos, fechaHoy) {
         return ['TP', 'TG', 'T', 'P'].includes(metodo) || metodo.includes('TRANSF');
     }).reduce((sum, p) => sum + (p.total || 0), 0);
 
-    console.log('═══════════════════════════════════════════════');
-    console.log(`📊 RESUMEN REPARTO CONTABILIZACIÓN:`);
-    console.log(`   📥 Pedidos recibidos: ${pedidos.length}`);
-    console.log(`   ✅ Contabilizados HOY: ${contabilizadosHoy.length}`);
-    console.log(`   ⏳ Pendientes: ${pendientes.length}`);
-    console.log(`   💵 Efectivo: $${efectivo.toLocaleString('es-CL')}`);
-    console.log(`   💳 Tarjetas: $${tarjetas.toLocaleString('es-CL')}`);
-    console.log(`   🏦 Transferencias: $${transferencias.toLocaleString('es-CL')}`);
-    console.log(`   ⏳ Transf. Pendientes: $${transferenciasPendientes.toLocaleString('es-CL')}`);
-    console.log(`   💰 TOTAL RECAUDADO: $${totalRecaudado.toLocaleString('es-CL')}`);
-    console.log('═══════════════════════════════════════════════');
+    console.log('ÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉ');
+    console.log(`­ƒôè RESUMEN REPARTO CONTABILIZACIÓN:`);
+    console.log(`   ­ƒôÑ Pedidos recibidos: ${pedidos.length}`);
+    console.log(`   Ô£à Contabilizados HOY: ${contabilizadosHoy.length}`);
+    console.log(`   ÔÅ│ Pendientes: ${pendientes.length}`);
+    console.log(`   ­ƒÆÁ Efectivo: $${efectivo.toLocaleString('es-CL')}`);
+    console.log(`   ­ƒÆ│ Tarjetas: $${tarjetas.toLocaleString('es-CL')}`);
+    console.log(`   ­ƒÅª Transferencias: $${transferencias.toLocaleString('es-CL')}`);
+    console.log(`   ÔÅ│ Transf. Pendientes: $${transferenciasPendientes.toLocaleString('es-CL')}`);
+    console.log(`   ­ƒÆ░ TOTAL RECAUDADO: $${totalRecaudado.toLocaleString('es-CL')}`);
+    console.log('ÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉ');
     
     // Guardar en variable global
     repartoDelDia = {
@@ -9796,7 +9752,7 @@ function actualizarResumenReparto(pedidos, fechaHoy) {
     document.getElementById('repartoPagadasCantidad').textContent = contabilizadosHoy.length;
     document.getElementById('repartoPagadasMonto').textContent = '$' + formatoMoneda(totalRecaudado);
 
-    console.log('📊 Resumen reparto actualizado:', {
+    console.log('­ƒôè Resumen reparto actualizado:', {
         total: totalRecaudado,
         efectivo,
         tarjetas,
@@ -9965,7 +9921,7 @@ async function guardarPagoEditado(pagoId) {
 
         if (error) throw error;
 
-        mostrarNotificacion('✅ Pago actualizado correctamente', 'success');
+        mostrarNotificacion('Ô£à Pago actualizado correctamente', 'success');
 
         // Actualizar en la lista local
         const pagoIndex = pagosPersonalDelDia.findIndex(p => p.id === pagoId);
@@ -10025,7 +9981,7 @@ async function inicializarProveedores() {
             proveedoresActuales = [];
         } else {
             proveedoresActuales = data.map(p => p.nombre);
-            console.log('✅ Proveedores cargados:', proveedoresActuales.length);
+            console.log('Ô£à Proveedores cargados:', proveedoresActuales.length);
         }
         
     } catch (error) {
@@ -10176,7 +10132,7 @@ async function abrirModalProveedores() {
     
     proveedorEditando = null;
     document.getElementById('inputNombreProveedor').value = '';
-    document.getElementById('tituloFormProveedor').textContent = '➕ Agregar Proveedor';
+    document.getElementById('tituloFormProveedor').textContent = 'Ô×ò Agregar Proveedor';
     document.getElementById('textoBotonProveedor').textContent = 'Agregar';
     document.getElementById('btnCancelarEditProveedor').style.display = 'none';
     
@@ -10222,10 +10178,10 @@ function renderizarListaProveedores() {
             </div>
             <div style="display: flex; gap: 8px;">
                 <button class="btn btn-sm btn-primary" onclick="editarProveedor('${proveedor.replace(/'/g, "\\'")}')">
-                    ✏️ Editar
+                    Ô£Å´©Å Editar
                 </button>
                 <button class="btn btn-sm btn-danger" onclick="eliminarProveedor('${proveedor.replace(/'/g, "\\'")}')">
-                    🗑️ Eliminar
+                    ­ƒùæ´©Å Eliminar
                 </button>
             </div>
         </div>
@@ -10307,7 +10263,7 @@ async function guardarProveedor() {
         // Limpiar formulario
         input.value = '';
         proveedorEditando = null;
-        document.getElementById('tituloFormProveedor').textContent = '➕ Agregar Proveedor';
+        document.getElementById('tituloFormProveedor').textContent = 'Ô×ò Agregar Proveedor';
         document.getElementById('textoBotonProveedor').textContent = 'Agregar';
         document.getElementById('btnCancelarEditProveedor').style.display = 'none';
         
@@ -10326,7 +10282,7 @@ function editarProveedor(nombreProveedor) {
     proveedorEditando = nombreProveedor;
     
     document.getElementById('inputNombreProveedor').value = nombreProveedor;
-    document.getElementById('tituloFormProveedor').textContent = '✏️ Editar Proveedor';
+    document.getElementById('tituloFormProveedor').textContent = 'Ô£Å´©Å Editar Proveedor';
     document.getElementById('textoBotonProveedor').textContent = 'Guardar Cambios';
     document.getElementById('btnCancelarEditProveedor').style.display = 'inline-block';
     
@@ -10341,7 +10297,7 @@ function cancelarEditarProveedor() {
     proveedorEditando = null;
     
     document.getElementById('inputNombreProveedor').value = '';
-    document.getElementById('tituloFormProveedor').textContent = '➕ Agregar Proveedor';
+    document.getElementById('tituloFormProveedor').textContent = 'Ô×ò Agregar Proveedor';
     document.getElementById('textoBotonProveedor').textContent = 'Agregar';
     document.getElementById('btnCancelarEditProveedor').style.display = 'none';
 }
@@ -10435,7 +10391,7 @@ function inicializarCategorias() {
     // Actualizar todos los select de la aplicación
     actualizarSelectCategorias();
     
-    console.log('✅ Categorías inicializadas:', categoriasActuales.length);
+    console.log('Ô£à Categorías inicializadas:', categoriasActuales.length);
 }
 
 /**
@@ -10504,10 +10460,10 @@ function renderizarListaCategorias() {
             </div>
             <div style="display: flex; gap: 8px;">
                 <button class="btn btn-sm btn-primary" onclick="editarCategoria('${categoria.replace(/'/g, "\\'")}')">
-                    ✏️ Editar
+                    Ô£Å´©Å Editar
                 </button>
                 <button class="btn btn-sm btn-danger" onclick="eliminarCategoria('${categoria.replace(/'/g, "\\'")}')">
-                    🗑️ Eliminar
+                    ­ƒùæ´©Å Eliminar
                 </button>
             </div>
         </div>
@@ -10577,7 +10533,7 @@ function editarCategoria(nombreCategoria) {
     categoriaEditando = nombreCategoria;
     
     document.getElementById('inputNombreCategoria').value = nombreCategoria;
-    document.getElementById('tituloFormCategoria').textContent = '✏️ Editar Categoría';
+    document.getElementById('tituloFormCategoria').textContent = 'Ô£Å´©Å Editar Categoría';
     document.getElementById('textoBotonCategoria').textContent = 'Guardar';
     document.getElementById('btnCancelarEditCategoria').style.display = 'inline-block';
     document.getElementById('inputNombreCategoria').focus();
@@ -10590,7 +10546,7 @@ function cancelarEditarCategoria() {
     categoriaEditando = null;
     
     document.getElementById('inputNombreCategoria').value = '';
-    document.getElementById('tituloFormCategoria').textContent = '➕ Agregar Categoría';
+    document.getElementById('tituloFormCategoria').textContent = 'Ô×ò Agregar Categoría';
     document.getElementById('textoBotonCategoria').textContent = 'Agregar';
     document.getElementById('btnCancelarEditCategoria').style.display = 'none';
 }
@@ -10660,7 +10616,7 @@ async function inicializarMarcas() {
             marcasActuales = [];
         } else {
             marcasActuales = data.map(m => m.nombre);
-            console.log('✅ Marcas cargadas desde Supabase:', marcasActuales.length);
+            console.log('Ô£à Marcas cargadas desde Supabase:', marcasActuales.length);
         }
         
     } catch (error) {
@@ -10714,7 +10670,7 @@ async function abrirModalMarcas() {
     
     marcaEditando = null;
     document.getElementById('inputNombreMarca').value = '';
-    document.getElementById('tituloFormMarca').textContent = '➕ Agregar Marca';
+    document.getElementById('tituloFormMarca').textContent = 'Ô×ò Agregar Marca';
     document.getElementById('textoBotonMarca').textContent = 'Agregar';
     document.getElementById('btnCancelarEditMarca').style.display = 'none';
     
@@ -10763,10 +10719,10 @@ function renderizarListaMarcas() {
             </div>
             <div style="display: flex; gap: 8px;">
                 <button class="btn btn-sm btn-primary" onclick="editarMarca('${marca.replace(/'/g, "\\'")}')">
-                    ✏️ Editar
+                    Ô£Å´©Å Editar
                 </button>
                 <button class="btn btn-sm btn-danger" onclick="eliminarMarca('${marca.replace(/'/g, "\\'")}')">
-                    🗑️ Eliminar
+                    ­ƒùæ´©Å Eliminar
                 </button>
             </div>
         </div>
@@ -10848,7 +10804,7 @@ async function guardarMarca() {
         // Limpiar formulario
         input.value = '';
         marcaEditando = null;
-        document.getElementById('tituloFormMarca').textContent = '➕ Agregar Marca';
+        document.getElementById('tituloFormMarca').textContent = 'Ô×ò Agregar Marca';
         document.getElementById('textoBotonMarca').textContent = 'Agregar';
         document.getElementById('btnCancelarEditMarca').style.display = 'none';
         
@@ -10867,7 +10823,7 @@ function editarMarca(nombreMarca) {
     marcaEditando = nombreMarca;
     
     document.getElementById('inputNombreMarca').value = nombreMarca;
-    document.getElementById('tituloFormMarca').textContent = '✏️ Editar Marca';
+    document.getElementById('tituloFormMarca').textContent = 'Ô£Å´©Å Editar Marca';
     document.getElementById('textoBotonMarca').textContent = 'Guardar Cambios';
     document.getElementById('btnCancelarEditMarca').style.display = 'inline-block';
     
@@ -10882,7 +10838,7 @@ function cancelarEditarMarca() {
     marcaEditando = null;
     
     document.getElementById('inputNombreMarca').value = '';
-    document.getElementById('tituloFormMarca').textContent = '➕ Agregar Marca';
+    document.getElementById('tituloFormMarca').textContent = 'Ô×ò Agregar Marca';
     document.getElementById('textoBotonMarca').textContent = 'Agregar';
     document.getElementById('btnCancelarEditMarca').style.display = 'none';
 }
@@ -10983,7 +10939,7 @@ async function guardarNuevoProducto() {
 
         if (error) throw error;
 
-        mostrarNotificacion('✅ Producto registrado exitosamente', 'success');
+        mostrarNotificacion('Ô£à Producto registrado exitosamente', 'success');
         cerrarModalNuevo();
         await cargarProductos();
 
@@ -11006,7 +10962,7 @@ let productosSinCodigo = [];
 
 async function cargarProductosSinCodigo() {
     try {
-        console.log('📦 Cargando productos sin código de barras...');
+        console.log('­ƒôª Cargando productos sin código de barras...');
 
         const { data, error } = await window.supabaseClient
             .from('productos')
@@ -11018,7 +10974,7 @@ async function cargarProductosSinCodigo() {
         if (error) throw error;
 
         productosSinCodigo = data;
-        console.log(`✅ Encontrados ${productosSinCodigo.length} productos sin código`);
+        console.log(`Ô£à Encontrados ${productosSinCodigo.length} productos sin código`);
 
         renderProductosSinCodigo(productosSinCodigo);
 
@@ -11052,7 +11008,7 @@ function renderProductosSinCodigo(productos) {
             <div style="flex: 1;">
                 <h4 style="font-size: 15px; font-weight: 600; margin: 0 0 4px 0;">${p.nombre}</h4>
                 <p style="font-size: 13px; color: hsl(var(--muted-foreground)); margin: 0;">
-                    ${p.marca} • ${p.categoria} • Stock: ${p.stock}
+                    ${p.marca} ÔÇó ${p.categoria} ÔÇó Stock: ${p.stock}
                 </p>
             </div>
             <button class="btn-primary" style="padding: 10px 20px; white-space: nowrap;" onclick="event.stopPropagation(); seleccionarProductoParaCodigo(${p.id})">
@@ -11086,7 +11042,7 @@ function seleccionarProductoParaCodigo(productoId) {
         return;
     }
 
-    console.log('📱 Producto seleccionado:', productoSeleccionado.nombre);
+    console.log('­ƒô▒ Producto seleccionado:', productoSeleccionado.nombre);
 
     // Abrir escáner en modo asignación
     abrirEscanerAsignacion();
@@ -11097,7 +11053,7 @@ function abrirEscanerAsignacion() {
     const rolMensaje = document.getElementById('rolMensaje');
 
     rolMensaje.innerHTML = `
-        <strong>🎯 Asignando código a:</strong><br>
+        <strong>­ƒÄ» Asignando código a:</strong><br>
         <span style="font-size: 16px; color: hsl(var(--primary));">${productoSeleccionado.nombre}</span><br>
         <small style="opacity: 0.7;">Escanea el código de barras del producto físico</small>
     `;
@@ -11125,14 +11081,14 @@ function iniciarEscanerAsignacion() {
         { facingMode: "environment" },
         config,
         (decodedText, decodedResult) => {
-            console.log(`✅ Código escaneado: ${decodedText}`);
+            console.log(`Ô£à Código escaneado: ${decodedText}`);
             asignarCodigoAProducto(decodedText);
         },
         (errorMessage) => {
             // Errores normales de escaneo
         }
     ).catch((err) => {
-        console.error('❌ Error iniciando escáner:', err);
+        console.error('ÔØî Error iniciando escáner:', err);
         mostrarNotificacion('Error al acceder a la cámara', 'error');
     });
 }
@@ -11157,7 +11113,7 @@ async function asignarCodigoAProducto(codigoBarra) {
             .single();
 
         if (existente) {
-            mostrarNotificacion(`⚠️ Este código ya está asignado a: ${existente.nombre}`, 'error');
+            mostrarNotificacion(`ÔÜá´©Å Este código ya está asignado a: ${existente.nombre}`, 'error');
             cerrarEscaner();
             return;
         }
@@ -11170,7 +11126,7 @@ async function asignarCodigoAProducto(codigoBarra) {
 
         if (error) throw error;
 
-        mostrarNotificacion(`✅ Código asignado a ${productoSeleccionado.nombre}`, 'success');
+        mostrarNotificacion(`Ô£à Código asignado a ${productoSeleccionado.nombre}`, 'success');
 
         cerrarEscaner();
 
@@ -11250,16 +11206,16 @@ async function cargarEstadoActual() {
         let estadoColor = '';
 
         if (data.estado === 'Completo') {
-            estadoTexto = '✅ Jornada Completa';
+            estadoTexto = 'Ô£à Jornada Completa';
             estadoColor = 'hsl(var(--success))';
         } else if (data.estado === 'En almuerzo') {
-            estadoTexto = '🍽️ En Almuerzo';
+            estadoTexto = '­ƒì¢´©Å En Almuerzo';
             estadoColor = 'hsl(var(--warning))';
         } else if (data.estado === 'Trabajando') {
-            estadoTexto = '🟢 Trabajando';
+            estadoTexto = '­ƒƒó Trabajando';
             estadoColor = 'hsl(var(--success))';
         } else {
-            estadoTexto = '⚠️ Incompleto';
+            estadoTexto = 'ÔÜá´©Å Incompleto';
             estadoColor = 'hsl(var(--destructive))';
         }
 
@@ -11599,7 +11555,7 @@ async function abrirModalEditarAsistencia(id) {
             <div class="modal-overlay" id="modalEditarAsistencia" onclick="cerrarModalEditarAsistencia()">
                 <div class="modal-content" onclick="event.stopPropagation()" style="max-width: 500px;">
                     <div class="modal-header">
-                        <h3>✏️ Editar Asistencia</h3>
+                        <h3>Ô£Å´©Å Editar Asistencia</h3>
                         <button class="modal-close" onclick="cerrarModalEditarAsistencia()">
                             <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
                                 <path d="M18 6L6 18M6 6l12 12" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
@@ -11727,7 +11683,7 @@ async function verificarSalidaPendiente() {
 
         // Si hay registro y no marcó salida, preguntar
         if (data && !data.hora_salida) {
-            return confirm('⚠️ No has marcado tu hora de salida.\n\n¿Deseas marcarla ahora antes de cerrar sesión?');
+            return confirm('ÔÜá´©Å No has marcado tu hora de salida.\n\n¿Deseas marcarla ahora antes de cerrar sesión?');
         }
 
         return false;
@@ -11757,7 +11713,7 @@ async function marcarEntradaAutomatica() {
 
         // Si ya existe registro, no hacer nada
         if (registroExistente) {
-            console.log('⏰ Ya hay registro de entrada para hoy');
+            console.log('ÔÅ░ Ya hay registro de entrada para hoy');
             return;
         }
 
@@ -11788,7 +11744,7 @@ async function marcarEntradaAutomatica() {
 
         if (error) throw error;
 
-        console.log('✅ Entrada marcada automáticamente');
+        console.log('Ô£à Entrada marcada automáticamente');
 
     } catch (error) {
         manejarError(error, {
@@ -11932,16 +11888,16 @@ async function cargarEstadoUsuarioAdmin() {
         let estadoColor = '';
 
         if (data.estado === 'Completo') {
-            estadoTexto = '✅ Jornada Completa';
+            estadoTexto = 'Ô£à Jornada Completa';
             estadoColor = 'hsl(var(--success))';
         } else if (data.estado === 'En almuerzo') {
-            estadoTexto = '🍽️ En Almuerzo';
+            estadoTexto = '­ƒì¢´©Å En Almuerzo';
             estadoColor = 'hsl(var(--warning))';
         } else if (data.estado === 'Trabajando') {
-            estadoTexto = '🟢 Trabajando';
+            estadoTexto = '­ƒƒó Trabajando';
             estadoColor = 'hsl(var(--success))';
         } else {
-            estadoTexto = '⚠️ Incompleto';
+            estadoTexto = 'ÔÜá´©Å Incompleto';
             estadoColor = 'hsl(var(--destructive))';
         }
 
@@ -12078,7 +12034,7 @@ async function marcarEventoAdmin(tipo) {
                 });
 
             if (error) throw error;
-            mensaje = `✅ Entrada marcada para ${targetUsername}`;
+            mensaje = `Ô£à Entrada marcada para ${targetUsername}`;
 
         } else {
             if (!registroActual) {
@@ -12093,7 +12049,7 @@ async function marcarEventoAdmin(tipo) {
                         return;
                     }
                     updateData = { hora_inicio_almuerzo: horaActual };
-                    mensaje = `✅ Inicio de almuerzo marcado para ${targetUsername}`;
+                    mensaje = `Ô£à Inicio de almuerzo marcado para ${targetUsername}`;
                     break;
 
                 case 'fin_almuerzo':
@@ -12106,7 +12062,7 @@ async function marcarEventoAdmin(tipo) {
                         return;
                     }
                     updateData = { hora_fin_almuerzo: horaActual };
-                    mensaje = `✅ Fin de almuerzo marcado para ${targetUsername}`;
+                    mensaje = `Ô£à Fin de almuerzo marcado para ${targetUsername}`;
                     break;
 
                 case 'salida':
@@ -12119,7 +12075,7 @@ async function marcarEventoAdmin(tipo) {
                         return;
                     }
                     updateData = { hora_salida: horaActual };
-                    mensaje = `✅ Salida marcada para ${targetUsername}`;
+                    mensaje = `Ô£à Salida marcada para ${targetUsername}`;
                     break;
             }
 
@@ -12158,7 +12114,7 @@ function cargarSencilloInicial() {
     sencilloInicial = guardado ? parseFloat(guardado) : 0;
     document.getElementById('sencilloInicial').textContent = '$' + formatoMoneda(sencilloInicial);
     
-    console.log(`💵 Sencillo inicial cargado: $${formatoMoneda(sencilloInicial)}`);
+    console.log(`­ƒÆÁ Sencillo inicial cargado: $${formatoMoneda(sencilloInicial)}`);
 }
 
 /**
@@ -12185,8 +12141,8 @@ async function editarSencilloInicial() {
     sencilloInicial = monto;
     document.getElementById('sencilloInicial').textContent = '$' + formatoMoneda(sencilloInicial);
     
-    mostrarNotificacion('✅ Sencillo inicial actualizado', 'success');
-    console.log(`💵 Sencillo inicial actualizado: $${formatoMoneda(sencilloInicial)}`);
+    mostrarNotificacion('Ô£à Sencillo inicial actualizado', 'success');
+    console.log(`­ƒÆÁ Sencillo inicial actualizado: $${formatoMoneda(sencilloInicial)}`);
 }
 
 // ===================================
@@ -12220,7 +12176,7 @@ async function abrirModalDevolucion(ventaId) {
             return;
         }
         
-        console.log('🔄 Abriendo modal de devolución para venta:', ventaId);
+        console.log('­ƒöä Abriendo modal de devolución para venta:', ventaId);
         
         // Cargar detalles de la venta
         const { data: venta, error: errorVenta } = await window.supabaseClient
@@ -12260,7 +12216,7 @@ async function abrirModalDevolucion(ventaId) {
         // Mostrar modal PRIMERO
         const modal = document.getElementById('modalDevolucion');
         if (!modal) {
-            console.error('❌ Modal de devolución no encontrado en el DOM');
+            console.error('ÔØî Modal de devolución no encontrado en el DOM');
             mostrarNotificacion('Error: Modal no disponible', 'error');
             return;
         }
@@ -12475,9 +12431,9 @@ function seleccionarTipoReembolso(tipo) {
     
     // Actualizar texto en resumen
     const textos = {
-        'efectivo': '💵 Reembolso en efectivo',
-        'vale': '🎫 Vale para próxima compra',
-        'cambio': '🔄 Cambio por otro producto'
+        'efectivo': '­ƒÆÁ Reembolso en efectivo',
+        'vale': '­ƒÄ½ Vale para próxima compra',
+        'cambio': '­ƒöä Cambio por otro producto'
     };
     document.getElementById('devolucionMetodoReembolso').textContent = textos[tipo];
     
@@ -12550,15 +12506,15 @@ async function confirmarDevolucion() {
         
         const confirmMsg = `¿Confirmar devolución de venta #${ventaDevolucion.id}?
 
-📦 Productos: ${productosSeleccionados.length}
-💰 Total a reembolsar: $${formatoMoneda(totalReembolso)}
-📋 Motivo: ${motivoFinal}
-🔄 Tipo: ${tipoTexto}
+­ƒôª Productos: ${productosSeleccionados.length}
+­ƒÆ░ Total a reembolsar: $${formatoMoneda(totalReembolso)}
+­ƒôï Motivo: ${motivoFinal}
+­ƒöä Tipo: ${tipoTexto}
 
-⚠️ Esta acción:
-    • Restaurará stock solo de productos con control de stock (no granel)
-• ${tipoReembolso === 'efectivo' ? 'Restará efectivo de la caja del día' : 'Registrará el ' + tipoTexto.toLowerCase()}
-• Quedará registrada en el historial`;
+ÔÜá´©Å Esta acción:
+    ÔÇó Restaurará stock solo de productos con control de stock (no granel)
+ÔÇó ${tipoReembolso === 'efectivo' ? 'Restará efectivo de la caja del día' : 'Registrará el ' + tipoTexto.toLowerCase()}
+ÔÇó Quedará registrada en el historial`;
         
         if (!confirm(confirmMsg)) return;
         
@@ -12603,7 +12559,7 @@ async function confirmarDevolucion() {
  */
 async function procesarDevolucion(datosDevolucion) {
     try {
-        console.log('🔄 Procesando devolución:', datosDevolucion);
+        console.log('­ƒöä Procesando devolución:', datosDevolucion);
         
         // 1. Registrar devolución en tabla
         const { data: devolucion, error: errorDevolucion } = await window.supabaseClient
@@ -12622,14 +12578,14 @@ async function procesarDevolucion(datosDevolucion) {
         
         if (errorDevolucion) throw errorDevolucion;
         
-        console.log('✅ Devolución registrada:', devolucion);
+        console.log('Ô£à Devolución registrada:', devolucion);
         
         // 2. Restaurar stock de productos (excepto granel)
         for (const producto of datosDevolucion.productos) {
             if (!producto.producto_id) continue;
 
             if (esProductoGranelDevolucion(producto)) {
-                console.log(`ℹ️ Producto granel sin control de stock: ${producto.producto_nombre}`);
+                console.log(`Ôä╣´©Å Producto granel sin control de stock: ${producto.producto_nombre}`);
                 continue;
             }
             
@@ -12641,7 +12597,7 @@ async function procesarDevolucion(datosDevolucion) {
                 .single();
             
             if (errorProd) {
-                console.warn(`⚠️ No se pudo obtener stock del producto ${producto.producto_id}`);
+                console.warn(`ÔÜá´©Å No se pudo obtener stock del producto ${producto.producto_id}`);
                 continue;
             }
             
@@ -12654,9 +12610,9 @@ async function procesarDevolucion(datosDevolucion) {
                 .eq('id', producto.producto_id);
             
             if (errorUpdate) {
-                console.warn(`⚠️ No se pudo actualizar stock del producto ${producto.producto_id}`);
+                console.warn(`ÔÜá´©Å No se pudo actualizar stock del producto ${producto.producto_id}`);
             } else {
-                console.log(`✅ Stock restaurado: ${producto.producto_nombre} +${producto.cantidad} = ${nuevoStock}`);
+                console.log(`Ô£à Stock restaurado: ${producto.producto_nombre} +${producto.cantidad} = ${nuevoStock}`);
             }
         }
         
@@ -12674,14 +12630,14 @@ async function procesarDevolucion(datosDevolucion) {
                 });
             
             if (errorGasto) {
-                console.warn('⚠️ No se pudo registrar gasto de devolución:', errorGasto);
+                console.warn('ÔÜá´©Å No se pudo registrar gasto de devolución:', errorGasto);
             } else {
-                console.log('✅ Gasto de devolución registrado en caja');
+                console.log('Ô£à Gasto de devolución registrado en caja');
             }
         }
         
         // 4. Mostrar éxito
-        mostrarNotificacion(`✅ Devolución procesada exitosamente - $${formatoMoneda(datosDevolucion.totalReembolso)}`, 'success');
+        mostrarNotificacion(`Ô£à Devolución procesada exitosamente - $${formatoMoneda(datosDevolucion.totalReembolso)}`, 'success');
         
         // 5. Cerrar modal
         cerrarModalDevolucion();
@@ -12717,7 +12673,7 @@ async function procesarDevolucion(datosDevolucion) {
  */
 async function cargarHistorialDevoluciones() {
     try {
-        console.log('🔄 Cargando historial de devoluciones...');
+        console.log('­ƒöä Cargando historial de devoluciones...');
 
         const seccionDevoluciones = document.getElementById('historialDevoluciones');
 
@@ -12734,7 +12690,7 @@ async function cargarHistorialDevoluciones() {
         }
         
         if (!window.supabaseClient) {
-            console.warn('⚠️ Supabase no disponible');
+            console.warn('ÔÜá´©Å Supabase no disponible');
             return;
         }
         
@@ -12764,7 +12720,7 @@ async function cargarHistorialDevoluciones() {
             throw error;
         }
         
-        console.log(`✅ ${devoluciones?.length || 0} devoluciones cargadas`);
+        console.log(`Ô£à ${devoluciones?.length || 0} devoluciones cargadas`);
         
         // Renderizar tabla
         renderTablaDevoluciones(devoluciones || []);
@@ -12778,7 +12734,7 @@ async function cargarHistorialDevoluciones() {
                 if (container) {
                     container.innerHTML = `
                         <div style="text-align: center; padding: 40px; color: hsl(var(--destructive));">
-                            <p>❌ Error al cargar devoluciones</p>
+                            <p>ÔØî Error al cargar devoluciones</p>
                             <small>${error.message}</small>
                         </div>
                     `;
@@ -12857,10 +12813,10 @@ function renderTablaDevoluciones(devoluciones) {
         
         // Icono y color según tipo de reembolso
         const tipoReembolso = {
-            'efectivo': { icon: '💵', text: 'Efectivo', color: 'hsl(142 76% 36%)' },
-            'vale': { icon: '🎫', text: 'Vale', color: 'hsl(199 89% 48%)' },
-            'cambio': { icon: '🔄', text: 'Cambio', color: 'hsl(38 92% 50%)' }
-        }[dev.tipo_reembolso] || { icon: '❓', text: dev.tipo_reembolso, color: 'hsl(var(--muted-foreground))' };
+            'efectivo': { icon: '­ƒÆÁ', text: 'Efectivo', color: 'hsl(142 76% 36%)' },
+            'vale': { icon: '­ƒÄ½', text: 'Vale', color: 'hsl(199 89% 48%)' },
+            'cambio': { icon: '­ƒöä', text: 'Cambio', color: 'hsl(38 92% 50%)' }
+        }[dev.tipo_reembolso] || { icon: 'ÔØô', text: dev.tipo_reembolso, color: 'hsl(var(--muted-foreground))' };
         
         html += `
             <tr style="border-bottom: 1px solid hsl(var(--border));">
@@ -12938,7 +12894,7 @@ async function eliminarDevolucion(devolucionId) {
         if (error) throw error;
         devolucion = data;
         
-        console.log('📋 Devolución a eliminar:', devolucion);
+        console.log('­ƒôï Devolución a eliminar:', devolucion);
     } catch (error) {
         manejarError(error, {
             contexto: 'obtenerDevolucion',
@@ -12949,20 +12905,20 @@ async function eliminarDevolucion(devolucionId) {
     
     // Confirmar eliminación
     const confirmar = confirm(
-        '⚠️ ELIMINAR DEVOLUCIÓN\n\n' +
+        'ÔÜá´©Å ELIMINAR DEVOLUCIÓN\n\n' +
         `¿Está seguro que desea eliminar la devolución #${devolucionId}?\n` +
         `Venta relacionada: #${devolucion.venta_id}\n\n` +
-        '⚠️ Esta acción NO ES REVERSIBLE.\n\n' +
+        'ÔÜá´©Å Esta acción NO ES REVERSIBLE.\n\n' +
         'Se revertirán los siguientes cambios:\n' +
-        '• El stock se reducirá (se restará lo que se había devuelto)\n' +
-        '• La venta volverá a aparecer normal (sin etiqueta "Devuelto")\n' +
-        (devolucion.tipo_reembolso === 'efectivo' ? '• El gasto de reembolso en caja se eliminará\n' : '') +
+        'ÔÇó El stock se reducirá (se restará lo que se había devuelto)\n' +
+        'ÔÇó La venta volverá a aparecer normal (sin etiqueta "Devuelto")\n' +
+        (devolucion.tipo_reembolso === 'efectivo' ? 'ÔÇó El gasto de reembolso en caja se eliminará\n' : '') +
         '\n¿Desea continuar?'
     );
     
     if (!confirmar) return;
     
-    console.log(`🗑️ Eliminando devolución #${devolucionId}...`);
+    console.log(`­ƒùæ´©Å Eliminando devolución #${devolucionId}...`);
     
     try {
         // Parsear productos devueltos
@@ -12972,7 +12928,7 @@ async function eliminarDevolucion(devolucionId) {
                 ? JSON.parse(devolucion.productos_devueltos) 
                 : devolucion.productos_devueltos || [];
         } catch (e) {
-            console.warn('⚠️ No se pudieron parsear productos devueltos');
+            console.warn('ÔÜá´©Å No se pudieron parsear productos devueltos');
         }
 
         // 1) VALIDAR si se puede revertir stock antes de tocar nada (excepto granel)
@@ -13018,13 +12974,13 @@ async function eliminarDevolucion(devolucionId) {
         }
 
         if (bloqueosReversion.length > 0) {
-            console.warn('⛔ No se puede eliminar la devolución por falta de stock para revertir:', bloqueosReversion);
+            console.warn('Ôøö No se puede eliminar la devolución por falta de stock para revertir:', bloqueosReversion);
             const confirmarExcepcional = confirm(
-                '⚠️ No hay stock suficiente para revertir esta devolución.\n\n' +
+                'ÔÜá´©Å No hay stock suficiente para revertir esta devolución.\n\n' +
                 'Puedes usar MODO EXCEPCIONAL para:\n' +
-                '• Eliminar el registro de devolución\n' +
-                '• Eliminar el gasto de caja (si fue efectivo)\n' +
-                '• NO tocar stock de productos\n\n' +
+                'ÔÇó Eliminar el registro de devolución\n' +
+                'ÔÇó Eliminar el gasto de caja (si fue efectivo)\n' +
+                'ÔÇó NO tocar stock de productos\n\n' +
                 '¿Quieres continuar en modo excepcional?'
             );
 
@@ -13037,7 +12993,7 @@ async function eliminarDevolucion(devolucionId) {
             }
 
             modoExcepcionalSinReversionStock = true;
-            console.warn('⚠️ Eliminación en modo excepcional: sin reversión de stock');
+            console.warn('ÔÜá´©Å Eliminación en modo excepcional: sin reversión de stock');
         }
         
         // 2. Revertir stock de productos (restar lo que se había sumado, excepto granel)
@@ -13063,7 +13019,7 @@ async function eliminarDevolucion(devolucionId) {
                     );
                 }
 
-                console.log(`✅ Stock revertido: ${stockInfo.nombre} -${stockInfo.cantidadARevertir} = ${stockInfo.stockResultante}`);
+                console.log(`Ô£à Stock revertido: ${stockInfo.nombre} -${stockInfo.cantidadARevertir} = ${stockInfo.stockResultante}`);
             }
         }
         
@@ -13084,12 +13040,12 @@ async function eliminarDevolucion(devolucionId) {
                     .lte('fecha', fechaFin.toISOString());
                 
                 if (errorGasto) {
-                    console.warn('⚠️ No se pudo eliminar el gasto asociado:', errorGasto);
+                    console.warn('ÔÜá´©Å No se pudo eliminar el gasto asociado:', errorGasto);
                 } else {
-                    console.log('✅ Gasto de devolución eliminado de caja');
+                    console.log('Ô£à Gasto de devolución eliminado de caja');
                 }
             } catch (error) {
-                console.warn('⚠️ Error al eliminar gasto:', error);
+                console.warn('ÔÜá´©Å Error al eliminar gasto:', error);
             }
         }
         
@@ -13103,7 +13059,7 @@ async function eliminarDevolucion(devolucionId) {
             throw new Error(result?.message || 'No se pudo marcar la devolución como eliminada.');
         }
         
-        console.log(`✅ Devolución #${devolucionId} eliminada correctamente`);
+        console.log(`Ô£à Devolución #${devolucionId} eliminada correctamente`);
         if (modoExcepcionalSinReversionStock) {
             mostrarNotificacion('Devolución eliminada en modo excepcional (sin reversión de stock)', 'warning');
         } else {
@@ -13181,15 +13137,15 @@ async function verDetalleDevolucion(devolucionId) {
         });
         
         const tipoTexto = {
-            'efectivo': '💵 Reembolso en Efectivo',
-            'vale': '🎫 Vale para próxima compra',
-            'cambio': '🔄 Cambio por otro producto'
+            'efectivo': '­ƒÆÁ Reembolso en Efectivo',
+            'vale': '­ƒÄ½ Vale para próxima compra',
+            'cambio': '­ƒöä Cambio por otro producto'
         }[devolucion.tipo_reembolso] || devolucion.tipo_reembolso;
         
         const detalleHTML = `
             <div style="background: white; border-radius: 12px; padding: 24px; max-width: 600px;">
                 <h3 style="margin: 0 0 20px; display: flex; align-items: center; gap: 8px;">
-                    🔄 Detalle de Devolución #${devolucion.id}
+                    ­ƒöä Detalle de Devolución #${devolucion.id}
                 </h3>
                 
                 <div style="display: grid; gap: 16px; margin-bottom: 20px;">
@@ -13245,7 +13201,7 @@ async function verDetalleDevolucion(devolucionId) {
         }
 
         if (title) {
-            title.textContent = `🔄 Detalle de Devolución #${devolucion.id}`;
+            title.textContent = `­ƒöä Detalle de Devolución #${devolucion.id}`;
         }
 
         if (printButton) {
@@ -13276,7 +13232,7 @@ let ventaEditarMetodoPago = null;
  */
 async function abrirModalEditarMetodoPago(ventaId) {
     try {
-        console.log(`💳 Abriendo modal para editar método de pago de venta #${ventaId}`);
+        console.log(`­ƒÆ│ Abriendo modal para editar método de pago de venta #${ventaId}`);
         
         // Obtener datos de la venta
         const { data: venta, error } = await window.supabaseClient
@@ -13364,7 +13320,7 @@ async function guardarNuevoMetodoPago() {
     if (!confirmar) return;
     
     try {
-        console.log(`💳 Actualizando método de pago de venta #${ventaEditarMetodoPago.id}...`);
+        console.log(`­ƒÆ│ Actualizando método de pago de venta #${ventaEditarMetodoPago.id}...`);
         console.log(`   Método anterior: ${ventaEditarMetodoPago.metodo_pago}`);
         console.log(`   Método nuevo: ${nuevoMetodo}`);
         console.log(`   Motivo: ${motivo || 'Sin especificar'}`);
@@ -13378,13 +13334,13 @@ async function guardarNuevoMetodoPago() {
             .eq('id', ventaEditarMetodoPago.id);
         
         if (error) {
-            console.error('❌ Error al actualizar:', error);
+            console.error('ÔØî Error al actualizar:', error);
             throw error;
         }
         
-        console.log('✅ Método de pago actualizado correctamente');
+        console.log('Ô£à Método de pago actualizado correctamente');
         
-        mostrarNotificacion(`✅ Método de pago actualizado a: ${nuevoMetodo}`, 'success');
+        mostrarNotificacion(`Ô£à Método de pago actualizado a: ${nuevoMetodo}`, 'success');
         
         // Cerrar modal
         cerrarModalEditarMetodoPago();
@@ -13393,7 +13349,7 @@ async function guardarNuevoMetodoPago() {
         await cargarVentas();
         
     } catch (error) {
-        console.error('❌ Error en guardarNuevoMetodoPago:', error);
+        console.error('ÔØî Error en guardarNuevoMetodoPago:', error);
         
         manejarError(error, {
             contexto: 'guardarNuevoMetodoPago',
@@ -13408,12 +13364,12 @@ async function guardarNuevoMetodoPago() {
 function confirmarEliminarVenta(ventaId) {
     // Doble confirmación por seguridad
     const confirmar1 = confirm(
-        `⚠️ ELIMINAR VENTA #${ventaId}\n\n` +
+        `ÔÜá´©Å ELIMINAR VENTA #${ventaId}\n\n` +
         `Esta acción eliminará PERMANENTEMENTE:\n\n` +
-        `✓ El registro de la venta\n` +
-        `✓ Los items vendidos\n` +
-        `✓ Se restaurará el stock de los productos\n\n` +
-        `⚠️ IMPORTANTE: Esta es una eliminación PERMANENTE.\n` +
+        `Ô£ô El registro de la venta\n` +
+        `Ô£ô Los items vendidos\n` +
+        `Ô£ô Se restaurará el stock de los productos\n\n` +
+        `ÔÜá´©Å IMPORTANTE: Esta es una eliminación PERMANENTE.\n` +
         `No se puede deshacer.\n\n` +
         `¿Está seguro de continuar?`
     );
@@ -13421,7 +13377,7 @@ function confirmarEliminarVenta(ventaId) {
     if (!confirmar1) return;
     
     const confirmar2 = confirm(
-        `⚠️ ÚLTIMA CONFIRMACIÓN\n\n` +
+        `ÔÜá´©Å ÚLTIMA CONFIRMACIÓN\n\n` +
         `Venta #${ventaId} será ELIMINADA PERMANENTEMENTE.\n\n` +
         `Esta acción NO SE PUEDE DESHACER.\n\n` +
         `¿Confirma que desea eliminar?`
@@ -13437,7 +13393,7 @@ function confirmarEliminarVenta(ventaId) {
  */
 async function eliminarVenta(ventaId) {
     try {
-        console.log(`🗑️ Eliminando venta #${ventaId}...`);
+        console.log(`­ƒùæ´©Å Eliminando venta #${ventaId}...`);
         
         // 1. Obtener datos completos de la venta
         const { data: venta, error: ventaError } = await window.supabaseClient
@@ -13456,7 +13412,7 @@ async function eliminarVenta(ventaId) {
             return;
         }
         
-        console.log('✅ Venta encontrada:', venta);
+        console.log('Ô£à Venta encontrada:', venta);
         
         // 2. Obtener items de la venta
         const { data: items, error: itemsError } = await window.supabaseClient
@@ -13465,14 +13421,14 @@ async function eliminarVenta(ventaId) {
             .eq('venta_id', ventaId);
         
         if (itemsError) {
-            console.warn('⚠️ Error al obtener items:', itemsError);
+            console.warn('ÔÜá´©Å Error al obtener items:', itemsError);
         } else {
-            console.log(`✅ Items encontrados: ${items?.length || 0}`);
+            console.log(`Ô£à Items encontrados: ${items?.length || 0}`);
         }
         
         // 3. Restaurar stock de los productos (solo si no son a granel)
         if (items && items.length > 0) {
-            console.log('🔄 Restaurando stock...');
+            console.log('­ƒöä Restaurando stock...');
             
             for (const item of items) {
                 try {
@@ -13484,14 +13440,14 @@ async function eliminarVenta(ventaId) {
                         .single();
                     
                     if (prodError) {
-                        console.error(`❌ Error al obtener producto ${item.producto_id}:`, prodError);
+                        console.error(`ÔØî Error al obtener producto ${item.producto_id}:`, prodError);
                         continue;
                     }
                     
                     if (producto && !producto.es_granel) {
                         const nuevoStock = producto.stock + item.cantidad;
                         
-                        console.log(`📦 Restaurando stock de "${producto.nombre}": ${producto.stock} + ${item.cantidad} = ${nuevoStock}`);
+                        console.log(`­ƒôª Restaurando stock de "${producto.nombre}": ${producto.stock} + ${item.cantidad} = ${nuevoStock}`);
                         
                         const { error: stockError } = await window.supabaseClient
                             .from('productos')
@@ -13499,22 +13455,22 @@ async function eliminarVenta(ventaId) {
                             .eq('id', item.producto_id);
                         
                         if (stockError) {
-                            console.error(`❌ Error al restaurar stock del producto ${item.producto_id}:`, stockError);
+                            console.error(`ÔØî Error al restaurar stock del producto ${item.producto_id}:`, stockError);
                         } else {
-                            console.log(`✅ Stock restaurado exitosamente`);
+                            console.log(`Ô£à Stock restaurado exitosamente`);
                         }
                     } else if (producto && producto.es_granel) {
-                        console.log(`⏭️ Producto "${producto.nombre}" es a granel, no se restaura stock`);
+                        console.log(`ÔÅ¡´©Å Producto "${producto.nombre}" es a granel, no se restaura stock`);
                     }
                 } catch (prodError) {
-                    console.error(`❌ Error procesando producto ${item.producto_id}:`, prodError);
+                    console.error(`ÔØî Error procesando producto ${item.producto_id}:`, prodError);
                 }
             }
         }
         
         // 4. Eliminar items de la venta primero (para evitar problemas de FK)
         if (items && items.length > 0) {
-            console.log('🗑️ Eliminando items de la venta...');
+            console.log('­ƒùæ´©Å Eliminando items de la venta...');
             
             const { error: deleteItemsError } = await window.supabaseClient
                 .from('ventas_items')
@@ -13522,15 +13478,15 @@ async function eliminarVenta(ventaId) {
                 .eq('venta_id', ventaId);
             
             if (deleteItemsError) {
-                console.error('❌ Error al eliminar items:', deleteItemsError);
+                console.error('ÔØî Error al eliminar items:', deleteItemsError);
                 throw new Error(`Error al eliminar items: ${deleteItemsError.message}`);
             }
             
-            console.log('✅ Items eliminados correctamente');
+            console.log('Ô£à Items eliminados correctamente');
         }
         
         // 5. Eliminar la venta
-        console.log('🗑️ Eliminando registro de venta...');
+        console.log('­ƒùæ´©Å Eliminando registro de venta...');
         
         const { error: deleteError } = await window.supabaseClient
             .from('ventas')
@@ -13538,13 +13494,13 @@ async function eliminarVenta(ventaId) {
             .eq('id', ventaId);
         
         if (deleteError) {
-            console.error('❌ Error al eliminar venta:', deleteError);
+            console.error('ÔØî Error al eliminar venta:', deleteError);
             throw new Error(`Error al eliminar venta: ${deleteError.message}`);
         }
         
-        console.log('✅✅✅ Venta eliminada exitosamente');
+        console.log('Ô£àÔ£àÔ£à Venta eliminada exitosamente');
         
-        mostrarNotificacion(`✅ Venta #${ventaId} eliminada correctamente`, 'success');
+        mostrarNotificacion(`Ô£à Venta #${ventaId} eliminada correctamente`, 'success');
         
         // 6. Recargar ventas y otras vistas
         await cargarVentas();
@@ -13558,7 +13514,7 @@ async function eliminarVenta(ventaId) {
         }
         
     } catch (error) {
-        console.error('❌❌❌ ERROR CRÍTICO al eliminar venta:', error);
+        console.error('ÔØîÔØîÔØî ERROR CRÍTICO al eliminar venta:', error);
         
         manejarError(error, {
             contexto: 'eliminarVenta',
@@ -13580,11 +13536,11 @@ let productosDisponiblesMerma = [];
  * Abrir modal para registrar merma
  */
 async function abrirModalMerma() {
-    console.log('🗑️ Abriendo modal de mermas...');
+    console.log('­ƒùæ´©Å Abriendo modal de mermas...');
     
     const modal = document.getElementById('modalMerma');
     if (!modal) {
-        console.error('❌ Modal de mermas no encontrado');
+        console.error('ÔØî Modal de mermas no encontrado');
         return;
     }
     
@@ -13613,7 +13569,7 @@ async function abrirModalMerma() {
         if (error) throw error;
         
         productosDisponiblesMerma = productos || [];
-        console.log('✅ Productos cargados para búsqueda:', productosDisponiblesMerma.length);
+        console.log('Ô£à Productos cargados para búsqueda:', productosDisponiblesMerma.length);
         
     } catch (error) {
         manejarError(error, {
@@ -13664,7 +13620,7 @@ function buscarProductoMerma() {
         let html = '';
         resultados.forEach((p, index) => {
             const stockColor = p.stock === 0 ? 'hsl(var(--destructive))' : p.stock <= 5 ? 'hsl(38 92% 50%)' : 'hsl(142 76% 36%)';
-            const stockIcon = p.stock === 0 ? '❌' : p.stock <= 5 ? '⚠️' : '✅';
+            const stockIcon = p.stock === 0 ? 'ÔØî' : p.stock <= 5 ? 'ÔÜá´©Å' : 'Ô£à';
             
             html += `
                 <div 
@@ -13905,7 +13861,7 @@ function confirmarMerma() {
     const nuevoStock = productoMermaSeleccionado.stock - cantidad;
     
     const mensajeConfirmacion = `
-⚠️ CONFIRMAR REGISTRO DE MERMA
+ÔÜá´©Å CONFIRMAR REGISTRO DE MERMA
 
 Producto: ${productoMermaSeleccionado.nombre}
 Cantidad: ${cantidad} unidad(es)
@@ -13915,7 +13871,7 @@ ${motivo === 'Otro' && notas ? `\nDetalle: ${notas}` : ''}
 Stock actual: ${productoMermaSeleccionado.stock}
 Stock resultante: ${nuevoStock}
 
-⚠️ Esta acción reducirá el stock automáticamente.
+ÔÜá´©Å Esta acción reducirá el stock automáticamente.
 ¿Desea continuar?
     `;
     
@@ -13935,7 +13891,7 @@ Stock resultante: ${nuevoStock}
  * Procesar merma y actualizar stock
  */
 async function procesarMerma(datosMerma) {
-    console.log('🗑️ Procesando merma:', datosMerma);
+    console.log('­ƒùæ´©Å Procesando merma:', datosMerma);
     
     const btnConfirmar = document.getElementById('btnConfirmarMerma');
     btnConfirmar.disabled = true;
@@ -13951,7 +13907,7 @@ async function procesarMerma(datosMerma) {
         
         if (errorMerma) throw errorMerma;
         
-        console.log('✅ Merma registrada:', merma);
+        console.log('Ô£à Merma registrada:', merma);
         
         // 2. Actualizar stock del producto
         const { data: productoActual, error: errorProducto } = await window.supabaseClient
@@ -13975,7 +13931,7 @@ async function procesarMerma(datosMerma) {
         
         if (errorUpdate) throw errorUpdate;
         
-        console.log(`✅ Stock actualizado: ${productoActual.stock} → ${nuevoStock}`);
+        console.log(`Ô£à Stock actualizado: ${productoActual.stock} ÔåÆ ${nuevoStock}`);
         
         // 3. Cerrar modal
         cerrarModalMerma();
@@ -14006,7 +13962,7 @@ async function procesarMerma(datosMerma) {
  * Cargar historial de mermas (últimos 30 días)
  */
 async function cargarHistorialMermas() {
-    console.log('📋 Cargando historial de mermas...');
+    console.log('­ƒôï Cargando historial de mermas...');
     
     try {
         // Calcular fecha de inicio (últimos 30 días)
@@ -14022,7 +13978,7 @@ async function cargarHistorialMermas() {
         
         if (error) throw error;
         
-        console.log('✅ Mermas cargadas:', mermas.length);
+        console.log('Ô£à Mermas cargadas:', mermas.length);
         
         renderTablaMermas(mermas || []);
         
@@ -14036,7 +13992,7 @@ async function cargarHistorialMermas() {
                 if (container) {
                     container.innerHTML = `
                         <p style="text-align: center; color: hsl(var(--destructive)); padding: 24px;">
-                            ❌ Error al cargar mermas: ${error.message}
+                            ÔØî Error al cargar mermas: ${error.message}
                         </p>
                     `;
                 }
@@ -14052,7 +14008,7 @@ function renderTablaMermas(mermas) {
     const container = document.getElementById('tablaMermas');
     
     if (!container) {
-        console.error('❌ Contenedor de mermas no encontrado');
+        console.error('ÔØî Contenedor de mermas no encontrado');
         return;
     }
     

@@ -240,24 +240,29 @@ async function buscarProductosParaReposicion() {
     }
 
     try {
-        // Buscar en productos a granel (TODAS las categorías de comida para mascotas)
+        // Buscar productos con stock real (excluye granel — se venden por peso, no tienen stock de sacos)
         const { data, error } = await window.supabaseClient
             .from('productos')
-            .select('id, nombre, categoria')
+            .select('id, nombre, categoria, tipo')
             .in('categoria', [
                 'Adulto', 'Cachorro', 'Senior',           // Perros
                 'Gato', 'Gatito',                           // Gatos genéricos
                 'Gato Adulto', 'Gato Kitten',              // Gatos específicos
                 'Perro Adulto', 'Perro Cachorro',          // Perros específicos
-                'Arena',                                    // Arena para gatos
-                'Granel'                                    // Productos a granel
+                'Arena'                                     // Arena para gatos
             ])
             .ilike('nombre', `%${query}%`)
+            .neq('tipo', 'granel')
             .limit(10);
 
         if (error) throw error;
 
-        if (!data || data.length === 0) {
+        // Filtro de seguridad adicional: excluir cualquier producto con "(granel)" en el nombre
+        const productosFiltrados = data.filter(p =>
+            !p.nombre?.toLowerCase().includes('(granel)') && p.tipo !== 'granel'
+        );
+
+        if (productosFiltrados.length === 0) {
             container.innerHTML = `
                 <div class="empty-state-small">
                     <p>No se encontraron productos</p>
@@ -266,7 +271,7 @@ async function buscarProductosParaReposicion() {
             return;
         }
 
-        const html = data.map(prod => {
+        const html = productosFiltrados.map(prod => {
             // Verificar si ya está en la lista de solicitudes
             const yaEnLista = solicitudesReposicion.some(s => s.producto_id === prod.id);
             const btnText = yaEnLista ? '✓ Ya en lista' : '+ Agregar';

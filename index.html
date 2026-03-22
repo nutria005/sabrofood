@@ -1918,166 +1918,217 @@
     <!-- MODAL: Venta a Granel -->
     <div id="modalGranel" class="modal">
         <div class="modal-overlay" onclick="cerrarModalGranel()"></div>
-        <div class="modal-content modal-large">
-            <div class="modal-header">
-                <h3>🌾 Venta a Granel</h3>
+        <div class="modal-content" style="max-width: 760px; width: 95vw;">
+            <div class="modal-header" style="padding: 16px 20px;">
+                <h3 style="font-size: 17px; display: flex; align-items: center; gap: 8px;">🌾 Venta a Granel</h3>
                 <button class="btn-close" onclick="cerrarModalGranel()">
                     <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
                         <path d="M15 5L5 15M5 5l10 10" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
                     </svg>
                 </button>
             </div>
-            <div class="modal-body">
-                <!-- Búsqueda de producto granel -->
-                <div class="form-group">
-                    <label>Buscar Producto a Granel</label>
-                    <div class="search-box">
-                        <svg width="20" height="20" viewBox="0 0 20 20" fill="none" class="search-icon">
-                            <circle cx="9" cy="9" r="6" stroke="currentColor" stroke-width="2"/>
-                            <path d="M13 13l4 4" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
-                        </svg>
-                        <input type="text"
-                               id="searchGranelInput"
-                               placeholder="Buscar por nombre..."
-                               class="search-input"
-                               oninput="filtrarProductosGranel()">
-                    </div>
-                </div>
 
-                <!-- Lista de productos granel -->
-                <div class="form-group">
-                    <label style="font-size: 13px; font-weight: 600;">Productos Disponibles</label>
-                    <div id="listaProductosGranel" style="max-height: 200px; overflow-y: auto; border: 1px solid hsl(var(--border)); border-radius: 8px; padding: 8px;">
-                        <div class="loading-state">
-                            <div class="spinner"></div>
-                            <p style="font-size: 13px;">Cargando...</p>
+            <style>
+                /* ── Layout modal granel ── */
+                .granel-layout {
+                    display: grid;
+                    grid-template-columns: 1fr 1fr;
+                    gap: 0;
+                    height: 100%;
+                }
+                @media (max-width: 600px) {
+                    .granel-layout { grid-template-columns: 1fr; }
+                    .granel-col-calc { border-left: none !important; border-top: 1px solid hsl(var(--border)); }
+                }
+
+                /* ── Botones calculadora ── */
+                .btn-calc, .btn-calc-op, .btn-calc-ac, .btn-calc-ok {
+                    padding: 0;
+                    height: 52px;
+                    font-size: 18px;
+                    font-weight: 700;
+                    border-radius: 10px;
+                    cursor: pointer;
+                    transition: background 0.1s, transform 0.08s;
+                    border: none;
+                    display: flex; align-items: center; justify-content: center;
+                    user-select: none;
+                    -webkit-tap-highlight-color: transparent;
+                }
+                .btn-calc {
+                    background: hsl(var(--card));
+                    color: hsl(var(--foreground));
+                    box-shadow: 0 1px 3px rgba(0,0,0,0.12);
+                    border: 1.5px solid hsl(var(--border));
+                }
+                .btn-calc:active { background: hsl(var(--muted)); transform: scale(0.94); }
+
+                .btn-calc-op {
+                    background: hsl(var(--primary) / 0.12);
+                    color: hsl(var(--primary));
+                    border: 1.5px solid hsl(var(--primary) / 0.25);
+                }
+                .btn-calc-op:active { background: hsl(var(--primary) / 0.22); transform: scale(0.94); }
+
+                .btn-calc-ac {
+                    background: hsl(0 84% 60% / 0.12);
+                    color: hsl(0 72% 50%);
+                    border: 1.5px solid hsl(0 84% 60% / 0.3);
+                    font-size: 15px;
+                }
+                .btn-calc-ac:active { background: hsl(0 84% 60% / 0.22); transform: scale(0.94); }
+
+                .btn-calc-ok {
+                    background: hsl(var(--success));
+                    color: white;
+                    font-size: 16px;
+                    grid-column: span 2;
+                    height: 54px;
+                    border-radius: 12px;
+                    letter-spacing: 0.3px;
+                }
+                .btn-calc-ok:active { background: hsl(var(--success) / 0.85); transform: scale(0.98); }
+                .btn-calc-ok:disabled { background: hsl(var(--muted)); color: hsl(var(--muted-foreground)); cursor: not-allowed; transform: none; }
+
+                .granel-display {
+                    background: hsl(var(--background));
+                    border: 2px solid hsl(var(--border));
+                    border-radius: 10px;
+                    padding: 10px 14px;
+                    text-align: right;
+                    font-family: 'SF Mono', 'Courier New', monospace;
+                    font-size: 26px;
+                    font-weight: 700;
+                    color: hsl(var(--foreground));
+                    min-height: 52px;
+                    display: flex; align-items: center; justify-content: flex-end;
+                    overflow: hidden;
+                    transition: border-color 0.2s;
+                }
+                .granel-display.has-value { border-color: hsl(var(--success)); color: hsl(var(--success)); }
+                .granel-display .display-op {
+                    font-size: 13px;
+                    color: hsl(var(--muted-foreground));
+                    margin-right: 6px;
+                    font-weight: 400;
+                    align-self: flex-end;
+                    padding-bottom: 2px;
+                }
+
+                .granel-item-sel {
+                    background: hsl(var(--success) / 0.08);
+                    border: 2px solid hsl(var(--success) / 0.4);
+                    border-radius: 10px;
+                    padding: 10px 12px;
+                }
+                .peso-badge {
+                    display: inline-flex; align-items: center; gap: 5px;
+                    background: hsl(var(--primary) / 0.1);
+                    color: hsl(var(--primary));
+                    border-radius: 8px;
+                    padding: 4px 10px;
+                    font-size: 13px;
+                    font-weight: 700;
+                    margin-top: 6px;
+                }
+            </style>
+
+            <div class="modal-body" style="padding: 0; overflow: hidden;">
+                <div class="granel-layout">
+
+                    <!-- ── Columna izquierda: productos ── -->
+                    <div class="granel-col-prod" style="padding: 16px; display: flex; flex-direction: column; gap: 10px; overflow-y: auto; max-height: 520px;">
+                        <!-- Búsqueda -->
+                        <div class="search-box" style="margin-bottom: 0;">
+                            <svg width="16" height="16" viewBox="0 0 20 20" fill="none" class="search-icon">
+                                <circle cx="9" cy="9" r="6" stroke="currentColor" stroke-width="2"/>
+                                <path d="M13 13l4 4" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+                            </svg>
+                            <input type="text" id="searchGranelInput" placeholder="Buscar producto..." class="search-input" oninput="filtrarProductosGranel()">
+                        </div>
+
+                        <!-- Lista -->
+                        <div id="listaProductosGranel" style="flex: 1; overflow-y: auto;">
+                            <div class="loading-state">
+                                <div class="spinner"></div>
+                                <p style="font-size: 13px;">Cargando...</p>
+                            </div>
                         </div>
                     </div>
-                </div>
 
-                <!-- Producto seleccionado -->
-                <div id="granelSeleccionado" style="display: none;">
-                    <div class="alert alert-success" style="margin-bottom: 12px; padding: 10px 12px;">
-                        <strong id="granelNombreSeleccionado" style="font-size: 14px;"></strong>
-                        <br>
-                        <span id="granelPrecioKg" style="font-size: 12px;"></span>
-                    </div>
+                    <!-- ── Columna derecha: calculadora ── -->
+                    <div class="granel-col-calc" style="padding: 16px; border-left: 1px solid hsl(var(--border)); display: flex; flex-direction: column; gap: 10px; background: hsl(var(--muted) / 0.2);">
 
-                    <!-- Calculadora Normal -->
-                    <div class="form-group" style="background: hsl(var(--muted)/0.3); padding: 12px; border-radius: 8px; margin-bottom: 12px;">
-                        <label style="display: flex; align-items: center; gap: 8px; margin-bottom: 8px; font-size: 14px; font-weight: 600;">
-                            🧮 Calculadora
-                        </label>
-                        
-                        <!-- Display de la calculadora -->
-                        <div id="displayCalculadora" style="background: white; padding: 10px 12px; border-radius: 8px; margin-bottom: 10px; text-align: right; font-size: 20px; font-weight: 700; min-height: 44px; display: flex; align-items: center; justify-content: flex-end; border: 2px solid hsl(var(--border)); font-family: 'Courier New', monospace;">
-                            0
+                        <!-- Producto seleccionado -->
+                        <div id="granelSeleccionado" style="display: none;">
+                            <div class="granel-item-sel">
+                                <div style="font-weight: 700; font-size: 14px; color: hsl(var(--foreground));" id="granelNombreSeleccionado"></div>
+                                <div style="font-size: 12px; color: hsl(var(--success)); font-weight: 600; margin-top: 2px;" id="granelPrecioKg"></div>
+                                <div class="peso-badge">⚖️ <span id="pesoEstimado">0 kg</span></div>
+                            </div>
                         </div>
-                        
-                        <!-- Teclado numérico -->
-                        <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px;">
-                            <!-- Fila 1 -->
-                            <button onclick="agregarNumeroCalc('7')" class="btn-calc">7</button>
-                            <button onclick="agregarNumeroCalc('8')" class="btn-calc">8</button>
-                            <button onclick="agregarNumeroCalc('9')" class="btn-calc">9</button>
-                            <button onclick="agregarOperacionCalc('/')" class="btn-calc-op">÷</button>
-                            
-                            <!-- Fila 2 -->
-                            <button onclick="agregarNumeroCalc('4')" class="btn-calc">4</button>
-                            <button onclick="agregarNumeroCalc('5')" class="btn-calc">5</button>
-                            <button onclick="agregarNumeroCalc('6')" class="btn-calc">6</button>
-                            <button onclick="agregarOperacionCalc('*')" class="btn-calc-op">×</button>
-                            
-                            <!-- Fila 3 -->
-                            <button onclick="agregarNumeroCalc('1')" class="btn-calc">1</button>
-                            <button onclick="agregarNumeroCalc('2')" class="btn-calc">2</button>
-                            <button onclick="agregarNumeroCalc('3')" class="btn-calc">3</button>
-                            <button onclick="agregarOperacionCalc('-')" class="btn-calc-op">−</button>
-                            
-                            <!-- Fila 4 -->
-                            <button onclick="limpiarCalculadoraGranel()" class="btn-calc-op" style="background: hsl(0 84% 60%); color: white; border-color: hsl(0 84% 50%);">C</button>
-                            <button onclick="agregarNumeroCalc('0')" class="btn-calc">0</button>
-                            <button onclick="borrarUltimoDigitoCalc()" class="btn-calc-op" title="Borrar último dígito">←</button>
-                            <button onclick="agregarOperacionCalc('+')" class="btn-calc-op">+</button>
-                        </div>
-                        
-                        <button onclick="aplicarCalculadora()" class="btn-primary" style="width: 100%; margin-top: 10px; padding: 10px; font-weight: 600; font-size: 13px; border-radius: 10px;">
-                            ✓ Aplicar resultado
-                        </button>
-                    </div>
-                    
-                    <style>
-                        .btn-calc, .btn-calc-op, .btn-calc-igual {
-                            padding: 12px;
-                            font-size: 16px;
-                            font-weight: 600;
-                            border: none;
-                            border-radius: 6px;
-                            cursor: pointer;
-                            transition: all 0.15s;
-                        }
-                        
-                        .btn-calc {
-                            background: white;
-                            color: hsl(var(--foreground));
-                            border: 2px solid hsl(var(--border));
-                        }
-                        
-                        .btn-calc:hover, .btn-calc:active {
-                            background: hsl(var(--muted));
-                            transform: scale(0.98);
-                        }
-                        
-                        .btn-calc-op {
-                            background: hsl(var(--primary)/0.1);
-                            color: hsl(var(--primary));
-                            border: 2px solid hsl(var(--primary)/0.3);
-                        }
-                        
-                        .btn-calc-op:hover, .btn-calc-op:active {
-                            background: hsl(var(--primary)/0.2);
-                            transform: scale(0.98);
-                        }
-                        
-                        .btn-calc-igual {
-                            background: hsl(var(--success));
-                            color: white;
-                            border: none;
-                        }
-                        
-                        .btn-calc-igual:hover, .btn-calc-igual:active {
-                            background: hsl(var(--success)/0.9);
-                            transform: scale(0.98);
-                        }
-                        
-                        @media (max-width: 768px) {
-                            .btn-calc, .btn-calc-op, .btn-calc-igual {
-                                padding: 14px 10px;
-                                font-size: 18px;
-                                border-radius: 8px;
-                            }
-                        }
-                    </style>
 
-                    <div class="form-group">
-                        <label style="font-size: 13px; font-weight: 600;">Monto Total Vendido ($)</label>
-                        <input type="number" 
-                               id="granelMonto" 
-                               class="form-input" 
-                               placeholder="Ej: 5000" 
-                               min="0" 
-                               step="100"
-                               oninput="calcularPesoEstimado()"
-                               style="padding: 10px 12px; font-size: 16px;">
-                        <small style="color: hsl(var(--muted-foreground)); font-size: 11px; margin-top: 4px; display: block;">
-                            💡 Peso estimado: <strong id="pesoEstimado">0 kg</strong>
-                        </small>
+                        <!-- Placeholder cuando no hay producto -->
+                        <div id="granelPlaceholder" style="flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; color: hsl(var(--muted-foreground)); text-align: center; padding: 20px 0;">
+                            <div style="font-size: 40px; margin-bottom: 8px;">👈</div>
+                            <div style="font-size: 13px;">Selecciona un producto<br>de la lista</div>
+                        </div>
+
+                        <!-- Calculadora (oculta hasta selección) -->
+                        <div id="granelCalc" style="display: none; flex-direction: column; gap: 8px;">
+                            <!-- Display -->
+                            <div id="displayCalculadora" class="granel-display">
+                                <span class="display-op" id="displayOp"></span>
+                                <span id="displayValor">0</span>
+                            </div>
+
+                            <!-- Input oculto para compatibilidad -->
+                            <input type="hidden" id="granelMonto">
+
+                            <!-- Entrada directa de monto -->
+                            <div style="display:flex; align-items:center; gap:8px; background:hsl(var(--muted)/0.4); border:1.5px dashed hsl(var(--border)); border-radius:9px; padding:5px 10px;">
+                                <span style="font-size:12px; color:hsl(var(--muted-foreground)); font-weight:600; white-space:nowrap;">$ directo</span>
+                                <input type="tel" inputmode="numeric" id="granelMontoDirecto"
+                                       placeholder="Ej: 2990"
+                                       style="flex:1; border:none; background:transparent; font-size:17px; font-weight:700; text-align:right; outline:none; color:hsl(var(--foreground)); width:0;"
+                                       oninput="ingresarMontoDirecto(this.value)">
+                            </div>
+
+                            <!-- Teclado 4×4 -->
+                            <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px;">
+                                <button onclick="agregarNumeroCalc('7')" class="btn-calc">7</button>
+                                <button onclick="agregarNumeroCalc('8')" class="btn-calc">8</button>
+                                <button onclick="agregarNumeroCalc('9')" class="btn-calc">9</button>
+                                <button onclick="agregarOperacionCalc('/')" class="btn-calc-op">÷</button>
+
+                                <button onclick="agregarNumeroCalc('4')" class="btn-calc">4</button>
+                                <button onclick="agregarNumeroCalc('5')" class="btn-calc">5</button>
+                                <button onclick="agregarNumeroCalc('6')" class="btn-calc">6</button>
+                                <button onclick="agregarOperacionCalc('*')" class="btn-calc-op">×</button>
+
+                                <button onclick="agregarNumeroCalc('1')" class="btn-calc">1</button>
+                                <button onclick="agregarNumeroCalc('2')" class="btn-calc">2</button>
+                                <button onclick="agregarNumeroCalc('3')" class="btn-calc">3</button>
+                                <button onclick="agregarOperacionCalc('-')" class="btn-calc-op">−</button>
+
+                                <button onclick="limpiarCalculadoraGranel()" class="btn-calc-ac">AC</button>
+                                <button onclick="agregarNumeroCalc('0')" class="btn-calc">0</button>
+                                <button onclick="borrarUltimoDigitoCalc()" class="btn-calc-op" title="Borrar">⌫</button>
+                                <button onclick="agregarOperacionCalc('+')" class="btn-calc-op">+</button>
+                            </div>
+
+                            <!-- Botón = que aplica directo al carrito -->
+                            <button onclick="calcularYAplicar()" id="btnCalcularAplicar" class="btn-calc-ok" disabled>
+                                = Agregar $<span id="displayMontoBtn">0</span> al Carrito
+                            </button>
+                        </div>
                     </div>
+
                 </div>
             </div>
-            <div class="modal-footer">
+
+            <div class="modal-footer" style="padding: 12px 20px;">
                 <button class="btn btn-secondary" onclick="cerrarModalGranel()">Cancelar</button>
-                <button class="btn btn-success" onclick="agregarGranelAlCarrito()" id="btnAgregarGranel" disabled>Agregar al Carrito</button>
             </div>
         </div>
     </div>
