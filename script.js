@@ -1,4 +1,4 @@
-// MODERN POS SYSTEM - JavaScript
+﻿// MODERN POS SYSTEM - JavaScript
 // ===============================
 
 // Versión de la aplicación
@@ -5341,6 +5341,11 @@ function seleccionarProductoGranel(idProducto) {
     // Limpiar calculadora
     document.getElementById('granelMonto').value = '';
     limpiarCalculadoraGranel();
+
+    // En móvil: hacer scroll a la calculadora para no tener que bajar manualmente
+    setTimeout(() => {
+        document.getElementById('granelCalc').scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }, 50);
 }
 
 function calcularPesoEstimado() {
