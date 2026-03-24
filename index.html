@@ -612,6 +612,14 @@
                             <option value="30" selected>Últimos 30 días</option>
                             <option value="90">Últimos 90 días</option>
                         </select>
+                        <button class="btn btn-secondary" onclick="abrirModalExportar()" title="Exportar datos" style="display:flex;align-items:center;gap:6px;white-space:nowrap;">
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/>
+                                <polyline points="7 10 12 15 17 10"/>
+                                <line x1="12" y1="15" x2="12" y2="3"/>
+                            </svg>
+                            Exportar
+                        </button>
                         <button class="btn-logout-header" onclick="handleLogout()" title="Cerrar sesión">
                             <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                                 <path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4"/>
@@ -1195,6 +1203,40 @@
                                         (<span id="repartoPagadasMonto">$0</span>)
                                     </span>
                                 </div>
+
+                                <!-- ====== RENDICIÓN DE EFECTIVO DEL REPARTIDOR ====== -->
+                                <div id="rendicionRepartidorBloque" style="margin-top: 16px; padding: 16px; background: hsl(220 14% 96%); border: 2px dashed hsl(var(--primary) / 0.35); border-radius: 12px;">
+                                    <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 14px;">
+                                        <span style="font-weight: 700; font-size: 14px; display: flex; align-items: center; gap: 6px;">
+                                            💵 Rendición de Efectivo del Repartidor
+                                        </span>
+                                        <span id="badgeRendicion" style="display:none; padding: 3px 10px; border-radius: 20px; font-size: 11px; font-weight: 700; background: hsl(var(--success) / 0.15); color: hsl(var(--success));">
+                                            ✅ Confirmada
+                                        </span>
+                                    </div>
+
+                                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 12px;">
+                                        <div>
+                                            <div style="font-size: 12px; color: hsl(var(--muted-foreground)); margin-bottom: 4px;">Sistema espera</div>
+                                            <div style="font-weight: 700; font-size: 18px; color: hsl(var(--primary));" id="rendicionEsperado">$0</div>
+                                        </div>
+                                        <div>
+                                            <div style="font-size: 12px; color: hsl(var(--muted-foreground)); margin-bottom: 4px;">Repartidor entrega</div>
+                                            <input type="number" id="rendicionReal" placeholder="0"
+                                                oninput="calcularDiferenciaRendicion()"
+                                                style="width: 100%; padding: 7px 10px; border: 2px solid hsl(var(--border)); border-radius: 8px; font-size: 16px; font-weight: 700; box-sizing: border-box;">
+                                        </div>
+                                    </div>
+
+                                    <div id="rendicionDiferencia" style="display:none; padding: 8px 14px; border-radius: 8px; font-size: 13px; font-weight: 600; margin-bottom: 12px;"></div>
+
+                                    <button onclick="confirmarRendicionReparto()" id="btnConfirmarRendicion"
+                                        style="width: 100%; padding: 11px; background: hsl(var(--primary)); color: white; border: none; border-radius: 8px; font-weight: 700; cursor: pointer; font-size: 14px; opacity: 0.4; pointer-events: none;">
+                                        Confirmar Rendición
+                                    </button>
+                                </div>
+                                <!-- ====== FIN RENDICIÓN ====== -->
+
                             </div>
 
                             <!-- ========================================== -->
@@ -2223,6 +2265,66 @@
     </div>
 
     <!-- MODAL: Detalle de Venta -->
+    <!-- MODAL: Exportar Datos -->
+    <div id="modalExportar" class="modal">
+        <div class="modal-overlay" onclick="cerrarModalExportar()"></div>
+        <div class="modal-content" style="max-width: 480px;">
+            <div class="modal-header">
+                <h3>📥 Exportar Datos</h3>
+                <button class="btn-close" onclick="cerrarModalExportar()">
+                    <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
+                        <path d="M15 5L5 15M5 5l10 10" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+                    </svg>
+                </button>
+            </div>
+            <div class="modal-body">
+                <div style="display:flex;flex-direction:column;gap:16px;">
+                    <!-- Rango de fechas -->
+                    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+                        <div>
+                            <label style="font-size:13px;font-weight:600;display:block;margin-bottom:6px;">Desde</label>
+                            <input type="date" id="exportarDesde" class="form-control" />
+                        </div>
+                        <div>
+                            <label style="font-size:13px;font-weight:600;display:block;margin-bottom:6px;">Hasta</label>
+                            <input type="date" id="exportarHasta" class="form-control" />
+                        </div>
+                    </div>
+                    <!-- Qué exportar -->
+                    <div>
+                        <label style="font-size:13px;font-weight:600;display:block;margin-bottom:10px;">¿Qué deseas exportar?</label>
+                        <div style="display:flex;flex-direction:column;gap:8px;">
+                            <label style="display:flex;align-items:center;gap:10px;cursor:pointer;padding:10px 12px;border:1px solid hsl(var(--border));border-radius:8px;">
+                                <input type="checkbox" id="exportVentas" checked style="width:16px;height:16px;">
+                                <span>🛒 Ventas (con productos y métodos de pago)</span>
+                            </label>
+                            <label style="display:flex;align-items:center;gap:10px;cursor:pointer;padding:10px 12px;border:1px solid hsl(var(--border));border-radius:8px;">
+                                <input type="checkbox" id="exportGastos" checked style="width:16px;height:16px;">
+                                <span>💸 Gastos</span>
+                            </label>
+                            <label style="display:flex;align-items:center;gap:10px;cursor:pointer;padding:10px 12px;border:1px solid hsl(var(--border));border-radius:8px;">
+                                <input type="checkbox" id="exportCaja" checked style="width:16px;height:16px;">
+                                <span>🏧 Cierres de Caja</span>
+                            </label>
+                        </div>
+                    </div>
+                    <p style="font-size:12px;color:hsl(var(--muted-foreground));margin:0;">Se descargará un archivo CSV por cada tipo seleccionado.</p>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-primary" onclick="ejecutarExportar()" style="gap:8px;">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/>
+                        <polyline points="7 10 12 15 17 10"/>
+                        <line x1="12" y1="15" x2="12" y2="3"/>
+                    </svg>
+                    Descargar CSV
+                </button>
+                <button class="btn btn-secondary" onclick="cerrarModalExportar()">Cancelar</button>
+            </div>
+        </div>
+    </div>
+
     <div id="modalDetalleVenta" class="modal">
         <div class="modal-overlay" onclick="cerrarModalDetalleVenta()"></div>
         <div class="modal-content" style="max-width: 700px;">

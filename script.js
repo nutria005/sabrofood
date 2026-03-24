@@ -1456,8 +1456,17 @@ async function verificarSesionGuardada() {
 // NAVEGACIÓN
 // ===================================
 
+// Intervalo de refresco automático del reparto (activo solo en vista caja)
+let _repartoRefreshInterval = null;
+
 function cambiarVista(vista) {
     currentView = vista;
+
+    // Limpiar refresco de reparto al salir de caja
+    if (vista !== 'caja' && _repartoRefreshInterval) {
+        clearInterval(_repartoRefreshInterval);
+        _repartoRefreshInterval = null;
+    }
 
     // Ocultar todas las vistas
     document.querySelectorAll('.view-container').forEach(v => {
@@ -1539,6 +1548,11 @@ function cambiarVista(vista) {
         }
     } else if (vista === 'caja') {
         cargarDatosCaja();
+        // Refrescar datos de reparto cada 2 minutos mientras se está en caja
+        if (_repartoRefreshInterval) clearInterval(_repartoRefreshInterval);
+        _repartoRefreshInterval = setInterval(() => {
+            cargarDatosReparto();
+        }, 2 * 60 * 1000);
     } else if (vista === 'bodega') {
         // Inicializar módulo de bodega
         if (typeof cargarSolicitudesReposicion === 'function') {
@@ -3638,13 +3652,20 @@ async function cargarDatosVentas(periodo, esAdmin) {
 async function cargarItemsVentas(ventas) {
     if (ventas.length === 0) return;
 
+    // Inicializar productos como array vacío en todas las ventas (evita undefined)
+    ventas.forEach(venta => { venta.productos = []; venta.conteo_productos = 0; });
+
     const ventasIds = ventas.map(v => v.id);
     const { data: items, error: itemsError } = await window.supabaseClient
         .from('ventas_items')
         .select('venta_id, cantidad, producto_nombre')
         .in('venta_id', ventasIds);
 
-    if (itemsError || !items) return;
+    if (itemsError) {
+        console.error('⚠️ Error cargando ventas_items:', itemsError.message);
+        return;
+    }
+    if (!items || items.length === 0) return;
 
     // Crear mapa de items agrupados por venta
     const itemsPorVenta = {};
@@ -3795,8 +3816,8 @@ async function cargarVentas() {
         // 1. Cargar ventas
         const ventas = await cargarDatosVentas(periodo, esAdmin);
 
-        // 2. Cargar items de ventas
-        await cargarItemsVentas(ventas);
+        // 2. Cargar items solo para las ventas que se mostrarán (primeras 50)
+        await cargarItemsVentas(ventas.slice(0, 50));
 
         // 3. Marcar ventas con devoluciones
         await cargarDevolucionesVentas(ventas);
@@ -4671,243 +4692,141 @@ function imprimirBoleta() {
     const items = ventaActualParaImprimir.items || [];
     const detallesPagos = ventaActualParaImprimir.detallesPagos || [];
 
+    // Descuento
+    const tieneDescuento = venta.descuento_aplicado && venta.descuento_aplicado > 0;
+    const subtotalSinDesc = venta.subtotal_sin_descuento || venta.total;
+
+    // Generar filas de productos
+    const filasProductos = items.length > 0 ? items.map(item => {
+        if (item.es_granel) {
+            // Granel: sin cantidad, precio/kg en P.U., monto en TOTAL
+            const pesoKg = item.peso_estimado_kg || 0;
+            const precioPorKg = pesoKg > 0 ? Math.round(item.subtotal / pesoKg) : item.precio_unitario;
+            return `
+                <tr>
+                    <td style="padding:4px 2px;">${item.producto_nombre}</td>
+                    <td style="text-align:right;padding:4px 2px;color:#999;">-</td>
+                    <td style="text-align:right;padding:4px 2px;">$${formatoMoneda(precioPorKg)}/kg</td>
+                    <td style="text-align:right;padding:4px 2px;font-weight:600;">$${formatoMoneda(item.subtotal)}</td>
+                </tr>`;
+        } else {
+            return `
+                <tr>
+                    <td style="padding:4px 2px;">${item.producto_nombre}</td>
+                    <td style="text-align:right;padding:4px 2px;">${item.cantidad}</td>
+                    <td style="text-align:right;padding:4px 2px;">$${formatoMoneda(item.precio_unitario)}</td>
+                    <td style="text-align:right;padding:4px 2px;font-weight:600;">$${formatoMoneda(item.subtotal)}</td>
+                </tr>`;
+        }
+    }).join('') : `<tr><td colspan="4" style="text-align:center;color:#666;padding:8px;">Sin productos registrados</td></tr>`;
+
     // Crear ventana de impresión
     const ventanaImpresion = window.open('', '', 'width=800,height=600');
-    
-    const htmlBoleta = `
-        <!DOCTYPE html>
-        <html lang="es">
-        <head>
-            <meta charset="UTF-8">
-            <meta name="viewport" content="width=device-width, initial-scale=1.0">
-            <title>Boleta #${venta.id} - Sabrofood</title>
-            <style>
-                * {
-                    margin: 0;
-                    padding: 0;
-                    box-sizing: border-box;
-                }
-                
-                body {
-                    font-family: 'Courier New', Courier, monospace;
-                    padding: 20px;
-                    max-width: 80mm;
-                    margin: 0 auto;
-                    background: white;
-                }
-                
-                .boleta {
-                    border: 2px solid #000;
-                    padding: 15px;
-                }
-                
-                .header {
-                    text-align: center;
-                    border-bottom: 2px dashed #000;
-                    padding-bottom: 10px;
-                    margin-bottom: 15px;
-                }
-                
-                .header h1 {
-                    font-size: 24px;
-                    font-weight: bold;
-                    margin-bottom: 5px;
-                }
-                
-                .header p {
-                    font-size: 12px;
-                    margin: 2px 0;
-                }
-                
-                .info-venta {
-                    margin-bottom: 15px;
-                    font-size: 12px;
-                    border-bottom: 1px dashed #000;
-                    padding-bottom: 10px;
-                }
-                
-                .info-venta p {
-                    margin: 3px 0;
-                    display: flex;
-                    justify-content: space-between;
-                }
-                
-                .info-venta strong {
-                    font-weight: bold;
-                }
-                
-                .productos {
-                    margin-bottom: 15px;
-                }
-                
-                .productos-header {
-                    font-weight: bold;
-                    display: grid;
-                    grid-template-columns: 2fr 1fr 1fr 1fr;
-                    gap: 5px;
-                    border-bottom: 2px solid #000;
-                    padding-bottom: 5px;
-                    margin-bottom: 10px;
-                    font-size: 11px;
-                }
-                
-                .producto-item {
-                    display: grid;
-                    grid-template-columns: 2fr 1fr 1fr 1fr;
-                    gap: 5px;
-                    margin-bottom: 8px;
-                    font-size: 11px;
-                }
-                
-                .producto-item .nombre {
-                    font-weight: 500;
-                }
-                
-                .producto-item .cantidad,
-                .producto-item .precio,
-                .producto-item .subtotal {
-                    text-align: right;
-                }
-                
-                .totales {
-                    border-top: 2px solid #000;
-                    padding-top: 10px;
-                    margin-top: 10px;
-                }
-                
-                .total-item {
-                    display: flex;
-                    justify-content: space-between;
-                    margin: 5px 0;
-                    font-size: 12px;
-                }
-                
-                .total-item.final {
-                    font-size: 16px;
-                    font-weight: bold;
-                    border-top: 2px double #000;
-                    padding-top: 8px;
-                    margin-top: 8px;
-                }
-                
-                .pagos {
-                    margin-top: 15px;
-                    border-top: 1px dashed #000;
-                    padding-top: 10px;
-                    font-size: 12px;
-                }
-                
-                .pago-item {
-                    display: flex;
-                    justify-content: space-between;
-                    margin: 3px 0;
-                }
-                
-                .footer {
-                    text-align: center;
-                    margin-top: 20px;
-                    border-top: 2px dashed #000;
-                    padding-top: 10px;
-                    font-size: 11px;
-                }
-                
-                .footer p {
-                    margin: 3px 0;
-                }
-                
-                @media print {
-                    body {
-                        padding: 0;
-                    }
-                    
-                    .boleta {
-                        border: none;
-                    }
-                    
-                    @page {
-                        margin: 10mm;
-                        size: 80mm auto;
-                    }
-                }
-            </style>
-        </head>
-        <body>
-            <div class="boleta">
-                <div class="header">
-                    <h1>SABROFOOD</h1>
-                    <p>Sistema de Punto de Venta</p>
-                    <p>━━━━━━━━━━━━━━━━━━━━</p>
-                    <p><strong>BOLETA DE VENTA</strong></p>
-                </div>
-                
-                <div class="info-venta">
-                    <p><strong>N° Boleta:</strong> <span>#${venta.id}</span></p>
-                    <p><strong>Fecha:</strong> <span>${new Date(venta.created_at || venta.fecha).toLocaleDateString('es-CL')}</span></p>
-                    <p><strong>Hora:</strong> <span>${new Date(venta.created_at || venta.fecha).toLocaleTimeString('es-CL', { hour: '2-digit', minute: '2-digit' })}</span></p>
-                    <p><strong>Vendedor:</strong> <span>${venta.vendedor_nombre || venta.vendedor || 'Sin asignar'}</span></p>
-                </div>
-                
-                <div class="productos">
-                    <div class="productos-header">
-                        <div>PRODUCTO</div>
-                        <div style="text-align: right;">CANT</div>
-                        <div style="text-align: right;">P.U.</div>
-                        <div style="text-align: right;">TOTAL</div>
-                    </div>
-                    ${items.length > 0 ? items.map(item => `
-                        <div class="producto-item">
-                            <div class="nombre">${item.producto_nombre}</div>
-                            <div class="cantidad">${item.cantidad}</div>
-                            <div class="precio">$${formatoMoneda(item.precio_unitario)}</div>
-                            <div class="subtotal">$${formatoMoneda(item.subtotal)}</div>
-                        </div>
-                    `).join('') : '<p style="text-align: center; color: #666;">Sin productos registrados</p>'}
-                </div>
-                
-                <div class="totales">
-                    <div class="total-item final">
-                        <span>TOTAL:</span>
-                        <span>$${formatoMoneda(venta.total)}</span>
-                    </div>
-                </div>
-                
-                ${detallesPagos.length > 0 ? `
-                    <div class="pagos">
-                        <p style="font-weight: bold; margin-bottom: 5px;">FORMA DE PAGO:</p>
-                        ${detallesPagos.map(pago => `
-                            <div class="pago-item">
-                                <span>${pago.metodo}:</span>
-                                <span>$${formatoMoneda(pago.monto)}</span>
-                            </div>
-                        `).join('')}
-                    </div>
-                ` : `
-                    <div class="pagos">
-                        <p style="font-weight: bold;">FORMA DE PAGO: ${venta.metodo_pago}</p>
-                    </div>
-                `}
-                
-                <div class="footer">
-                    <p>━━━━━━━━━━━━━━━━━━━━</p>
-                    <p>¡Gracias por su compra!</p>
-                    <p style="margin-top: 8px; font-size: 10px;">
-                        Documento no válido como factura
-                    </p>
-                </div>
-            </div>
-            
-            <script>
-                // Imprimir automáticamente al cargar
-                window.onload = function() {
-                    window.print();
-                    // Cerrar ventana después de imprimir o cancelar
-                    setTimeout(() => window.close(), 500);
-                };
-            </script>
-        </body>
-        </html>
-    `;
-    
+
+    const htmlBoleta = `<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <title>Boleta #${venta.id} - Sabrofood</title>
+    <style>
+        * { margin:0; padding:0; box-sizing:border-box; }
+        body {
+            font-family: 'Courier New', Courier, monospace;
+            font-size: 12px;
+            max-width: 80mm;
+            margin: 0 auto;
+            padding: 10px;
+            background: white;
+            color: #000;
+        }
+        .header { text-align:center; padding-bottom:10px; border-bottom:2px dashed #000; margin-bottom:12px; }
+        .header h1 { font-size:28px; font-weight:bold; letter-spacing:3px; margin-bottom:4px; }
+        .header .subtitulo { font-size:11px; margin:2px 0; }
+        .header .contacto { font-size:11px; margin-top:6px; font-weight:600; }
+        .info-venta { margin-bottom:12px; border-bottom:1px dashed #000; padding-bottom:10px; }
+        .info-venta .row { display:flex; justify-content:space-between; margin:3px 0; }
+        table { width:100%; border-collapse:collapse; margin-bottom:10px; font-size:11px; }
+        thead tr { border-bottom:2px solid #000; border-top:1px solid #000; }
+        thead th { padding:4px 2px; font-weight:bold; }
+        thead th:not(:first-child) { text-align:right; }
+        tbody tr { border-bottom:1px dotted #ccc; }
+        .totales { border-top:2px solid #000; padding-top:8px; margin-bottom:12px; }
+        .totales .row { display:flex; justify-content:space-between; margin:4px 0; }
+        .totales .row.total-final { font-size:15px; font-weight:bold; border-top:2px double #000; padding-top:6px; margin-top:6px; }
+        .totales .row.descuento { color:#555; }
+        .pagos { border-top:1px dashed #000; padding-top:8px; margin-bottom:12px; }
+        .pagos .titulo { font-weight:bold; margin-bottom:4px; font-size:11px; color:#555; text-transform:uppercase; letter-spacing:0.5px; }
+        .pagos .row { display:flex; justify-content:space-between; margin:3px 0; }
+        .footer { text-align:center; border-top:2px dashed #000; padding-top:12px; margin-top:4px; }
+        .footer p { margin:3px 0; }
+        @media print {
+            body { padding:0; }
+            @page { margin:5mm; size:80mm auto; }
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>🐾 SABROFOOD</h1>
+        <p class="contacto">📞 +56 9 3951 9825</p>
+        <p class="subtitulo" style="margin-top:6px;">━━━━━━━━━━━━━━━━━━━━</p>
+        <p style="font-weight:bold;font-size:13px;margin-top:4px;">BOLETA DE VENTA</p>
+    </div>
+
+    <div class="info-venta">
+        <div class="row"><span>N° Boleta:</span><strong>#${venta.id}</strong></div>
+        <div class="row"><span>Fecha:</span><span>${new Date(venta.created_at || venta.fecha).toLocaleDateString('es-CL', { timeZone: 'America/Santiago' })}</span></div>
+        <div class="row"><span>Hora:</span><span>${new Date(venta.created_at || venta.fecha).toLocaleTimeString('es-CL', { hour: '2-digit', minute: '2-digit', timeZone: 'America/Santiago' })}</span></div>
+        <div class="row"><span>Vendedor:</span><span>${venta.vendedor_nombre || venta.vendedor || 'Sin asignar'}</span></div>
+    </div>
+
+    <table>
+        <thead>
+            <tr>
+                <th style="text-align:left;">PRODUCTO</th>
+                <th>CANT</th>
+                <th>P.U.</th>
+                <th>TOTAL</th>
+            </tr>
+        </thead>
+        <tbody>
+            ${filasProductos}
+        </tbody>
+    </table>
+
+    <div class="totales">
+        ${tieneDescuento ? `
+        <div class="row"><span>Subtotal:</span><span>$${formatoMoneda(subtotalSinDesc)}</span></div>
+        <div class="row descuento"><span>Descuento:</span><span>-$${formatoMoneda(venta.descuento_aplicado)}</span></div>
+        ` : ''}
+        <div class="row total-final">
+            <span>TOTAL</span>
+            <span>$${formatoMoneda(venta.total)}</span>
+        </div>
+    </div>
+
+    <div class="pagos">
+        <p class="titulo">PAGO</p>
+        ${detallesPagos.length > 0
+            ? detallesPagos.map(p => `<div class="row"><span>${p.metodo}</span><span>$${formatoMoneda(p.monto)}</span></div>`).join('')
+            : `<div class="row"><span>${venta.metodo_pago}</span><span>$${formatoMoneda(venta.total)}</span></div>`
+        }
+    </div>
+
+    <div class="footer">
+        <p style="font-size:14px;font-weight:bold;margin-bottom:4px;">¡Gracias por su compra! 🐾</p>
+        <p style="font-size:10px;color:#555;">Documento no válido como factura</p>
+    </div>
+
+    <script>
+        window.onload = function() {
+            window.print();
+            setTimeout(() => window.close(), 500);
+        };
+    </script>
+</body>
+</html>`;
+
     ventanaImpresion.document.write(htmlBoleta);
     ventanaImpresion.document.close();
 }
@@ -4915,6 +4834,153 @@ function imprimirBoleta() {
 // ===================================
 // UTILIDADES
 // ===================================
+
+// ===================================
+// EXPORTAR DATOS CSV
+// ===================================
+
+function abrirModalExportar() {
+    const hoy = new Date().toISOString().split('T')[0];
+    const hace30 = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+    document.getElementById('exportarDesde').value = hace30;
+    document.getElementById('exportarHasta').value = hoy;
+    const modal = document.getElementById('modalExportar');
+    modal.style.display = 'flex';
+    modal.classList.add('show');
+}
+
+function cerrarModalExportar() {
+    const modal = document.getElementById('modalExportar');
+    modal.classList.remove('show');
+    setTimeout(() => { modal.style.display = 'none'; }, 300);
+}
+
+function descargarCSV(nombre, filas) {
+    const bom = '\uFEFF'; // BOM para que Excel lo abra con tildes correctas
+    const csv = bom + filas.map(f => f.map(c => `"${String(c ?? '').replace(/"/g, '""')}"`).join(',')).join('\n');
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = nombre;
+    a.click();
+    URL.revokeObjectURL(url);
+}
+
+async function ejecutarExportar() {
+    const desde = document.getElementById('exportarDesde').value;
+    const hasta = document.getElementById('exportarHasta').value;
+    const exportVentas = document.getElementById('exportVentas').checked;
+    const exportGastos = document.getElementById('exportGastos').checked;
+    const exportCaja = document.getElementById('exportCaja').checked;
+
+    if (!desde || !hasta) {
+        mostrarNotificacion('Selecciona un rango de fechas', 'warning');
+        return;
+    }
+    if (!exportVentas && !exportGastos && !exportCaja) {
+        mostrarNotificacion('Selecciona al menos un tipo de dato', 'warning');
+        return;
+    }
+
+    const hastaFin = hasta + 'T23:59:59';
+    mostrarNotificacion('Generando archivos...', 'info', 2000);
+
+    try {
+        // --- VENTAS ---
+        if (exportVentas) {
+            const { data: ventas, error } = await window.supabaseClient
+                .from('ventas')
+                .select('*')
+                .gte('created_at', desde + 'T00:00:00')
+                .lte('created_at', hastaFin)
+                .order('created_at', { ascending: false });
+
+            if (error) throw error;
+
+            const filas = [
+                ['ID', 'Fecha', 'Hora', 'Vendedor', 'Total', 'Subtotal sin descuento', 'Descuento', 'Método de pago'],
+                ...(ventas || []).map(v => {
+                    const fecha = new Date(v.created_at);
+                    return [
+                        v.id,
+                        fecha.toLocaleDateString('es-CL', { timeZone: 'America/Santiago' }),
+                        fecha.toLocaleTimeString('es-CL', { hour: '2-digit', minute: '2-digit', timeZone: 'America/Santiago' }),
+                        v.vendedor_nombre || v.vendedor || '',
+                        v.total,
+                        v.subtotal_sin_descuento || v.total,
+                        v.descuento_aplicado || 0,
+                        v.metodo_pago || ''
+                    ];
+                })
+            ];
+            descargarCSV(`ventas_${desde}_${hasta}.csv`, filas);
+        }
+
+        // --- GASTOS ---
+        if (exportGastos) {
+            const { data: gastos, error } = await window.supabaseClient
+                .from('gastos')
+                .select('*')
+                .gte('fecha', desde + 'T00:00:00')
+                .lte('fecha', hastaFin)
+                .order('fecha', { ascending: false });
+
+            if (error) throw error;
+
+            const filas = [
+                ['ID', 'Fecha', 'Descripción', 'Monto', 'Registrado por'],
+                ...(gastos || []).map(g => {
+                    const fecha = new Date(g.fecha);
+                    return [
+                        g.id,
+                        fecha.toLocaleDateString('es-CL', { timeZone: 'America/Santiago' }),
+                        g.descripcion || g.concepto || '',
+                        g.monto || 0,
+                        g.registrado_por || g.usuario || g.vendedor || ''
+                    ];
+                })
+            ];
+            descargarCSV(`gastos_${desde}_${hasta}.csv`, filas);
+        }
+
+        // --- CIERRES DE CAJA ---
+        if (exportCaja) {
+            const { data: cierres, error } = await window.supabaseClient
+                .from('cierres_diarios')
+                .select('*')
+                .gte('fecha', desde)
+                .lte('fecha', hasta)
+                .order('fecha', { ascending: false });
+
+            if (error) throw error;
+
+            const filas = [
+                ['Fecha', 'Cerrado por', 'Total ventas', 'Efectivo', 'Tarjeta/Transbank', 'Transferencia', 'Total gastos', 'Efectivo esperado', 'Efectivo real', 'Diferencia'],
+                ...(cierres || []).map(c => [
+                    c.fecha,
+                    c.cerrado_por || '',
+                    c.total_ventas || 0,
+                    c.ventas_efectivo || 0,
+                    c.ventas_transbank || 0,
+                    c.ventas_transferencia || 0,
+                    c.total_gastos || 0,
+                    c.efectivo_esperado || 0,
+                    c.efectivo_real || 0,
+                    c.diferencia || 0
+                ])
+            ];
+            descargarCSV(`caja_${desde}_${hasta}.csv`, filas);
+        }
+
+        mostrarNotificacion('✅ Archivos descargados correctamente', 'success');
+        cerrarModalExportar();
+
+    } catch (error) {
+        console.error('Error exportando:', error);
+        mostrarNotificacion('Error al exportar: ' + error.message, 'error');
+    }
+}
 
 // ===================================
 // UTILIDADES Y HELPERS
@@ -6005,8 +6071,8 @@ async function cargarDatosCaja() {
 
     const fechaHoy = hoy.toISOString().split('T')[0];
 
-    // Cargar sencillo inicial
-    cargarSencilloInicial();
+    // Cargar sencillo inicial (async: lee desde Supabase)
+    await cargarSencilloInicial();
 
     // Cargar ventas del día
     await cargarVentasDelDia();
@@ -6463,15 +6529,13 @@ function actualizarTotalesCaja() {
     // Calcular total de pagos al personal
     const totalPagosPersonal = pagosPersonalDelDia.reduce((sum, pago) => sum + parseFloat(pago.total_pago), 0);
 
-    // Obtener efectivo del reparto con limpieza robusta
-    const repartoEfectivoText = document.getElementById('repartoEfectivo')?.textContent || '$0';
-    const limpiarMoneda = (texto) => {
-        return parseFloat(texto.replace(/\$/g, '').replace(/\./g, '').replace(/,/g, '.')) || 0;
-    };
-    const repartoEfectivo = limpiarMoneda(repartoEfectivoText);
+    // Efectivo reparto: usar el confirmado por rendición si existe, sino el del sistema
+    const repartoEfectivo = repartoDelDia.efectivoConfirmado !== undefined
+        ? repartoDelDia.efectivoConfirmado
+        : (repartoDelDia.efectivo || 0);
 
-    // Calcular efectivo esperado (POS + Reparto - gastos - pagos personal)
-    const efectivoEsperado = ventasDelDia.efectivo + repartoEfectivo - totalGastos - totalPagosPersonal;
+    // Calcular efectivo esperado (Sencillo + POS + Reparto - gastos - pagos personal)
+    const efectivoEsperado = sencilloInicial + ventasDelDia.efectivo + repartoEfectivo - totalGastos - totalPagosPersonal;
     document.getElementById('efectivoEsperado').textContent = '$' + formatoMoneda(efectivoEsperado);
 
     // Recalcular diferencia si hay efectivo real ingresado
@@ -6588,7 +6652,7 @@ function calcularDiferenciaCaja() {
     };
     const repartoEfectivo = limpiarMoneda(repartoEfectivoText);
     
-    const efectivoEsperado = ventasDelDia.efectivo + repartoEfectivo - totalGastos - totalPagosPersonal;
+    const efectivoEsperado = sencilloInicial + ventasDelDia.efectivo + repartoEfectivo - totalGastos - totalPagosPersonal;
     const diferencia = efectivoReal - efectivoEsperado;
 
     // Mostrar container
@@ -6641,7 +6705,7 @@ async function cerrarCajaDiaria() {
     };
     const repartoEfectivo = limpiarMoneda(repartoEfectivoText);
     
-    const efectivoEsperado = ventasDelDia.efectivo + repartoEfectivo - totalGastos - totalPagosPersonal;
+    const efectivoEsperado = sencilloInicial + ventasDelDia.efectivo + repartoEfectivo - totalGastos - totalPagosPersonal;
     const diferencia = efectivoReal - efectivoEsperado;
 
     // Confirmación
@@ -6681,26 +6745,47 @@ async function cerrarCajaDiaria() {
         }));
 
         // Insertar o actualizar cierre diario
+        const repartoEfectivoCierre = repartoDelDia.efectivoConfirmado !== undefined
+            ? repartoDelDia.efectivoConfirmado : (repartoDelDia.efectivo || 0);
+        const repartoTarjetasCierre = repartoDelDia.tarjetas || 0;
+        const repartoTransferCierre = repartoDelDia.transferencias || 0;
+        const repartoTotalCierre = repartoDelDia.total || 0;
+
         const { data, error } = await window.supabaseClient
             .from('cierres_diarios')
             .upsert({
                 fecha: hoy,
-                total_ventas: ventasDelDia.total,
-                ventas_efectivo: ventasDelDia.efectivo,
-                ventas_transferencia: ventasDelDia.transferencia,
-                ventas_transbank: ventasDelDia.transbank,
+                total_ventas: ventasDelDia.total + repartoTotalCierre,
+                ventas_efectivo: ventasDelDia.efectivo + repartoEfectivoCierre,
+                ventas_transferencia: ventasDelDia.transferencia + repartoTransferCierre,
+                ventas_transbank: ventasDelDia.transbank + repartoTarjetasCierre,
                 total_gastos: totalGastos,
                 detalle_gastos_json: {
                     gastos_operacionales: detalleGastos,
                     pagos_personal: detallePagosPersonal,
-                    total_pagos_personal: totalPagosPersonal
+                    total_pagos_personal: totalPagosPersonal,
+                    sencillo_inicial: sencilloInicial,
+                    desglose_ventas: {
+                        pos: {
+                            efectivo: ventasDelDia.efectivo,
+                            transbank: ventasDelDia.transbank,
+                            transferencia: ventasDelDia.transferencia,
+                            total: ventasDelDia.total
+                        },
+                        reparto: {
+                            efectivo: repartoEfectivoCierre,
+                            tarjetas: repartoTarjetasCierre,
+                            transferencias: repartoTransferCierre,
+                            total: repartoTotalCierre
+                        }
+                    }
                 },
                 efectivo_esperado: efectivoEsperado,
                 efectivo_real: efectivoReal,
                 diferencia: diferencia,
                 cerrado_por: currentUser,
                 cerrado_at: new Date().toISOString(),
-                notas: `Gastos Operacionales: $${formatoMoneda(totalGastos)} | Pagos Personal: $${formatoMoneda(totalPagosPersonal)}`
+                notas: `Sencillo: $${formatoMoneda(sencilloInicial)} | Gastos Operacionales: $${formatoMoneda(totalGastos)} | Pagos Personal: $${formatoMoneda(totalPagosPersonal)}`
             }, {
                 onConflict: 'fecha'
             })
@@ -6944,6 +7029,115 @@ async function guardarAjusteCaja() {
     }
 }
 
+// ===================================
+// RENDICIÓN DE EFECTIVO DEL REPARTIDOR
+// ===================================
+
+/**
+ * Calcula en tiempo real la diferencia entre efectivo esperado del reparto
+ * y lo que el repartidor está entregando físicamente.
+ */
+function calcularDiferenciaRendicion() {
+    const esperado = repartoDelDia.efectivo || 0;
+    const real = parseFloat(document.getElementById('rendicionReal')?.value) || 0;
+    const divDif = document.getElementById('rendicionDiferencia');
+    const btnConfirmar = document.getElementById('btnConfirmarRendicion');
+
+    if (!divDif || !btnConfirmar) return;
+
+    if (real === 0) {
+        divDif.style.display = 'none';
+        btnConfirmar.style.opacity = '0.4';
+        btnConfirmar.style.pointerEvents = 'none';
+        return;
+    }
+
+    const diferencia = real - esperado;
+    divDif.style.display = 'block';
+    btnConfirmar.style.opacity = '1';
+    btnConfirmar.style.pointerEvents = 'auto';
+
+    if (diferencia === 0) {
+        divDif.style.background = 'hsl(142 76% 36% / 0.12)';
+        divDif.style.color = 'hsl(142 76% 36%)';
+        divDif.textContent = '✅ Cuadrado exacto';
+    } else if (diferencia > 0) {
+        divDif.style.background = 'hsl(38 92% 50% / 0.12)';
+        divDif.style.color = 'hsl(38 72% 40%)';
+        divDif.textContent = `⚠️ Sobrante +$${formatoMoneda(diferencia)}`;
+    } else {
+        divDif.style.background = 'hsl(0 84% 60% / 0.12)';
+        divDif.style.color = 'hsl(0 72% 45%)';
+        divDif.textContent = `⚠️ Faltante -$${formatoMoneda(Math.abs(diferencia))}`;
+    }
+}
+
+/**
+ * Confirma y guarda la rendición de efectivo del repartidor.
+ * Guarda en caja_ajustes con metodo_pago = 'Efectivo_Reparto'.
+ * Actualiza el efectivo esperado del cuadre con el monto real confirmado.
+ */
+async function confirmarRendicionReparto() {
+    const esperado = repartoDelDia.efectivo || 0;
+    const real = parseFloat(document.getElementById('rendicionReal')?.value) || 0;
+
+    if (real === 0) {
+        mostrarNotificacion('Ingresa el monto que entregó el repartidor', 'warning');
+        return;
+    }
+
+    const diferencia = real - esperado;
+    const fecha = new Date().toISOString().split('T')[0];
+
+    const confirmMsg = `¿Confirmar rendición de efectivo del repartidor?\n\n` +
+        `💻 Sistema esperaba: $${formatoMoneda(esperado)}\n` +
+        `💵 Repartidor entregó: $${formatoMoneda(real)}\n` +
+        `${diferencia === 0 ? '✅ Cuadrado exacto' : diferencia > 0 ? `⚠️ Sobrante: +$${formatoMoneda(diferencia)}` : `⚠️ Faltante: -$${formatoMoneda(Math.abs(diferencia))}`}`;
+
+    if (!confirm(confirmMsg)) return;
+
+    try {
+        const { error } = await window.supabaseClient
+            .from('caja_ajustes')
+            .upsert({
+                fecha,
+                metodo_pago: 'Efectivo_Reparto',
+                monto_calculado: esperado,
+                monto_ajustado: real,
+                diferencia,
+                motivo: `Rendición efectivo repartidor`,
+                registrado_por: currentUser?.email || 'sistema'
+            }, { onConflict: 'fecha,metodo_pago' });
+
+        if (error) throw error;
+
+        // Guardar el monto confirmado para usarlo en el cuadre principal
+        repartoDelDia.efectivoConfirmado = real;
+
+        // Bloquear el formulario y mostrar badge
+        const inputReal = document.getElementById('rendicionReal');
+        const btnConfirmar = document.getElementById('btnConfirmarRendicion');
+        const badge = document.getElementById('badgeRendicion');
+
+        if (inputReal) inputReal.disabled = true;
+        if (btnConfirmar) {
+            btnConfirmar.textContent = '✅ Rendición Confirmada';
+            btnConfirmar.style.opacity = '0.6';
+            btnConfirmar.style.pointerEvents = 'none';
+            btnConfirmar.style.background = 'hsl(142 76% 36%)';
+        }
+        if (badge) badge.style.display = 'inline';
+
+        // Recalcular cuadre con el efectivo real confirmado
+        actualizarTotalesCaja();
+
+        mostrarNotificacion('✅ Rendición del repartidor confirmada y guardada', 'success');
+    } catch (error) {
+        console.error('Error guardando rendición:', error);
+        mostrarNotificacion('Error al guardar la rendición', 'error');
+    }
+}
+
 /**
  * Cerrar modal de ajuste de caja
  */
@@ -6988,7 +7182,29 @@ async function cargarAjustesCaja(fecha) {
             const metodo = ajuste.metodo_pago;
             let indicador = null;
             let valorElement = null;
-            
+
+            // Rendición del repartidor: pre-llenar el bloque de rendición
+            if (metodo === 'Efectivo_Reparto') {
+                const inputReal = document.getElementById('rendicionReal');
+                const badge = document.getElementById('badgeRendicion');
+                const btnConfirmar = document.getElementById('btnConfirmarRendicion');
+                if (inputReal) {
+                    inputReal.value = ajuste.monto_ajustado;
+                    inputReal.disabled = true;
+                }
+                if (badge) badge.style.display = 'inline';
+                if (btnConfirmar) {
+                    btnConfirmar.textContent = '✅ Rendición Confirmada';
+                    btnConfirmar.style.opacity = '0.6';
+                    btnConfirmar.style.pointerEvents = 'none';
+                    btnConfirmar.style.background = 'hsl(142 76% 36%)';
+                }
+                // Actualizar estado global con el valor guardado
+                repartoDelDia.efectivoConfirmado = ajuste.monto_ajustado;
+                calcularDiferenciaRendicion();
+                return;
+            }
+
             if (metodo === 'Efectivo') {
                 indicador = document.getElementById('indicadorAjusteEfectivo');
                 valorElement = document.getElementById('ventasEfectivo');
@@ -9074,6 +9290,62 @@ function renderTablaHistorialCaja() {
                     </div>
                 </div>
 
+                <!-- FILA 1b: Desglose Local vs Delivery (solo si hay datos de reparto) -->
+                ${(() => {
+                    const repEf = datos.reparto_efectivo || 0;
+                    const repTarj = datos.reparto_tarjetas || 0;
+                    const repTransf = datos.reparto_transferencias || 0;
+                    if (repEf + repTarj + repTransf === 0) return '';
+                    // Para cierres nuevos, usar desglose.pos (ventas_efectivo ya es consolidado)
+                    // Para cierres viejos, ventas_efectivo era solo POS
+                    const posData = cierre.detalle_gastos_json?.desglose_ventas?.pos;
+                    const posEf = posData ? (posData.efectivo || 0) : (cierre.ventas_efectivo || 0);
+                    const posTarj = posData ? (posData.transbank || 0) : (cierre.ventas_transbank || 0);
+                    const posTransf = posData ? (posData.transferencia || 0) : (cierre.ventas_transferencia || 0);
+                    return `
+                <div style="margin-bottom: 16px;">
+                    <p style="margin: 0 0 10px; font-size: 12px; font-weight: 700; color: hsl(var(--muted-foreground)); text-transform: uppercase; letter-spacing: 0.5px;">🏷️ Desglose por forma de pago</p>
+                    <div style="display: flex; flex-direction: column; gap: 8px;">
+                        ${posEf + repEf > 0 ? `
+                        <div style="background: white; border-radius: 8px; padding: 12px 16px; border: 1px solid hsl(142 76% 36% / 0.3); display: flex; align-items: center; gap: 12px;">
+                            <span style="font-size: 22px;">💵</span>
+                            <div style="flex: 1;">
+                                <div style="font-weight: 700; font-size: 15px; color: hsl(142 76% 36%);">$${formatoMoneda(posEf + repEf)}</div>
+                                <div style="font-size: 11px; color: hsl(var(--muted-foreground)); font-weight: 600;">Efectivo</div>
+                            </div>
+                            <div style="text-align: right; font-size: 12px; color: hsl(var(--muted-foreground));">
+                                <div>Local: <strong>$${formatoMoneda(posEf)}</strong></div>
+                                <div>Delivery: <strong>$${formatoMoneda(repEf)}</strong></div>
+                            </div>
+                        </div>` : ''}
+                        ${posTarj + repTarj > 0 ? `
+                        <div style="background: white; border-radius: 8px; padding: 12px 16px; border: 1px solid hsl(217 91% 60% / 0.3); display: flex; align-items: center; gap: 12px;">
+                            <span style="font-size: 22px;">💳</span>
+                            <div style="flex: 1;">
+                                <div style="font-weight: 700; font-size: 15px; color: hsl(217 91% 50%);">$${formatoMoneda(posTarj + repTarj)}</div>
+                                <div style="font-size: 11px; color: hsl(var(--muted-foreground)); font-weight: 600;">Tarjetas</div>
+                            </div>
+                            <div style="text-align: right; font-size: 12px; color: hsl(var(--muted-foreground));">
+                                <div>Local: <strong>$${formatoMoneda(posTarj)}</strong></div>
+                                <div>Delivery: <strong>$${formatoMoneda(repTarj)}</strong></div>
+                            </div>
+                        </div>` : ''}
+                        ${posTransf + repTransf > 0 ? `
+                        <div style="background: white; border-radius: 8px; padding: 12px 16px; border: 1px solid hsl(38 92% 50% / 0.3); display: flex; align-items: center; gap: 12px;">
+                            <span style="font-size: 22px;">🏦</span>
+                            <div style="flex: 1;">
+                                <div style="font-weight: 700; font-size: 15px; color: hsl(38 92% 40%);">$${formatoMoneda(posTransf + repTransf)}</div>
+                                <div style="font-size: 11px; color: hsl(var(--muted-foreground)); font-weight: 600;">Transferencias</div>
+                            </div>
+                            <div style="text-align: right; font-size: 12px; color: hsl(var(--muted-foreground));">
+                                <div>Local: <strong>$${formatoMoneda(posTransf)}</strong></div>
+                                <div>Delivery: <strong>$${formatoMoneda(repTransf)}</strong></div>
+                            </div>
+                        </div>` : ''}
+                    </div>
+                </div>`;
+                })()}
+
                 <!-- FILA 2: Gastos + Arqueo en línea -->
                 <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: ${(esAutomatico && esPendiente) ? '16px' : '0'};">
                     
@@ -9653,7 +9925,12 @@ function actualizarResumenReparto(pedidos, fechaHoy) {
        // Solo contar pedidos entregados Y NO anulados
         if (!pedido.entregado || pedido.estado === 'ANULADO') {
             if (!pedido.entregado) {
-                pendientes.push(pedido);
+                // Solo contar como pendiente si es de HOY
+                const fechaPedido = pedido.fecha ? pedido.fecha.split('T')[0] : null;
+                const fechaHoyStr = fechaHoy || new Date().toISOString().split('T')[0];
+                if (fechaPedido === fechaHoyStr) {
+                    pendientes.push(pedido);
+                }
             }
             return;
         }
@@ -9737,7 +10014,8 @@ function actualizarResumenReparto(pedidos, fechaHoy) {
     console.log(`   ­ƒÆ░ TOTAL RECAUDADO: $${totalRecaudado.toLocaleString('es-CL')}`);
     console.log('ÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉ');
     
-    // Guardar en variable global
+    // Guardar en variable global (preservar efectivoConfirmado si ya fue rendido)
+    const confirmadoPrevio = repartoDelDia.efectivoConfirmado;
     repartoDelDia = {
         efectivo,
         tarjetas,
@@ -9745,6 +10023,13 @@ function actualizarResumenReparto(pedidos, fechaHoy) {
         transferencias_pendientes: transferenciasPendientes,
         total: totalRecaudado
     };
+    if (confirmadoPrevio !== undefined) repartoDelDia.efectivoConfirmado = confirmadoPrevio;
+
+    // Sincronizar bloque de rendición con el efectivo calculado
+    const rendicionEsperadoEl = document.getElementById('rendicionEsperado');
+    if (rendicionEsperadoEl) rendicionEsperadoEl.textContent = '$' + formatoMoneda(efectivo);
+    // Recalcular diferencia si ya había un monto ingresado
+    calcularDiferenciaRendicion();
 
     // Actualizar UI
     document.getElementById('totalRecaudadoReparto').textContent = '$' + formatoMoneda(totalRecaudado);
@@ -12111,15 +12396,35 @@ async function marcarEventoAdmin(tipo) {
 /**
  * Cargar sencillo inicial del día desde localStorage
  */
-function cargarSencilloInicial() {
+async function cargarSencilloInicial() {
     const hoy = new Date().toISOString().split('T')[0];
-    const key = `sencillo_inicial_${hoy}`;
-    const guardado = localStorage.getItem(key);
     
+    // Intentar cargar desde Supabase primero
+    if (window.supabaseClient) {
+        try {
+            const { data } = await window.supabaseClient
+                .from('caja_ajustes')
+                .select('monto_ajustado')
+                .eq('fecha', hoy)
+                .eq('metodo_pago', 'Sencillo_Inicial')
+                .maybeSingle();
+            
+            if (data) {
+                sencilloInicial = data.monto_ajustado || 0;
+                // Sincronizar localStorage como caché local
+                localStorage.setItem(`sencillo_inicial_${hoy}`, sencilloInicial.toString());
+                document.getElementById('sencilloInicial').textContent = '$' + formatoMoneda(sencilloInicial);
+                return;
+            }
+        } catch (e) {
+            console.warn('⚠️ Error leyendo sencillo desde Supabase, usando localStorage:', e);
+        }
+    }
+    
+    // Fallback: localStorage
+    const guardado = localStorage.getItem(`sencillo_inicial_${hoy}`);
     sencilloInicial = guardado ? parseFloat(guardado) : 0;
     document.getElementById('sencilloInicial').textContent = '$' + formatoMoneda(sencilloInicial);
-    
-    console.log(`­ƒÆÁ Sencillo inicial cargado: $${formatoMoneda(sencilloInicial)}`);
 }
 
 /**
@@ -12129,7 +12434,7 @@ async function editarSencilloInicial() {
     const montoActual = sencilloInicial;
     const nuevoMonto = prompt(`Ingresa el sencillo inicial del día:\n\nActual: $${formatoMoneda(montoActual)}`, montoActual);
     
-    if (nuevoMonto === null) return; // Cancelado
+    if (nuevoMonto === null) return;
     
     const monto = parseFloat(nuevoMonto);
     
@@ -12138,16 +12443,38 @@ async function editarSencilloInicial() {
         return;
     }
     
-    // Guardar en localStorage
     const hoy = new Date().toISOString().split('T')[0];
-    const key = `sencillo_inicial_${hoy}`;
-    localStorage.setItem(key, monto.toString());
+    
+    // Guardar en Supabase
+    if (window.supabaseClient) {
+        try {
+            const { error } = await window.supabaseClient
+                .from('caja_ajustes')
+                .upsert({
+                    fecha: hoy,
+                    metodo_pago: 'Sencillo_Inicial',
+                    monto_calculado: 0,
+                    monto_ajustado: monto,
+                    diferencia: monto,
+                    motivo: 'Sencillo inicial del día',
+                    registrado_por: currentUser || 'encargado'
+                }, { onConflict: 'fecha,metodo_pago' });
+            
+            if (error) throw error;
+        } catch (e) {
+            console.error('❌ Error guardando sencillo en Supabase:', e);
+            mostrarNotificacion('Error guardando en servidor, guardado localmente', 'warning');
+        }
+    }
+    
+    // Siempre guardar en localStorage como respaldo
+    localStorage.setItem(`sencillo_inicial_${hoy}`, monto.toString());
     
     sencilloInicial = monto;
     document.getElementById('sencilloInicial').textContent = '$' + formatoMoneda(sencilloInicial);
+    actualizarTotalesCaja();
     
-    mostrarNotificacion('Ô£à Sencillo inicial actualizado', 'success');
-    console.log(`­ƒÆÁ Sencillo inicial actualizado: $${formatoMoneda(sencilloInicial)}`);
+    mostrarNotificacion('✅ Sencillo inicial actualizado', 'success');
 }
 
 // ===================================
