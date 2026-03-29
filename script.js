@@ -2894,13 +2894,14 @@ function prepararDatosVenta(metodoPagoFinal) {
 function prepararItemsVenta(ventaId) {
     return carrito.map(item => {
         if (item.esGranel) {
+            const nombreBase = item.nombre.replace(/\s*\(granel\)\s*/gi, '').trim();
             return {
                 venta_id: ventaId,
                 producto_id: item.id,
                 cantidad: 1,
                 precio_unitario: item.montoGranel,
                 subtotal: item.montoGranel,
-                producto_nombre: item.nombre + ' (Granel)',
+                producto_nombre: nombreBase + ' (Granel)',
                 es_granel: true,
                 peso_estimado_kg: item.pesoEstimado
             };
@@ -4834,6 +4835,421 @@ function imprimirBoleta() {
 // ===================================
 // UTILIDADES
 // ===================================
+
+// ===================================
+// EXPORTAR CIERRES EXCEL (SheetJS)
+// ===================================
+
+function abrirModalExportarCierres() {
+    const hoy = new Date().toISOString().split('T')[0];
+    const hace30 = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+    document.getElementById('exportCierreDesde').value = hace30;
+    document.getElementById('exportCierreHasta').value = hoy;
+    const modal = document.getElementById('modalExportarCierres');
+    modal.style.display = 'flex';
+    modal.classList.add('show');
+}
+
+function cerrarModalExportarCierres() {
+    const modal = document.getElementById('modalExportarCierres');
+    modal.classList.remove('show');
+    setTimeout(() => { modal.style.display = 'none'; }, 300);
+}
+
+// Descarga un workbook ExcelJS como .xlsx en el navegador
+async function _xlsxDescargar(wb, nombreArchivo) {
+    const buffer = await wb.xlsx.writeBuffer();
+    const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = nombreArchivo; a.style.display = 'none';
+    document.body.appendChild(a); a.click();
+    setTimeout(() => { document.body.removeChild(a); URL.revokeObjectURL(url); }, 1000);
+}
+
+async function _construirHojaCierreDetalle(wb, cierre, ventas, gastosDia) {
+    const desglose  = cierre.detalle_gastos_json?.desglose_ventas;
+    const posData   = desglose?.pos;
+    const repData   = desglose?.reparto;
+
+    const posEf     = posData?.efectivo      ?? cierre.ventas_efectivo      ?? 0;
+    const posTarj   = posData?.transbank     ?? cierre.ventas_transbank     ?? 0;
+    const posTransf = posData?.transferencia ?? cierre.ventas_transferencia ?? 0;
+    const repEf     = cierre.reparto_efectivo       ?? repData?.efectivo       ?? 0;
+    const repTarj   = cierre.reparto_tarjetas       ?? repData?.tarjetas       ?? 0;
+    const repTransf = cierre.reparto_transferencias ?? repData?.transferencias ?? 0;
+
+    const totalEf            = posEf  + repEf;
+    const totalTarj          = posTarj + repTarj;
+    const totalVentas        = cierre.total_ventas || 0;
+    const gastOp             = cierre.total_gastos || 0;
+    const pagosPersonalTotal = cierre.detalle_gastos_json?.total_pagos_personal || 0;
+    const gastosOpList       = cierre.detalle_gastos_json?.gastos_operacionales || [];
+    const personalList       = cierre.detalle_gastos_json?.pagos_personal       || [];
+
+    const listaTransf = (ventas || []).filter(v =>
+        (v.metodo_pago || '').toLowerCase().includes('transfer')
+    );
+    const fechaLabel = new Date(cierre.fecha + 'T12:00:00').toLocaleDateString('es-CL', {
+        weekday: 'long', day: '2-digit', month: 'long', year: 'numeric'
+    });
+
+    const ws = wb.addWorksheet(`Cierre ${cierre.fecha}`.slice(0, 31));
+
+    // Anchos de columnas: A B C D E F(sp) G H I(sp) J K L(sp) M N O P Q R(sp) S
+    [17, 14, 16, 14, 13, 2, 18, 14, 2, 16, 13, 2, 17, 12, 12, 13, 12, 2, 40]
+        .forEach((w, i) => { ws.getColumn(i + 1).width = w; });
+
+    // Paleta
+    const GRAY   = 'FFD9D9D9'; // cabeceras gris
+    const YELLOW = 'FFFFFF00'; // total día
+    const GOLD   = 'FFFFE599'; // subtotales
+    const RED_H  = 'FFFF9999'; // hora salida
+    const THIN   = { style: 'thin' };
+    const ALL    = { top: THIN, bottom: THIN, left: THIN, right: THIN };
+
+    // sc(row, col, val, { b, fill, brd, align, num })
+    const sc = (row, col, val, o = {}) => {
+        const c = ws.getCell(row, col);
+        if (val !== null && val !== undefined) c.value = val;
+        if (o.b)    c.font   = { bold: true };
+        if (o.fill) c.fill   = { type: 'pattern', pattern: 'solid', fgColor: { argb: o.fill } };
+        if (o.brd)  c.border = ALL;
+        if (o.align) c.alignment = { horizontal: o.align, vertical: 'middle' };
+        if (o.num && typeof c.value === 'number') c.numFmt = '#,##0';
+        return c;
+    };
+
+    // ── Fila 1: Título ──────────────────────────────────────────────────
+    ws.getRow(1).height = 20;
+    sc(1, 1, 'SABROFOOD — CIERRE DE CAJA', { b: true });
+    sc(1, 4, fechaLabel, { b: true });
+    sc(1, 7, `Cerrado por: ${cierre.cerrado_por || 'Automático'}`, { b: true });
+
+    // ── BLOQUE EFECTIVO (filas 3-6, cols 1-5) ───────────────────────────
+    sc(3, 1, '',                 { fill: GRAY, brd: true });
+    sc(3, 2, 'Efectivo',         { b: true, fill: GRAY, brd: true, align: 'center' });
+    sc(3, 3, 'Boletas Emitidas', { b: true, fill: GRAY, brd: true, align: 'center' });
+    sc(3, 4, 'Boleta faltante',  { b: true, fill: GRAY, brd: true, align: 'center' });
+    sc(3, 5, 'Total',            { b: true, fill: GRAY, brd: true, align: 'center' });
+
+    sc(4, 1, 'Local',   { brd: true }); sc(4, 2, posEf, { brd: true, num: true }); sc(4, 3, null, { brd: true }); sc(4, 4, 0,    { brd: true, num: true }); sc(4, 5, posEf, { brd: true, num: true });
+    sc(5, 1, 'Reparto', { brd: true }); sc(5, 2, repEf, { brd: true, num: true }); sc(5, 3, null, { brd: true }); sc(5, 4, null, { brd: true });            sc(5, 5, repEf, { brd: true, num: true });
+
+    sc(6, 1, 'Total Efectivo', { b: true, fill: GOLD, brd: true });
+    sc(6, 2, totalEf,          { b: true, fill: GOLD, brd: true, num: true });
+    sc(6, 3, null, { fill: GOLD, brd: true }); sc(6, 4, null, { fill: GOLD, brd: true }); sc(6, 5, null, { fill: GOLD, brd: true });
+
+    // ── BLOQUE TRANSBANK (filas 7-11, cols 1-4) ─────────────────────────
+    sc(7, 1, '',               { fill: GRAY, brd: true });
+    sc(7, 2, 'Transbank',      { b: true, fill: GRAY, brd: true, align: 'center' });
+    sc(7, 3, 'Transferencias', { b: true, fill: GRAY, brd: true, align: 'center' });
+    sc(7, 4, 'Gastos',         { b: true, fill: GRAY, brd: true, align: 'center' });
+
+    sc(8, 1, 'Local',   { brd: true }); sc(8, 2, posTarj,  { brd: true, num: true }); sc(8, 3, posTransf, { brd: true, num: true }); sc(8, 4, gastOp,  { brd: true, num: true });
+    sc(9, 1, 'Reparto', { brd: true }); sc(9, 2, repTarj,  { brd: true, num: true }); sc(9, 3, repTransf, { brd: true, num: true }); sc(9, 4, null,    { brd: true });
+
+    sc(10, 1, 'Total Transbank', { b: true, fill: GOLD, brd: true });
+    sc(10, 2, totalTarj,         { b: true, fill: GOLD, brd: true, num: true });
+    sc(10, 3, null, { fill: GOLD, brd: true }); sc(10, 4, null, { fill: GOLD, brd: true });
+
+    sc(11, 1, 'Total día',   { b: true, fill: YELLOW, brd: true });
+    sc(11, 2, totalVentas,   { b: true, fill: YELLOW, brd: true, num: true });
+    sc(11, 3, null, { fill: YELLOW, brd: true }); sc(11, 4, null, { fill: YELLOW, brd: true });
+
+    // ── Resumen económico (filas 13-15) ─────────────────────────────────
+    sc(13, 1, 'sueldos',     { brd: true }); sc(13, 2, pagosPersonalTotal, { brd: true, num: true });
+    sc(14, 1, 'gastos total',{ brd: true }); sc(14, 2, gastOp,             { brd: true, num: true });
+    sc(14, 3, 'Efectivo a Depositar', { b: true, fill: GRAY, brd: true });
+    sc(15, 1, 'Efectivo Final', { b: true, fill: YELLOW, brd: true });
+    sc(15, 2, cierre.efectivo_real != null ? cierre.efectivo_real : 'Sin registrar', { b: true, fill: YELLOW, brd: true, num: true });
+    sc(15, 3, cierre.efectivo_esperado || 0, { b: true, fill: YELLOW, brd: true, num: true });
+
+    // ── BLOQUE TARJETA / TRANSBANK (filas 3-7, cols 7-8) ────────────────
+    ws.mergeCells(3, 7, 3, 8);
+    sc(3, 7, 'Tarjeta / Transbank', { b: true, fill: GRAY, brd: true, align: 'center' });
+    sc(4, 7, 'Debito',  { brd: true }); sc(4, 8, posTarj, { brd: true, num: true });
+    sc(5, 7, 'Credito', { brd: true }); sc(5, 8, 0,       { brd: true, num: true });
+    sc(6, 7, 'Reparto', { brd: true }); sc(6, 8, repTarj, { brd: true, num: true });
+    sc(7, 7, 'Total',   { b: true, fill: GOLD, brd: true }); sc(7, 8, totalTarj, { b: true, fill: GOLD, brd: true, num: true });
+
+    // ── BLOQUE BOLETAS POR TIPO (filas 3-11, cols 10-11) ────────────────
+    ws.mergeCells(3, 10, 3, 11);
+    sc(3, 10, 'Boletas', { b: true, fill: GRAY, brd: true, align: 'center' });
+    ['Visa', 'Mastercard', 'Amex', 'Diners', 'Magna', 'Redcompra', 'Otro medio'].forEach((t, i) => {
+        sc(4 + i, 10, t, { brd: true }); sc(4 + i, 11, null, { brd: true });
+    });
+    sc(11, 10, 'Total', { b: true, fill: GOLD, brd: true });
+    sc(11, 11, 0,       { b: true, fill: GOLD, brd: true, num: true });
+
+    // ── BLOQUE SUELDOS (filas 3+, cols 13-17) ───────────────────────────
+    ws.mergeCells(3, 13, 3, 17);
+    sc(3,  13, 'Sueldos',      { b: true, fill: GRAY,  brd: true, align: 'center' });
+    sc(4,  13, 'Trabajador',   { b: true, fill: GRAY,  brd: true });
+    sc(4,  14, 'Hora Entrada', { b: true, fill: GRAY,  brd: true, align: 'center' });
+    sc(4,  15, 'Comisiones',   { b: true, fill: GRAY,  brd: true, align: 'center' });
+    sc(4,  16, 'Pago diario',  { b: true, fill: GRAY,  brd: true, align: 'center' });
+    sc(4,  17, 'Hora Salida',  { b: true, fill: RED_H, brd: true, align: 'center' });
+
+    const numPRows = Math.max(personalList.length, 4);
+    for (let i = 0; i < numPRows; i++) {
+        const p = personalList[i] || {};
+        sc(5 + i, 13, p.empleado || null,             { brd: true });
+        sc(5 + i, 14, null,                           { brd: true });
+        sc(5 + i, 15, null,                           { brd: true });
+        sc(5 + i, 16, p.total || p.pago_jornada || null, { brd: true, num: true });
+        sc(5 + i, 17, null,                           { brd: true });
+    }
+    const suRow = 5 + numPRows;
+    sc(suRow, 13, 'Total',           { b: true, fill: GOLD, brd: true });
+    sc(suRow, 14, null,              { fill: GOLD, brd: true });
+    sc(suRow, 15, null,              { fill: GOLD, brd: true });
+    sc(suRow, 16, pagosPersonalTotal,{ b: true, fill: GOLD, brd: true, num: true });
+    sc(suRow, 17, null,              { fill: GOLD, brd: true });
+
+    // ── INFO EMPRESA (col 19) ────────────────────────────────────────────
+    [
+        'Alimentos De Mascotas Y Abarrotes',
+        'Granada Limitada', '76.655.625-6',
+        'Banco Bci', 'Cuenta corriente en pesos', '89721811',
+        'Sabrofoodvina@gmail.com',
+        'Por motivos de seguridad, solicitamos a',
+        'nuestra distinguida clientela enviar el',
+        'comprobante de su pedido antes de la entrega'
+    ].forEach((line, i) => { ws.getCell(1 + i, 19).value = line; });
+
+    // ── TRANSFERENCIAS NUMERADAS (filas 17+, cols 7-8) ──────────────────
+    const R_TR = 17;
+    ws.mergeCells(R_TR, 7, R_TR, 8);
+    sc(R_TR, 7, 'Transferencias', { b: true, fill: GRAY, brd: true, align: 'center' });
+    const maxTR = Math.max(listaTransf.length, 10);
+    for (let i = 0; i < maxTR; i++) {
+        sc(R_TR + 1 + i, 7, i + 1, { brd: true, align: 'center' });
+        sc(R_TR + 1 + i, 8, i < listaTransf.length ? (listaTransf[i].total || 0) : null, { brd: true, num: i < listaTransf.length });
+    }
+    sc(R_TR + maxTR + 1, 7, 'Total',                                           { b: true, fill: GOLD, brd: true });
+    sc(R_TR + maxTR + 1, 8, listaTransf.reduce((sum, v) => sum + (v.total || 0), 0), { b: true, fill: GOLD, brd: true, num: true });
+
+    // ── GASTOS DETALLADOS (filas 17+, cols 10-11) ───────────────────────
+    const R_GAS = 17;
+    ws.mergeCells(R_GAS, 10, R_GAS, 11);
+    sc(R_GAS, 10, 'Gastos', { b: true, fill: GRAY, brd: true, align: 'center' });
+    const gasList = gastosOpList.length > 0
+        ? gastosOpList
+        : (gastosDia || []).map(gg => ({ descripcion: gg.descripcion || gg.concepto || '', monto: gg.monto || 0 }));
+    const numGRows = Math.max(gasList.length, 1);
+    for (let i = 0; i < numGRows; i++) {
+        const gg = gasList[i] || {};
+        sc(R_GAS + 1 + i, 10, gg.descripcion || null, { brd: true });
+        sc(R_GAS + 1 + i, 11, gg.monto       || null, { brd: true, num: true });
+    }
+    sc(R_GAS + numGRows + 1, 10, 'Total', { b: true, fill: GOLD, brd: true });
+    sc(R_GAS + numGRows + 1, 11, gastOp,  { b: true, fill: GOLD, brd: true, num: true });
+
+    return ws;
+}
+
+async function exportarCierreDia(index) {
+    if (typeof ExcelJS === 'undefined') {
+        mostrarNotificacion('⚠️ Librería Excel no disponible, recarga la página', 'error');
+        return;
+    }
+    const cierre = datosHistorialCaja[index];
+    if (!cierre) return;
+
+    mostrarNotificacion('⏳ Generando Excel...', 'info', 2000);
+    const fecha = cierre.fecha;
+    let ventas = [], gastosDia = [];
+
+    try {
+        const { data } = await window.supabaseClient
+            .from('ventas')
+            .select('id, created_at, vendedor_nombre, total, metodo_pago, subtotal_sin_descuento, descuento_aplicado')
+            .gte('created_at', fecha + 'T00:00:00')
+            .lte('created_at', fecha + 'T23:59:59')
+            .order('created_at', { ascending: true });
+        ventas = data || [];
+    } catch (e) { console.warn('No se cargaron ventas:', e); }
+
+    try {
+        const { data } = await window.supabaseClient
+            .from('gastos')
+            .select('*')
+            .gte('fecha', fecha + 'T00:00:00')
+            .lte('fecha', fecha + 'T23:59:59')
+            .order('fecha', { ascending: true });
+        gastosDia = data || [];
+    } catch (e) { console.warn('No se cargaron gastos:', e); }
+
+    const wb = new ExcelJS.Workbook();
+    await _construirHojaCierreDetalle(wb, cierre, ventas, gastosDia);
+    await _xlsxDescargar(wb, `cierre_${fecha}.xlsx`);
+    mostrarNotificacion('✅ Excel descargado: cierre_' + fecha + '.xlsx', 'success');
+}
+
+async function ejecutarExportarCierresRango() {
+    if (typeof ExcelJS === 'undefined') {
+        mostrarNotificacion('⚠️ Librería Excel no disponible, recarga la página', 'error');
+        return;
+    }
+    const desde = document.getElementById('exportCierreDesde').value;
+    const hasta  = document.getElementById('exportCierreHasta').value;
+    if (!desde || !hasta) {
+        mostrarNotificacion('Selecciona un rango de fechas', 'warning');
+        return;
+    }
+
+    mostrarNotificacion('⏳ Generando Excel...', 'info', 3000);
+    cerrarModalExportarCierres();
+
+    try {
+        const { data: cierres, error } = await window.supabaseClient
+            .from('cierres_diarios')
+            .select('*')
+            .gte('fecha', desde)
+            .lte('fecha', hasta)
+            .order('fecha', { ascending: false });
+
+        if (error) throw error;
+        if (!cierres || cierres.length === 0) {
+            mostrarNotificacion('No hay cierres en ese período', 'warning');
+            return;
+        }
+
+        const wb  = new ExcelJS.Workbook();
+        const GRAY   = 'FFD9D9D9';
+        const GOLD   = 'FFFFE599';
+        const THIN   = { style: 'thin' };
+        const ALL    = { top: THIN, bottom: THIN, left: THIN, right: THIN };
+
+        const estiloHeader = c => {
+            c.font   = { bold: true };
+            c.fill   = { type: 'pattern', pattern: 'solid', fgColor: { argb: GRAY } };
+            c.border = ALL;
+            c.alignment = { horizontal: 'center', vertical: 'middle' };
+        };
+        const estiloTotal = c => {
+            c.font   = { bold: true };
+            c.fill   = { type: 'pattern', pattern: 'solid', fgColor: { argb: GOLD } };
+            c.border = ALL;
+        };
+        const estiloDato = (c, esNum) => {
+            c.border = ALL;
+            if (esNum) c.numFmt = '#,##0';
+        };
+
+        // ── HOJA 1: RESUMEN ──────────────────────────────────────────────
+        const wsR = wb.addWorksheet('Resumen Cierres');
+        [12, 14, 14, 14, 14, 14, 15, 14, 14, 12, 14, 13, 13, 12, 12, 18]
+            .forEach((w, i) => { wsR.getColumn(i + 1).width = w; });
+
+        const encabezado = ['Fecha', 'Cerrado por', 'Total ventas', 'Efectivo local',
+            'Tarjeta local', 'Transf. local', 'Efectivo reparto', 'Tarjeta reparto',
+            'Transf. reparto', 'Gastos oper.', 'Pagos personal', 'Total salidas',
+            'Ef. esperado', 'Ef. real', 'Diferencia', 'Estado'];
+
+        const hRow = wsR.addRow(encabezado);
+        hRow.height = 18;
+        hRow.eachCell(estiloHeader);
+
+        const filasCierres = cierres.map(c => {
+            const desglose = c.detalle_gastos_json?.desglose_ventas;
+            const pos = desglose?.pos, rep = desglose?.reparto;
+            const posEf   = pos?.efectivo      ?? c.ventas_efectivo      ?? 0;
+            const posTarj = pos?.transbank     ?? c.ventas_transbank     ?? 0;
+            const posTransf = pos?.transferencia ?? c.ventas_transferencia ?? 0;
+            const repEf     = c.reparto_efectivo       ?? rep?.efectivo       ?? 0;
+            const repTarj   = c.reparto_tarjetas       ?? rep?.tarjetas       ?? 0;
+            const repTransf = c.reparto_transferencias ?? rep?.transferencias ?? 0;
+            const pagPers   = c.detalle_gastos_json?.total_pagos_personal || 0;
+            const totalSal  = (c.total_gastos || 0) + pagPers;
+            const esPend    = c.efectivo_real == null;
+            const dif       = c.diferencia || 0;
+            const estado    = esPend ? 'Pendiente arqueo'
+                : dif === 0 ? 'Cuadrado'
+                : dif > 0   ? `Sobrante +$${dif}` : `Faltante -$${Math.abs(dif)}`;
+            return [c.fecha, c.cerrado_por || 'Automático', c.total_ventas || 0,
+                posEf, posTarj, posTransf, repEf, repTarj, repTransf,
+                c.total_gastos || 0, pagPers, totalSal,
+                c.efectivo_esperado || 0, esPend ? 'Sin registrar' : (c.efectivo_real || 0),
+                dif, estado];
+        });
+
+        filasCierres.forEach(fila => {
+            const row = wsR.addRow(fila);
+            row.eachCell((c, n) => estiloDato(c, typeof fila[n - 1] === 'number'));
+        });
+
+        const sum = n => filasCierres.reduce((s, r) => s + (typeof r[n] === 'number' ? r[n] : 0), 0);
+        const totalesRow = ['TOTAL', '', sum(2), sum(3), sum(4), sum(5),
+            sum(6), sum(7), sum(8), sum(9), sum(10), sum(11), '', '', '', ''];
+        const tRow = wsR.addRow(totalesRow);
+        tRow.eachCell((c, n) => {
+            estiloTotal(c);
+            if (typeof totalesRow[n - 1] === 'number') c.numFmt = '#,##0';
+        });
+
+        // ── HOJA 2: VENTAS ───────────────────────────────────────────────
+        const { data: ventas } = await window.supabaseClient
+            .from('ventas')
+            .select('id, created_at, vendedor_nombre, total, descuento_aplicado, metodo_pago, subtotal_sin_descuento')
+            .gte('created_at', desde + 'T00:00:00')
+            .lte('created_at', hasta + 'T23:59:59')
+            .order('created_at', { ascending: false });
+
+        if (ventas && ventas.length > 0) {
+            const wsV = wb.addWorksheet('Ventas');
+            [8, 12, 8, 16, 14, 12, 14, 22].forEach((w, i) => { wsV.getColumn(i + 1).width = w; });
+            const vH = wsV.addRow(['ID', 'Fecha', 'Hora', 'Vendedor', 'Subtotal', 'Descuento', 'Total', 'Método de pago']);
+            vH.eachCell(estiloHeader);
+            ventas.forEach(v => {
+                const row = wsV.addRow([
+                    '#' + v.id,
+                    new Date(v.created_at).toLocaleDateString('es-CL',  { timeZone: 'America/Santiago' }),
+                    new Date(v.created_at).toLocaleTimeString('es-CL',  { hour: '2-digit', minute: '2-digit', timeZone: 'America/Santiago' }),
+                    v.vendedor_nombre || '',
+                    v.subtotal_sin_descuento || v.total, v.descuento_aplicado || 0, v.total, v.metodo_pago || ''
+                ]);
+                row.eachCell((c, n) => { c.border = ALL; if ([5, 6, 7].includes(n)) c.numFmt = '#,##0'; });
+            });
+            const vT = wsV.addRow(['', '', '', '', '', 'TOTAL', ventas.reduce((s, v) => s + (v.total || 0), 0), '']);
+            vT.eachCell((c, n) => { estiloTotal(c); if (n === 7) c.numFmt = '#,##0'; });
+        }
+
+        // ── HOJA 3: GASTOS ───────────────────────────────────────────────
+        const { data: gastos } = await window.supabaseClient
+            .from('gastos')
+            .select('*')
+            .gte('fecha', desde + 'T00:00:00')
+            .lte('fecha', hasta + 'T23:59:59')
+            .order('fecha', { ascending: false });
+
+        if (gastos && gastos.length > 0) {
+            const wsG = wb.addWorksheet('Gastos');
+            [12, 8, 32, 14, 18].forEach((w, i) => { wsG.getColumn(i + 1).width = w; });
+            const gH = wsG.addRow(['Fecha', 'Hora', 'Descripción', 'Monto', 'Registrado por']);
+            gH.eachCell(estiloHeader);
+            gastos.forEach(g => {
+                const row = wsG.addRow([
+                    new Date(g.fecha).toLocaleDateString('es-CL',  { timeZone: 'America/Santiago' }),
+                    new Date(g.fecha).toLocaleTimeString('es-CL',  { hour: '2-digit', minute: '2-digit', timeZone: 'America/Santiago' }),
+                    g.descripcion || g.concepto || '', g.monto || 0, g.registrado_por || g.usuario || ''
+                ]);
+                row.eachCell((c, n) => { c.border = ALL; if (n === 4) c.numFmt = '#,##0'; });
+            });
+            const gT = wsG.addRow(['', '', 'TOTAL', gastos.reduce((s, g) => s + (g.monto || 0), 0), '']);
+            gT.eachCell((c, n) => { estiloTotal(c); if (n === 4) c.numFmt = '#,##0'; });
+        }
+
+        const nombreArchivo = `sabrofood_cierres_${desde}_${hasta}.xlsx`;
+        await _xlsxDescargar(wb, nombreArchivo);
+        mostrarNotificacion('✅ Excel descargado: ' + nombreArchivo, 'success');
+
+    } catch (e) {
+        console.error('Error exportando:', e);
+        mostrarNotificacion('Error al exportar: ' + e.message, 'error');
+    }
+}
 
 // ===================================
 // EXPORTAR DATOS CSV
@@ -9406,6 +9822,14 @@ function renderTablaHistorialCaja() {
                     </div>
                 </div>
                 ` : ''}
+
+                <!-- BOTÓN EXPORTAR DÍA -->
+                <div style="margin-top: 16px; padding-top: 16px; border-top: 1px solid hsl(var(--border)); display: flex; justify-content: flex-end;">
+                    <button onclick="exportarCierreDia(${index})" style="display:flex;align-items:center;gap:8px;padding:9px 18px;background:hsl(142 76% 36%);color:white;border:none;border-radius:8px;cursor:pointer;font-size:13px;font-weight:600;">
+                        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                        Exportar Excel este día
+                    </button>
+                </div>
             </div>
         </div>
         `;

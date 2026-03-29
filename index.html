@@ -612,14 +612,6 @@
                             <option value="30" selected>Últimos 30 días</option>
                             <option value="90">Últimos 90 días</option>
                         </select>
-                        <button class="btn btn-secondary" onclick="abrirModalExportar()" title="Exportar datos" style="display:flex;align-items:center;gap:6px;white-space:nowrap;">
-                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                                <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/>
-                                <polyline points="7 10 12 15 17 10"/>
-                                <line x1="12" y1="15" x2="12" y2="3"/>
-                            </svg>
-                            Exportar
-                        </button>
                         <button class="btn-logout-header" onclick="handleLogout()" title="Cerrar sesión">
                             <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                                 <path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4"/>
@@ -2265,6 +2257,48 @@
     </div>
 
     <!-- MODAL: Detalle de Venta -->
+    <!-- MODAL: Exportar Cierres Excel -->
+    <div id="modalExportarCierres" class="modal" style="z-index: 10002 !important;">
+        <div class="modal-overlay" onclick="cerrarModalExportarCierres()"></div>
+        <div class="modal-content" style="max-width: 460px;">
+            <div class="modal-header">
+                <h3>📊 Exportar Cierres a Excel</h3>
+                <button class="btn-close" onclick="cerrarModalExportarCierres()">
+                    <svg width="20" height="20" viewBox="0 0 20 20" fill="none"><path d="M15 5L5 15M5 5l10 10" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+                </button>
+            </div>
+            <div class="modal-body">
+                <div style="display:flex;flex-direction:column;gap:16px;">
+                    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+                        <div>
+                            <label style="font-size:13px;font-weight:600;display:block;margin-bottom:6px;">Desde</label>
+                            <input type="date" id="exportCierreDesde" class="form-control" />
+                        </div>
+                        <div>
+                            <label style="font-size:13px;font-weight:600;display:block;margin-bottom:6px;">Hasta</label>
+                            <input type="date" id="exportCierreHasta" class="form-control" />
+                        </div>
+                    </div>
+                    <div style="background:hsl(142 76% 36% / 0.08);border:1px solid hsl(142 76% 36% / 0.3);border-radius:8px;padding:12px;">
+                        <p style="margin:0;font-size:13px;color:hsl(142 76% 36%);font-weight:600;">📋 El Excel incluirá:</p>
+                        <ul style="margin:8px 0 0;padding-left:18px;font-size:12px;color:hsl(var(--muted-foreground));line-height:1.9;">
+                            <li>Hoja <strong>Resumen Cierres</strong>: todos los días en el rango</li>
+                            <li>Hoja <strong>Ventas</strong>: listado detallado de ventas</li>
+                            <li>Hoja <strong>Gastos</strong>: gastos operacionales del período</li>
+                        </ul>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-primary" onclick="ejecutarExportarCierresRango()" style="gap:8px;">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                    Descargar Excel
+                </button>
+                <button class="btn btn-secondary" onclick="cerrarModalExportarCierres()">Cancelar</button>
+            </div>
+        </div>
+    </div>
+
     <!-- MODAL: Exportar Datos -->
     <div id="modalExportar" class="modal">
         <div class="modal-overlay" onclick="cerrarModalExportar()"></div>
@@ -2932,6 +2966,10 @@
                         <h3 style="margin: 0; font-size: 18px; font-weight: 700;">📋 Registros de Cierres</h3>
                         <p style="margin: 4px 0 0; font-size: 13px; color: hsl(var(--muted-foreground));">Click en "Ver Detalles" para información completa de cada día</p>
                     </div>
+                    <button onclick="abrirModalExportarCierres()" style="display:flex;align-items:center;gap:8px;padding:9px 18px;background:hsl(142 76% 36%);color:white;border:none;border-radius:8px;cursor:pointer;font-size:13px;font-weight:600;">
+                        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                        Exportar Excel
+                    </button>
                 </div>
                 <div id="tablaHistorialCaja">
                     <div style="text-align: center; padding: 40px; color: hsl(var(--muted-foreground));">
@@ -3522,6 +3560,7 @@
 
     <!-- SCRIPTS -->
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="https://cdn.jsdelivr.net/npm/exceljs@4.4.0/dist/exceljs.min.js"></script>
     <script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
     <script src="supabase-config.js"></script>
