@@ -391,6 +391,9 @@ let metodoPagoSeleccionado = 'Efectivo';
 let pagosRegistrados = [];
 let categoriaActual = 'Todos';
 let html5QrCode = null;
+let scannerMode = 'buscar';
+let scannerProcesando = false;
+let codigoPendienteAsignacion = null;
 let productoEditando = null;
 let realtimeChannel = null; // Canal de sincronización en tiempo real
 
@@ -1521,7 +1524,7 @@ function cambiarVista(vista) {
             }
         }, 100);
     } else if (vista === 'asignar') {
-        cargarProductosSinCodigo();
+        cargarPanelAsignacionCodigos();
     } else if (vista === 'asistencia') {
         cargarEstadoActual();
         cargarAsistencias();
@@ -1831,11 +1834,13 @@ function renderProductos() {
                 <div class="product-footer">
                     <div class="product-price">$${formatoMoneda(producto.precio || 0)}</div>
                     ${esGranel ? 
-                        `<button class="btn-add-product btn-granel" disabled title="Usa el botón 🌾 Granel">
-                            🌾
+                        `<button class="btn-add-product btn-granel" disabled title="Usa el botón 🌾 Granel" aria-label="Producto granel disponible desde el botón dedicado">
+                            <span class="btn-add-product-plus">🌾</span>
+                            <span class="btn-add-product-text">Granel</span>
                         </button>` : 
-                        `<button class="btn-add-product" onclick="agregarAlCarrito(${producto.id})">
-                            +
+                        `<button class="btn-add-product" onclick="agregarAlCarrito(${producto.id})" aria-label="Agregar ${producto.nombre} al carrito">
+                            <span class="btn-add-product-plus">+</span>
+                            <span class="btn-add-product-text">Agregar</span>
                         </button>`
                     }
                 </div>
@@ -3165,6 +3170,565 @@ function confirmarAbrirSaco() {
 // ===================================
 
 let filtroInventarioActivo = 'todos'; // Variable global para mantener el filtro activo
+let textoBusquedaInventario = '';
+let conteoRapidoActivo = false;
+let conteoRapidoIds = [];
+let conteoRapidoNoEncontrados = [];
+let conteoRapidoValores = new Map();
+let conteoRapidoAlias = new Map();
+let conteoRapidoCreacionPendiente = null;
+const CONTEO_RAPIDO_ALIAS_KEY = 'sabrofood_conteo_rapido_alias';
+
+const CONTEO_RAPIDO_STOPWORDS = new Set([
+    'de', 'del', 'la', 'el', 'los', 'las', 'para', 'por', 'con', 'sin', 'mas', 'más',
+    'stock', 'total', 'und', 'unds', 'unid', 'unidades', 'unidad', 'bolsa', 'bolsas',
+    'saco', 'sacos', 'caja', 'cajas', 'kg', 'kilos', 'kilo', 'gr', 'gramos', 'g'
+]);
+
+const CONTEO_RAPIDO_PATRONES_IGNORAR = [
+    /^stock\b/i,
+    /^\*?stock\b/i,
+    /^\d{2}-\d{2}\b/,
+    /^\*{1,2}[^:]*\*{1,2}$/,
+    /^\d+\s+comprimidos?$/i,
+    /^comprimidos?$/i,
+    /^pipetas?$/i,
+    /^drontal$/i,
+    /^seresto$/i,
+    /^credelio$/i
+];
+
+const CONTEO_RAPIDO_ABREVIATURAS = {
+    adv: 'adulto',
+    ad: 'adulto',
+    cach: 'cachorro',
+    cachorros: 'cachorros',
+    gat: 'gato',
+    gtos: 'gatos',
+    compi: 'compinches',
+    compis: 'compinches',
+    wd: 'odwalla'
+};
+
+function normalizarTextoInventario(texto) {
+    return String(texto || '')
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .toLowerCase()
+        .replace(/[^a-z0-9\s]/g, ' ')
+        .replace(/\s+/g, ' ')
+        .trim();
+}
+
+function cargarAliasConteoRapido() {
+    try {
+        const guardado = localStorage.getItem(CONTEO_RAPIDO_ALIAS_KEY);
+        const data = JSON.parse(guardado || '{}');
+        conteoRapidoAlias = new Map(
+            Object.entries(data).filter(([, value]) => Number.isFinite(Number(value)))
+                .map(([key, value]) => [key, Number(value)])
+        );
+    } catch (error) {
+        console.error('Error cargando alias de conteo rápido:', error);
+        conteoRapidoAlias = new Map();
+    }
+}
+
+function guardarAliasConteoRapido() {
+    try {
+        const serializado = Object.fromEntries(conteoRapidoAlias.entries());
+        localStorage.setItem(CONTEO_RAPIDO_ALIAS_KEY, JSON.stringify(serializado));
+    } catch (error) {
+        console.error('Error guardando alias de conteo rápido:', error);
+    }
+}
+
+cargarAliasConteoRapido();
+
+function limpiarLineaConteoRapido(linea) {
+    const { texto } = extraerDatosLineaConteoRapido(linea);
+    const normalizado = normalizarTextoInventario(texto);
+
+    if (!normalizado) return '';
+    if (esLineaIgnorableConteoRapido(normalizado)) return '';
+    if (normalizado.startsWith('stock ')) return '';
+    if (normalizado === 'stock') return '';
+    if (normalizado.length < 3) return '';
+
+    return normalizado;
+}
+
+function esLineaIgnorableConteoRapido(texto) {
+    const limpio = String(texto || '').trim();
+    if (!limpio) return true;
+    return CONTEO_RAPIDO_PATRONES_IGNORAR.some(patron => patron.test(limpio));
+}
+
+function normalizarTokensConteoRapido(texto) {
+    return normalizarTextoInventario(texto)
+        .split(' ')
+        .map(token => CONTEO_RAPIDO_ABREVIATURAS[token] || token)
+        .filter(token => token && !CONTEO_RAPIDO_STOPWORDS.has(token));
+}
+
+function extraerDatosLineaConteoRapido(linea) {
+    const original = String(linea || '').trim();
+    if (!original) {
+        return { texto: '', cantidad: null, original: '' };
+    }
+
+    let texto = original.replace(/^[-*•]+\s*/, '').trim();
+    let cantidad = null;
+
+    const patronesCantidad = [
+        /^(\d+(?:[.,]\d+)?)\s*(?:x|unid(?:ades)?|und|u|bolsas?|sacos?|cajas?)?\s+(.+)$/i,
+        /^(.+?)\s*(?:x|=|:|->|=>)\s*(\d+(?:[.,]\d+)?)\s*(?:unid(?:ades)?|unds?|unidad|un\.?|u\.?|kg|kgs?)?\.?$/i,
+        /^(.+?)\s+(\d+(?:[.,]\d+)?)\s*(?:unid(?:ades)?|unds?|unidad|un\.?|u\.?|kg|kgs?)\.?$/i,
+        /^(.+?)\s+-\s+(\d+(?:[.,]\d+)?)$/i,
+        /^(.+?)\s*\((\d+(?:[.,]\d+)?)\)\s*$/i
+    ];
+
+    for (const patron of patronesCantidad) {
+        const match = texto.match(patron);
+        if (!match) continue;
+
+        const posibleCantidad = patron === patronesCantidad[0] ? match[1] : match[2];
+        const posibleTexto = patron === patronesCantidad[0] ? match[2] : match[1];
+        const cantidadNumerica = parseFloat(String(posibleCantidad).replace(',', '.'));
+
+        if (!Number.isNaN(cantidadNumerica)) {
+            cantidad = cantidadNumerica;
+            texto = posibleTexto.trim();
+            break;
+        }
+    }
+
+    texto = texto
+        .replace(/\*+/g, ' ')
+        .replace(/\b(cantidad|cant|total)\b[:=-]?/gi, ' ')
+        .replace(/\b(unid(?:ades)?|unds?|unidad|un\.|u\.)\b/gi, ' ')
+        .replace(/\b(stock|hr|az|befoods|master)\b\s*(?:de|y)?\b/gi, ' ')
+        .replace(/[|;,]+/g, ' ')
+        .replace(/\s+/g, ' ')
+        .trim();
+
+    if (esLineaIgnorableConteoRapido(normalizarTextoInventario(texto))) {
+        return { texto: '', cantidad: null, original };
+    }
+
+    return { texto, cantidad, original };
+}
+
+function tokenCoincideConteoRapido(tokenBusqueda, tokenProducto) {
+    if (!tokenBusqueda || !tokenProducto) return false;
+    if (tokenBusqueda === tokenProducto) return true;
+    if (tokenBusqueda.length >= 4 && tokenProducto.startsWith(tokenBusqueda)) return true;
+    if (tokenProducto.length >= 4 && tokenBusqueda.startsWith(tokenProducto)) return true;
+    return false;
+}
+
+function obtenerSugerenciasConteoRapido(lineaOriginal, limite = 3) {
+    const datosLinea = extraerDatosLineaConteoRapido(lineaOriginal);
+    const busqueda = limpiarLineaConteoRapido(datosLinea.texto);
+    if (!busqueda) return [];
+
+    return productos
+        .map(producto => ({
+            producto,
+            puntaje: puntuarCoincidenciaConteoRapido(busqueda, producto)
+        }))
+        .filter(item => item.puntaje >= 160)
+        .sort((a, b) => b.puntaje - a.puntaje)
+        .slice(0, limite)
+        .map(item => item.producto);
+}
+
+function crearClaveLineaConteoRapido(lineaOriginal) {
+    const datosLinea = extraerDatosLineaConteoRapido(lineaOriginal);
+    return limpiarLineaConteoRapido(datosLinea.texto);
+}
+
+function aplicarAliasConteoRapido(lineaOriginal) {
+    const clave = crearClaveLineaConteoRapido(lineaOriginal);
+    if (!clave || !conteoRapidoAlias.has(clave)) return null;
+
+    const productoId = conteoRapidoAlias.get(clave);
+    return productos.find(producto => producto.id === productoId) || null;
+}
+
+function construirNoEncontradoConteoRapido(lineaOriginal) {
+    const datosLinea = extraerDatosLineaConteoRapido(lineaOriginal);
+    return {
+        id: `missing-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+        original: lineaOriginal,
+        texto: datosLinea.texto,
+        cantidad: datosLinea.cantidad,
+        clave: crearClaveLineaConteoRapido(lineaOriginal),
+        sugerencias: obtenerSugerenciasConteoRapido(lineaOriginal)
+    };
+}
+
+function puntuarCoincidenciaConteoRapido(busqueda, producto) {
+    const nombre = normalizarTextoInventario(producto?.nombre || '');
+    if (!nombre) return -1;
+
+    const tokensBusqueda = normalizarTokensConteoRapido(busqueda);
+    const tokensProducto = normalizarTokensConteoRapido([
+        producto?.nombre,
+        extraerMarcaDeProducto(producto?.nombre || ''),
+        producto?.categoria,
+        producto?.proveedor
+    ].filter(Boolean).join(' '));
+
+    if (nombre === busqueda) return 1000;
+    if (nombre.includes(busqueda)) return 800 - Math.abs(nombre.length - busqueda.length);
+    if (busqueda.includes(nombre)) return 700 - Math.abs(busqueda.length - nombre.length);
+
+    if (tokensBusqueda.length === 0 || tokensProducto.length === 0) return -1;
+
+    let coincidencias = 0;
+    tokensBusqueda.forEach(tokenBusqueda => {
+        if (tokensProducto.some(tokenProducto => tokenCoincideConteoRapido(tokenBusqueda, tokenProducto))) {
+            coincidencias += 1;
+        }
+    });
+
+    if (coincidencias === tokensBusqueda.length) {
+        let puntaje = 500 + coincidencias * 35 - Math.abs(nombre.length - busqueda.length);
+        const numerosBusqueda = (busqueda.match(/\d+/g) || []);
+        const numerosNombre = (nombre.match(/\d+/g) || []);
+
+        if (numerosBusqueda.length > 0) {
+            const todosCoinciden = numerosBusqueda.every(numero => numerosNombre.includes(numero));
+            puntaje += todosCoinciden ? 120 : -140;
+        }
+
+        return puntaje;
+    }
+
+    if (coincidencias >= Math.max(2, Math.ceil(tokensBusqueda.length * 0.6))) {
+        return 300 + coincidencias * 25 - Math.abs(nombre.length - busqueda.length);
+    }
+
+    return -1;
+}
+
+function actualizarResumenConteoRapido(encontrados = 0, buscados = 0, faltantes = [], cantidadesDetectadas = 0) {
+    const resumen = document.getElementById('conteoRapidoResumen');
+    if (!resumen) return;
+
+    if (!conteoRapidoActivo) {
+        resumen.className = 'inventory-count-summary';
+        resumen.textContent = 'Sin conteo activo.';
+        return;
+    }
+
+    const faltantesTexto = faltantes.length > 0
+        ? ` No encontrados: ${faltantes.slice(0, 4).join(', ')}${faltantes.length > 4 ? '...' : ''}`
+        : ' Todos los productos de la lista fueron encontrados.';
+
+    const cantidadesTexto = cantidadesDetectadas > 0
+        ? ` Cantidades detectadas automáticamente: ${cantidadesDetectadas}.`
+        : ' Puedes ajustar manualmente cualquier stock antes de guardar.';
+
+    resumen.className = `inventory-count-summary ${faltantes.length > 0 ? 'has-warning' : 'has-success'}`;
+    resumen.textContent = `Conteo activo: ${encontrados} de ${buscados} productos cargados.${cantidadesTexto}${faltantesTexto}`;
+}
+
+function renderNoEncontradosConteoRapido() {
+    const panel = document.getElementById('conteoRapidoNoEncontradosPanel');
+    if (!panel) return;
+
+    if (!conteoRapidoActivo || conteoRapidoNoEncontrados.length === 0) {
+        panel.style.display = 'none';
+        panel.innerHTML = '';
+        return;
+    }
+
+    const esAdmin = currentUserRole === 'encargado';
+    panel.style.display = 'block';
+    panel.innerHTML = `
+        <div class="inventory-count-missing-header">
+            <div>
+                <h4>No encontrados</h4>
+                <p>Elige una sugerencia si el producto ya existe o ${esAdmin ? 'créalo desde aquí' : 'déjalo pendiente para que lo cree encargado'}.</p>
+            </div>
+        </div>
+        <div class="inventory-count-missing-list">
+            ${conteoRapidoNoEncontrados.map(item => {
+                const cantidadTexto = typeof item.cantidad === 'number' && !Number.isNaN(item.cantidad)
+                    ? `<span class="inventory-count-missing-qty">Cantidad detectada: ${item.cantidad}</span>`
+                    : '';
+
+                const sugerencias = item.sugerencias.length > 0
+                    ? item.sugerencias.map(producto => `
+                        <button class="inventory-count-suggestion" onclick="resolverNoEncontradoConteoRapido('${item.id}', ${producto.id})">
+                            <strong>${escapeHtml(producto.nombre || 'Sin nombre')}</strong>
+                            <span>${escapeHtml(producto.categoria || 'Sin categoría')}</span>
+                        </button>
+                    `).join('')
+                    : '<span class="inventory-count-missing-empty">No encontré sugerencias suficientemente cercanas.</span>';
+
+                return `
+                    <article class="inventory-count-missing-item">
+                        <div class="inventory-count-missing-copy">
+                            <strong>${escapeHtml(item.original)}</strong>
+                            <div class="inventory-count-missing-meta">
+                                <span>Texto base: ${escapeHtml(item.texto || item.original)}</span>
+                                ${cantidadTexto}
+                            </div>
+                        </div>
+                        <div class="inventory-count-missing-actions">
+                            <div class="inventory-count-suggestions">${sugerencias}</div>
+                            <div class="inventory-count-missing-cta">
+                                ${esAdmin ? `<button class="btn btn-secondary" onclick="crearProductoDesdeNoEncontradoConteoRapido('${item.id}')">Crear producto</button>` : `<button class="btn btn-secondary" onclick="marcarPendienteNoEncontradoConteoRapido('${item.id}')">Marcar pendiente</button>`}
+                            </div>
+                        </div>
+                    </article>
+                `;
+            }).join('')}
+        </div>
+    `;
+}
+
+function aplicarListaConteoRapido() {
+    const textarea = document.getElementById('conteoRapidoLista');
+    if (!textarea) return;
+
+    const lineasOriginales = textarea.value
+        .split(/\r?\n/)
+        .map(linea => linea.trim())
+        .filter(Boolean);
+
+    if (lineasOriginales.length === 0) {
+        mostrarNotificacion('Pega una lista de productos primero', 'warning');
+        return;
+    }
+
+    const idsEncontrados = [];
+    const faltantes = [];
+    const valoresDetectados = new Map();
+    let cantidadesDetectadas = 0;
+
+    lineasOriginales.forEach(lineaOriginal => {
+        const datosLinea = extraerDatosLineaConteoRapido(lineaOriginal);
+        const lineaBusqueda = limpiarLineaConteoRapido(datosLinea.texto);
+        if (!lineaBusqueda) return;
+
+        const productoAlias = aplicarAliasConteoRapido(lineaOriginal);
+        if (productoAlias) {
+            idsEncontrados.push(productoAlias.id);
+            if (typeof datosLinea.cantidad === 'number' && !Number.isNaN(datosLinea.cantidad)) {
+                valoresDetectados.set(productoAlias.id, datosLinea.cantidad);
+                cantidadesDetectadas += 1;
+            }
+            return;
+        }
+
+        let mejorProducto = null;
+        let mejorPuntaje = -1;
+
+        productos.forEach(producto => {
+            const puntaje = puntuarCoincidenciaConteoRapido(lineaBusqueda, producto);
+            if (puntaje > mejorPuntaje) {
+                mejorPuntaje = puntaje;
+                mejorProducto = producto;
+            }
+        });
+
+        if (mejorProducto && mejorPuntaje >= 300) {
+            idsEncontrados.push(mejorProducto.id);
+            if (typeof datosLinea.cantidad === 'number' && !Number.isNaN(datosLinea.cantidad)) {
+                valoresDetectados.set(mejorProducto.id, datosLinea.cantidad);
+                cantidadesDetectadas += 1;
+            }
+        } else {
+            faltantes.push(construirNoEncontradoConteoRapido(lineaOriginal));
+        }
+    });
+
+    conteoRapidoActivo = true;
+    conteoRapidoIds = [...new Set(idsEncontrados)];
+    conteoRapidoNoEncontrados = faltantes;
+    conteoRapidoValores = valoresDetectados;
+
+    filtroInventarioActivo = 'todos';
+    document.querySelectorAll('.stat-card-clickable').forEach(card => {
+        card.classList.remove('stat-card-active');
+    });
+    document.querySelector('[data-filtro="todos"]')?.classList.add('stat-card-active');
+
+    ['filtroProveedor', 'filtroCategoria', 'filtroMarca'].forEach(id => {
+        const select = document.getElementById(id);
+        if (select) select.value = '';
+    });
+
+    actualizarResumenConteoRapido(
+        conteoRapidoIds.length,
+        lineasOriginales.filter(linea => limpiarLineaConteoRapido(linea)).length,
+        faltantes.map(item => item.original),
+        cantidadesDetectadas
+    );
+    cargarInventario();
+    renderNoEncontradosConteoRapido();
+
+    if (conteoRapidoIds.length === 0) {
+        mostrarNotificacion('No pude relacionar productos de esa lista. Revisa nombres o formato.', 'warning');
+        return;
+    }
+
+    mostrarNotificacion(`Conteo rápido listo: ${conteoRapidoIds.length} productos cargados`, 'success');
+}
+
+function limpiarConteoRapido() {
+    conteoRapidoActivo = false;
+    conteoRapidoIds = [];
+    conteoRapidoNoEncontrados = [];
+    conteoRapidoValores = new Map();
+
+    const textarea = document.getElementById('conteoRapidoLista');
+    if (textarea) textarea.value = '';
+
+    actualizarResumenConteoRapido();
+    renderNoEncontradosConteoRapido();
+    cargarInventario();
+}
+
+function resolverNoEncontradoConteoRapido(noEncontradoId, productoId) {
+    const item = conteoRapidoNoEncontrados.find(entry => entry.id === noEncontradoId);
+    const producto = productos.find(entry => entry.id === productoId);
+    if (!item || !producto) return;
+
+    if (!conteoRapidoIds.includes(producto.id)) {
+        conteoRapidoIds.push(producto.id);
+    }
+
+    if (typeof item.cantidad === 'number' && !Number.isNaN(item.cantidad)) {
+        conteoRapidoValores.set(producto.id, item.cantidad);
+    }
+
+    if (item.clave) {
+        conteoRapidoAlias.set(item.clave, producto.id);
+        guardarAliasConteoRapido();
+    }
+
+    conteoRapidoNoEncontrados = conteoRapidoNoEncontrados.filter(entry => entry.id !== noEncontradoId);
+    actualizarResumenConteoRapido(
+        conteoRapidoIds.length,
+        conteoRapidoIds.length + conteoRapidoNoEncontrados.length,
+        conteoRapidoNoEncontrados.map(entry => entry.original),
+        conteoRapidoValores.size
+    );
+    renderNoEncontradosConteoRapido();
+    cargarInventario();
+    mostrarNotificacion(`Alias guardado: ${item.original} -> ${producto.nombre}`, 'success');
+}
+
+function prellenarModalCrearProducto(nombre, stock = null) {
+    document.getElementById('editNombre').value = nombre || '';
+    if (typeof stock === 'number' && !Number.isNaN(stock)) {
+        document.getElementById('editStock').value = stock;
+    }
+}
+
+function crearProductoDesdeNoEncontradoConteoRapido(noEncontradoId) {
+    if (currentUserRole !== 'encargado') {
+        mostrarNotificacion('Solo el encargado puede crear productos', 'warning');
+        return;
+    }
+
+    const item = conteoRapidoNoEncontrados.find(entry => entry.id === noEncontradoId);
+    if (!item) return;
+
+    conteoRapidoCreacionPendiente = item;
+    abrirModalCrearProducto();
+    prellenarModalCrearProducto(item.texto || item.original, item.cantidad);
+    mostrarNotificacion('Producto nuevo prellenado desde la lista. Completa proveedor, categoría y precio.', 'info');
+}
+
+function marcarPendienteNoEncontradoConteoRapido(noEncontradoId) {
+    const item = conteoRapidoNoEncontrados.find(entry => entry.id === noEncontradoId);
+    if (!item) return;
+    mostrarNotificacion(`Pendiente para crear: ${item.original}`, 'info');
+}
+
+function generarControlConteoRapido(producto) {
+    const stockActual = Number.isInteger(Number(producto.stock)) ? Math.trunc(Number(producto.stock)) : (producto.stock ?? 0);
+    const stockSugerido = conteoRapidoValores.has(producto.id) ? conteoRapidoValores.get(producto.id) : stockActual;
+    const nombreEscapado = escapeHtml(producto.nombre || 'producto');
+
+    return `
+        <div class="inventory-quick-count">
+            <input
+                type="number"
+                id="quickStock-${producto.id}"
+                class="inventory-quick-input"
+                value="${stockSugerido}"
+                placeholder="${stockActual}"
+                title="Stock actual: ${stockActual}${conteoRapidoValores.has(producto.id) ? ` | Detectado en lista: ${stockSugerido}` : ''}"
+                step="0.1"
+                inputmode="decimal"
+                aria-label="Conteo rápido de ${nombreEscapado}"
+                onkeydown="manejarEnterConteoRapido(event, ${producto.id})">
+            <button class="btn btn-primary inventory-quick-save" onclick="guardarConteoRapido(${producto.id})">
+                Guardar
+            </button>
+        </div>
+    `;
+}
+
+function manejarEnterConteoRapido(event, productoId) {
+    if (event.key === 'Enter') {
+        event.preventDefault();
+        guardarConteoRapido(productoId);
+    }
+}
+
+async function guardarConteoRapido(productoId) {
+    if (!requireAuthentication('Actualizar stock rápido')) {
+        return;
+    }
+
+    const input = document.getElementById(`quickStock-${productoId}`);
+    const button = input?.parentElement?.querySelector('.inventory-quick-save');
+
+    if (!input) return;
+
+    const nuevoStock = parseFloat(input.value);
+    if (isNaN(nuevoStock)) {
+        mostrarNotificacion('Ingresa un stock válido antes de guardar', 'warning');
+        input.focus();
+        return;
+    }
+
+    input.disabled = true;
+    if (button) button.disabled = true;
+
+    try {
+        const { error } = await window.supabaseClient
+            .from('productos')
+            .update({ stock: nuevoStock })
+            .eq('id', productoId);
+
+        if (error) throw error;
+
+        const producto = productos.find(item => item.id === productoId);
+        if (producto) {
+            producto.stock = nuevoStock;
+        }
+
+        mostrarNotificacion(`Stock actualizado${producto?.nombre ? `: ${producto.nombre}` : ''}`, 'success');
+        await cargarInventario();
+    } catch (error) {
+        input.disabled = false;
+        if (button) button.disabled = false;
+        manejarError(error, {
+            contexto: 'Conteo rápido de inventario',
+            mensajeUsuario: 'No se pudo guardar el stock desde el conteo rápido.',
+            esErrorCritico: false
+        });
+    }
+}
 
 /**
  * Extraer marca del nombre del producto
@@ -3255,26 +3819,14 @@ function filtrarInventario(filtro) {
 
     // Limpiar buscador si se selecciona un filtro
     const buscador = document.getElementById('buscadorProductos');
+    const btnLimpiarBusqueda = document.getElementById('btnLimpiarBusqueda');
     if (buscador) {
         buscador.value = '';
-        document.getElementById('btnLimpiarBusqueda').style.display = 'none';
+        textoBusquedaInventario = '';
+        if (btnLimpiarBusqueda) {
+            btnLimpiarBusqueda.style.display = 'none';
+        }
     }
-
-    // Recargar inventario con filtro
-    cargarInventario();
-}
-
-/**
- * Filtrar y ordenar inventario por estado
- */
-function filtrarInventario(filtro) {
-    filtroInventarioActivo = filtro;
-
-    // Actualizar indicador visual
-    document.querySelectorAll('.stat-card-clickable').forEach(card => {
-        card.classList.remove('stat-card-active');
-    });
-    document.querySelector(`[data-filtro="${filtro}"]`)?.classList.add('stat-card-active');
 
     // Recargar inventario con filtro
     cargarInventario();
@@ -3288,18 +3840,20 @@ function actualizarEncabezadosInventario() {
     if (!thead) return;
 
     const esVendedor = currentUserRole === 'vendedor';
+    const incluyeConteoRapido = conteoRapidoActivo;
 
     if (esVendedor) {
-        // VENDEDOR: Producto | Acciones | Stock | Estado | Proveedor
+        // VENDEDOR: Producto | Conteo rápido | Acciones | Stock | Estado | Proveedor
         thead.innerHTML = `
             <th>Producto</th>
+            ${incluyeConteoRapido ? '<th>Conteo rápido</th>' : ''}
             <th>Acciones</th>
             <th>Stock</th>
             <th>Estado</th>
             <th>Proveedor</th>
         `;
     } else {
-        // ADMIN/ENCARGADO: Producto | Proveedor | Categoría | Precio | Stock | Código de Barras | Estado | Acciones
+        // ADMIN/ENCARGADO: Producto | Proveedor | Categoría | Precio | Stock | Código de Barras | Estado | Conteo rápido | Acciones
         thead.innerHTML = `
             <th>Producto</th>
             <th>Proveedor</th>
@@ -3308,6 +3862,7 @@ function actualizarEncabezadosInventario() {
             <th>Stock</th>
             <th>Código de Barras</th>
             <th>Estado</th>
+            ${incluyeConteoRapido ? '<th>Conteo rápido</th>' : ''}
             <th>Acciones</th>
         `;
     }
@@ -3433,6 +3988,78 @@ function aplicarFiltrosAdicionales(productos) {
     return productosFiltrados;
 }
 
+function aplicarBusquedaInventario(productos) {
+    const termino = normalizarTextoInventario(textoBusquedaInventario);
+
+    if (!termino) {
+        return productos;
+    }
+
+    return productos.filter(producto => {
+        const campos = [
+            producto?.nombre,
+            producto?.proveedor,
+            producto?.categoria,
+            producto?.codigo_barras,
+            extraerMarcaDeProducto(producto?.nombre || '')
+        ];
+
+        return campos.some(campo => normalizarTextoInventario(campo).includes(termino));
+    });
+}
+
+function manejarBusquedaInventario() {
+    const buscador = document.getElementById('buscadorProductos');
+    const btnLimpiarBusqueda = document.getElementById('btnLimpiarBusqueda');
+
+    textoBusquedaInventario = buscador?.value || '';
+
+    if (btnLimpiarBusqueda) {
+        btnLimpiarBusqueda.style.display = textoBusquedaInventario.trim() ? 'inline-flex' : 'none';
+    }
+
+    cargarInventario();
+}
+
+function limpiarBusquedaInventario() {
+    const buscador = document.getElementById('buscadorProductos');
+    const btnLimpiarBusqueda = document.getElementById('btnLimpiarBusqueda');
+
+    textoBusquedaInventario = '';
+
+    if (buscador) {
+        buscador.value = '';
+        buscador.focus();
+    }
+
+    if (btnLimpiarBusqueda) {
+        btnLimpiarBusqueda.style.display = 'none';
+    }
+
+    cargarInventario();
+}
+
+function abrirPrimerResultadoInventario() {
+    const termino = normalizarTextoInventario(textoBusquedaInventario);
+    if (!termino) return;
+
+    let productosFiltrados = aplicarFiltroInventario(productos, filtroInventarioActivo);
+    productosFiltrados = aplicarFiltrosAdicionales(productosFiltrados);
+    productosFiltrados = aplicarBusquedaInventario(productosFiltrados);
+
+    if (conteoRapidoActivo) {
+        const idsConteo = new Set(conteoRapidoIds);
+        productosFiltrados = productosFiltrados.filter(producto => idsConteo.has(producto.id));
+    }
+
+    if (productosFiltrados.length === 0) {
+        mostrarNotificacion('No se encontraron productos con esa búsqueda', 'warning');
+        return;
+    }
+
+    editarProducto(productosFiltrados[0].id);
+}
+
 /**
  * Generar HTML para fila de producto
  * @param {Object} producto - Producto a renderizar
@@ -3473,6 +4100,9 @@ function generarFilaProducto(producto, esVendedor) {
     }
 
     const nombreEscapado = escapeHtml(producto.nombre);
+    const columnaConteoRapido = conteoRapidoActivo
+        ? `<td data-label="Conteo rápido" class="inventory-cell-quick-count">${generarControlConteoRapido(producto)}</td>`
+        : '';
 
     const btnEliminar = currentUserRole === 'encargado' ? `
         <button class="btn-icon btn-icon-delete" onclick="eliminarProductoDirecto(${producto.id})" title="Eliminar">
@@ -3489,31 +4119,33 @@ function generarFilaProducto(producto, esVendedor) {
 
     if (esVendedor) {
         return `
-            <tr>
-                <td><strong>${nombreEscapado}</strong></td>
-                <td>
+            <tr class="inventory-row inventory-row-vendedor">
+                <td data-label="Producto" class="inventory-cell-product"><strong>${nombreEscapado}</strong></td>
+                ${columnaConteoRapido}
+                <td data-label="Acciones" class="inventory-cell-actions">
                     <button class="btn-icon" onclick="editarProducto(${producto.id})" title="Editar">
                         <svg width="16" height="16" viewBox="0 0 20 20" fill="none">
                             <path d="M13.5 6.5l-8 8V17h2.5l8-8m-2.5-2.5l2-2 2.5 2.5-2 2m-2.5-2.5l2.5 2.5" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
                         </svg>
                     </button>
                 </td>
-                <td><strong>${Math.floor(producto.stock)}</strong></td>
-                <td><span class="badge ${estadoBadge}">${estadoTexto}</span></td>
-                <td>${proveedorCategoria || '-'}</td>
+                <td data-label="Stock" class="inventory-cell-stock"><strong>${Math.floor(producto.stock)}</strong></td>
+                <td data-label="Estado"><span class="badge ${estadoBadge}">${estadoTexto}</span></td>
+                <td data-label="Proveedor">${proveedorCategoria || '-'}</td>
             </tr>
         `;
     } else {
         return `
-            <tr>
-                <td><strong>${nombreEscapado}</strong></td>
-                <td>${proveedorCategoria || '-'}</td>
-                <td>${producto.categoria || '-'}</td>
-                <td>$${formatoMoneda(producto.precio)}</td>
-                <td><strong>${Math.floor(producto.stock)}</strong></td>
-                <td>${codigoBarrasHTML}</td>
-                <td><span class="badge ${estadoBadge}">${estadoTexto}</span></td>
-                <td>
+            <tr class="inventory-row inventory-row-admin">
+                <td data-label="Producto" class="inventory-cell-product"><strong>${nombreEscapado}</strong></td>
+                <td data-label="Proveedor">${proveedorCategoria || '-'}</td>
+                <td data-label="Categoría">${producto.categoria || '-'}</td>
+                <td data-label="Precio">$${formatoMoneda(producto.precio)}</td>
+                <td data-label="Stock" class="inventory-cell-stock"><strong>${Math.floor(producto.stock)}</strong></td>
+                <td data-label="Código">${codigoBarrasHTML}</td>
+                <td data-label="Estado"><span class="badge ${estadoBadge}">${estadoTexto}</span></td>
+                ${columnaConteoRapido}
+                <td data-label="Acciones" class="inventory-cell-actions">
                     <button class="btn-icon" onclick="editarProducto(${producto.id})" title="Editar">
                         <svg width="16" height="16" viewBox="0 0 20 20" fill="none">
                             <path d="M13.5 6.5l-8 8V17h2.5l8-8m-2.5-2.5l2-2 2.5 2.5-2 2m-2.5-2.5l2.5 2.5" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
@@ -3553,6 +4185,20 @@ async function cargarInventario() {
     // 4. Aplicar filtros
     let productosFiltrados = aplicarFiltroInventario(productos, filtroInventarioActivo);
     productosFiltrados = aplicarFiltrosAdicionales(productosFiltrados);
+    productosFiltrados = aplicarBusquedaInventario(productosFiltrados);
+
+    if (conteoRapidoActivo) {
+        const idsConteo = new Set(conteoRapidoIds);
+        productosFiltrados = productosFiltrados.filter(producto => idsConteo.has(producto.id));
+        const ordenConteo = new Map(conteoRapidoIds.map((id, index) => [id, index]));
+        productosFiltrados.sort((a, b) => (ordenConteo.get(a.id) ?? 99999) - (ordenConteo.get(b.id) ?? 99999));
+        actualizarResumenConteoRapido(
+            conteoRapidoIds.length,
+            conteoRapidoIds.length + conteoRapidoNoEncontrados.length,
+            conteoRapidoNoEncontrados,
+            conteoRapidoValores.size
+        );
+    }
 
     // 5. Renderizar tabla
     const tbody = document.getElementById('inventoryTableBody');
@@ -3563,10 +4209,15 @@ async function cargarInventario() {
         switch(filtroInventarioActivo) {
             case 'sinstock': mensajeFiltro = 'No hay productos sin stock'; break;
             case 'stockbajo': mensajeFiltro = 'No hay productos con stock bajo'; break;
+            case 'sinprecio': mensajeFiltro = 'No hay productos sin precio'; break;
             case 'enstock': mensajeFiltro = 'No hay productos en stock'; break;
         }
 
-        const colspan = esVendedor ? 5 : 8;
+        if (textoBusquedaInventario.trim()) {
+            mensajeFiltro = 'No se encontraron productos con esa búsqueda';
+        }
+
+        const colspan = esVendedor ? (conteoRapidoActivo ? 6 : 5) : (conteoRapidoActivo ? 9 : 8);
         tbody.innerHTML = `
             <tr>
                 <td colspan="${colspan}" style="text-align: center; padding: 40px; color: #6b7280;">
@@ -4123,9 +4774,37 @@ async function generarGraficoTopProductos(periodo) {
             return;
         }
 
+        const debeExcluirseDelTopProductos = (nombreProducto) => {
+            const nombreNormalizado = String(nombreProducto || '').toLowerCase().trim();
+
+            if (!nombreNormalizado) {
+                return true;
+            }
+
+            const esGranel = nombreNormalizado.includes('(granel)');
+            const esPromoSobres =
+                /(promo|promocion|promoción)/.test(nombreNormalizado) &&
+                /\bsobre(s)?\b/.test(nombreNormalizado);
+
+            return esGranel || esPromoSobres;
+        };
+
+        const itemsFiltrados = items.filter(item =>
+            !debeExcluirseDelTopProductos(item.producto_nombre)
+        );
+
+        if (itemsFiltrados.length === 0) {
+            console.log('ℹ️ No hay productos válidos para el top después de excluir granel y promos de sobres');
+            if (chartTopProductos) {
+                chartTopProductos.destroy();
+                chartTopProductos = null;
+            }
+            return;
+        }
+
         // Agrupar por producto
         const productosMap = {};
-        items.forEach(item => {
+        itemsFiltrados.forEach(item => {
             const nombre = item.producto_nombre || 'Producto';
             productosMap[nombre] = (productosMap[nombre] || 0) + (item.cantidad || 1);
         });
@@ -4869,6 +5548,7 @@ async function _xlsxDescargar(wb, nombreArchivo) {
 
 async function _construirHojaCierreDetalle(wb, cierre, ventas, gastosDia) {
     const desglose  = cierre.detalle_gastos_json?.desglose_ventas;
+    const resumenConsolidado = cierre.detalle_gastos_json?.resumen_consolidado;
     const posData   = desglose?.pos;
     const repData   = desglose?.reparto;
 
@@ -4881,7 +5561,7 @@ async function _construirHojaCierreDetalle(wb, cierre, ventas, gastosDia) {
 
     const totalEf            = posEf  + repEf;
     const totalTarj          = posTarj + repTarj;
-    const totalVentas        = cierre.total_ventas || 0;
+    const totalVentas        = resumenConsolidado?.total ?? ((posData?.total ?? cierre.total_ventas ?? 0) + (repData?.total ?? 0));
     const gastOp             = cierre.total_gastos || 0;
     const pagosPersonalTotal = cierre.detalle_gastos_json?.total_pagos_personal || 0;
     const gastosOpList       = cierre.detalle_gastos_json?.gastos_operacionales || [];
@@ -5154,6 +5834,7 @@ async function ejecutarExportarCierresRango() {
 
         const filasCierres = cierres.map(c => {
             const desglose = c.detalle_gastos_json?.desglose_ventas;
+            const resumenConsolidado = c.detalle_gastos_json?.resumen_consolidado;
             const pos = desglose?.pos, rep = desglose?.reparto;
             const posEf   = pos?.efectivo      ?? c.ventas_efectivo      ?? 0;
             const posTarj = pos?.transbank     ?? c.ventas_transbank     ?? 0;
@@ -5161,6 +5842,7 @@ async function ejecutarExportarCierresRango() {
             const repEf     = c.reparto_efectivo       ?? rep?.efectivo       ?? 0;
             const repTarj   = c.reparto_tarjetas       ?? rep?.tarjetas       ?? 0;
             const repTransf = c.reparto_transferencias ?? rep?.transferencias ?? 0;
+            const totalVentas = resumenConsolidado?.total ?? ((pos?.total ?? c.total_ventas ?? 0) + (rep?.total ?? 0));
             const pagPers   = c.detalle_gastos_json?.total_pagos_personal || 0;
             const totalSal  = (c.total_gastos || 0) + pagPers;
             const esPend    = c.efectivo_real == null;
@@ -5168,7 +5850,7 @@ async function ejecutarExportarCierresRango() {
             const estado    = esPend ? 'Pendiente arqueo'
                 : dif === 0 ? 'Cuadrado'
                 : dif > 0   ? `Sobrante +$${dif}` : `Faltante -$${Math.abs(dif)}`;
-            return [c.fecha, c.cerrado_por || 'Automático', c.total_ventas || 0,
+            return [c.fecha, c.cerrado_por || 'Automático', totalVentas,
                 posEf, posTarj, posTransf, repEf, repTarj, repTransf,
                 c.total_gastos || 0, pagPers, totalSal,
                 c.efectivo_esperado || 0, esPend ? 'Sin registrar' : (c.efectivo_real || 0),
@@ -5551,9 +6233,162 @@ document.head.appendChild(style);
 // SISTEMA DE ESCANEO DE CÓDIGOS
 // ===================================
 
+function obtenerFormatosEscaner() {
+    if (typeof Html5QrcodeSupportedFormats === 'undefined') {
+        return undefined;
+    }
+
+    return [
+        Html5QrcodeSupportedFormats.EAN_13,
+        Html5QrcodeSupportedFormats.EAN_8,
+        Html5QrcodeSupportedFormats.UPC_A,
+        Html5QrcodeSupportedFormats.UPC_E,
+        Html5QrcodeSupportedFormats.CODE_128,
+        Html5QrcodeSupportedFormats.CODE_39,
+        Html5QrcodeSupportedFormats.ITF,
+        Html5QrcodeSupportedFormats.CODABAR,
+        Html5QrcodeSupportedFormats.QR_CODE
+    ].filter(Boolean);
+}
+
+function crearConfiguracionEscaner() {
+    return {
+        fps: 14,
+        qrbox: (ancho, alto) => {
+            const qrAncho = Math.min(Math.floor(ancho * 0.9), 560);
+            const qrAlto = Math.min(Math.max(120, Math.floor(alto * 0.28)), 220);
+            return { width: qrAncho, height: qrAlto };
+        },
+        rememberLastUsedCamera: true,
+        disableFlip: false,
+        formatsToSupport: obtenerFormatosEscaner(),
+        experimentalFeatures: {
+            useBarCodeDetectorIfSupported: true
+        },
+        videoConstraints: {
+            facingMode: { ideal: 'environment' },
+            width: { ideal: 1920 },
+            height: { ideal: 1080 },
+            advanced: [
+                { focusMode: 'continuous' }
+            ]
+        }
+    };
+}
+
+function actualizarEstadoEscaner(mensaje, tipo = 'info') {
+    const estado = document.getElementById('escanerStatus');
+    if (!estado) return;
+
+    estado.textContent = mensaje || '';
+    estado.className = `scanner-status scanner-status-${tipo}`;
+}
+
+function ocultarConfirmacionAsignacion() {
+    const panel = document.getElementById('scannerConfirmacionAsignacion');
+    const input = document.getElementById('codigoAsignacionConfirmado');
+    const producto = document.getElementById('scannerProductoAsignacion');
+
+    if (panel) panel.style.display = 'none';
+    if (input) input.value = '';
+    if (producto) producto.innerHTML = '';
+
+    codigoPendienteAsignacion = null;
+}
+
+function mostrarConfirmacionAsignacion(codigoBarra) {
+    const panel = document.getElementById('scannerConfirmacionAsignacion');
+    const input = document.getElementById('codigoAsignacionConfirmado');
+    const producto = document.getElementById('scannerProductoAsignacion');
+    const reader = document.getElementById('reader');
+
+    codigoPendienteAsignacion = codigoBarra;
+
+    if (producto && productoSeleccionado) {
+        producto.innerHTML = `
+            <strong>${escapeHtml(productoSeleccionado.nombre)}</strong>
+            <span>${escapeHtml(productoSeleccionado.marca || 'Sin marca')} · ${escapeHtml(productoSeleccionado.categoria || 'Sin categoría')}</span>
+        `;
+    }
+
+    if (input) {
+        input.value = codigoBarra || '';
+        input.focus();
+        input.select();
+    }
+
+    if (reader) {
+        reader.style.display = 'none';
+    }
+
+    if (panel) {
+        panel.style.display = 'block';
+    }
+
+    guardarUltimoEscaneoAsignacion({
+        producto: productoSeleccionado?.nombre || 'Sin producto',
+        codigo: codigoBarra,
+        estado: 'pendiente',
+        mensaje: 'Escaneado, pendiente de confirmación'
+    });
+
+    actualizarEstadoEscaner('Confirma el código antes de asignarlo.', 'warning');
+}
+
+async function iniciarEscanerBase(onDecode, mensajeListo) {
+    if (typeof Html5Qrcode === 'undefined') {
+        mostrarNotificacion('La librería del escáner no está disponible', 'error');
+        return;
+    }
+
+    await detenerEscaner();
+
+    html5QrCode = new Html5Qrcode('reader');
+    actualizarEstadoEscaner('Iniciando cámara...', 'info');
+
+    try {
+        await html5QrCode.start(
+            { facingMode: 'environment' },
+            crearConfiguracionEscaner(),
+            (decodedText) => {
+                if (scannerProcesando) {
+                    return;
+                }
+
+                scannerProcesando = true;
+                actualizarEstadoEscaner('Código detectado. Procesando...', 'success');
+                onDecode(decodedText);
+            },
+            () => {
+                // Errores normales de lectura mientras se escanea.
+            }
+        );
+
+        actualizarEstadoEscaner(mensajeListo || 'Cámara lista. Centra el código dentro del recuadro.', 'info');
+    } catch (err) {
+        console.error('❌ Error iniciando escáner:', err);
+        actualizarEstadoEscaner('No se pudo iniciar la cámara.', 'error');
+        mostrarNotificacion('Error al acceder a la cámara. Prueba con una foto del código.', 'error');
+    }
+}
+
+async function reiniciarEscanerSegunModo() {
+    scannerProcesando = false;
+
+    if (scannerMode === 'asignar') {
+        ocultarConfirmacionAsignacion();
+        await iniciarEscanerAsignacion();
+        return;
+    }
+
+    await iniciarEscaner();
+}
+
 function abrirEscaner() {
     const modal = document.getElementById('modalEscaner');
     const rolMensaje = document.getElementById('rolMensaje');
+    scannerMode = 'buscar';
+    ocultarConfirmacionAsignacion();
 
     // Actualizar mensaje según rol
     if (currentUserRole === 'encargado') {
@@ -5569,31 +6404,13 @@ function abrirEscaner() {
     iniciarEscaner();
 }
 
-function iniciarEscaner() {
-    const config = {
-        fps: 10, // 10 FPS para ahorrar batería
-        qrbox: { width: 250, height: 150 }, // Rectángulo tipo código de barras
-        aspectRatio: 1.777778, // 16:9 para pantalla completa
-        videoConstraints: {
-            facingMode: "environment" // Cámara trasera
-        }
-    };
-
-    html5QrCode = new Html5Qrcode("reader");
-
-    html5QrCode.start(
-        { facingMode: "environment" },
-        config,
-        (decodedText, decodedResult) => {
+async function iniciarEscaner() {
+    await iniciarEscanerBase(
+        (decodedText) => {
             procesarCodigoEscaneado(decodedText);
         },
-        (errorMessage) => {
-            // Error de escaneo (normal, se ejecuta constantemente)
-        }
-    ).catch((err) => {
-        console.error('❌ Error iniciando escáner:', err);
-        mostrarNotificacion('Error al acceder a la cámara', 'error');
-    });
+        'Cámara lista. Para códigos pequeños acerca el teléfono hasta que el código ocupe buena parte del recuadro.'
+    );
 }
 
 async function procesarCodigoEscaneado(codigoBarra) {
@@ -5622,12 +6439,15 @@ async function procesarCodigoEscaneado(codigoBarra) {
         if (currentUserRole === 'vendedor') {
             // VENDEDOR: Error
             mostrarNotificacion('❌ Producto no encontrado', 'error');
-            setTimeout(() => cerrarEscaner(), 1500);
+            actualizarEstadoEscaner('Código no encontrado. Puedes probar de nuevo o subir una foto.', 'warning');
+            setTimeout(() => reiniciarEscanerSegunModo(), 1200);
         } else {
             // ENCARGADO: Abrir formulario de nuevo producto
             abrirModalNuevo(codigoBarra);
         }
     }
+
+    scannerProcesando = false;
 }
 
 async function buscarPorCodigoBarras(codigoBarra) {
@@ -5695,13 +6515,52 @@ async function detenerEscaner() {
             console.error('Error deteniendo escáner:', err);
         }
     }
+
+    scannerProcesando = false;
 }
 
 function cerrarEscaner() {
     detenerEscaner();
     const modal = document.getElementById('modalEscaner');
+    const inputImagen = document.getElementById('inputImagenCodigo');
     modal.style.display = 'none';
     modal.classList.remove('show');
+    if (inputImagen) inputImagen.value = '';
+    const reader = document.getElementById('reader');
+    if (reader) reader.style.display = '';
+    ocultarConfirmacionAsignacion();
+    actualizarEstadoEscaner('');
+}
+
+async function escanearCodigoDesdeImagen(event) {
+    const archivo = event?.target?.files?.[0];
+    if (!archivo) return;
+
+    try {
+        await detenerEscaner();
+
+        if (!html5QrCode) {
+            html5QrCode = new Html5Qrcode('reader');
+        }
+
+        actualizarEstadoEscaner('Analizando imagen del código...', 'info');
+        const codigoDetectado = await html5QrCode.scanFile(archivo, true);
+
+        if (scannerMode === 'asignar') {
+            await asignarCodigoAProducto(codigoDetectado);
+        } else {
+            await procesarCodigoEscaneado(codigoDetectado);
+        }
+    } catch (error) {
+        console.error('❌ Error leyendo código desde imagen:', error);
+        actualizarEstadoEscaner('No pude leer el código desde la imagen.', 'error');
+        mostrarNotificacion('No pude leer ese código desde la foto. Prueba con una imagen más cercana y nítida.', 'warning');
+        await reiniciarEscanerSegunModo();
+    } finally {
+        if (event?.target) {
+            event.target.value = '';
+        }
+    }
 }
 
 function reproducirBeep() {
@@ -6331,11 +7190,37 @@ async function guardarEdicion() {
             }
             
             // CREAR nuevo producto
-            const { error } = await window.supabaseClient
+            const { data: productoCreado, error } = await window.supabaseClient
                 .from('productos')
-                .insert([productData]);
+                .insert([productData])
+                .select()
+                .single();
             
             if (error) throw error;
+
+            if (conteoRapidoCreacionPendiente && productoCreado?.id) {
+                if (conteoRapidoCreacionPendiente.clave) {
+                    conteoRapidoAlias.set(conteoRapidoCreacionPendiente.clave, productoCreado.id);
+                    guardarAliasConteoRapido();
+                }
+
+                if (!conteoRapidoIds.includes(productoCreado.id)) {
+                    conteoRapidoIds.push(productoCreado.id);
+                }
+
+                if (typeof conteoRapidoCreacionPendiente.cantidad === 'number' && !Number.isNaN(conteoRapidoCreacionPendiente.cantidad)) {
+                    conteoRapidoValores.set(productoCreado.id, conteoRapidoCreacionPendiente.cantidad);
+                }
+
+                conteoRapidoNoEncontrados = conteoRapidoNoEncontrados.filter(item => item.id !== conteoRapidoCreacionPendiente.id);
+                actualizarResumenConteoRapido(
+                    conteoRapidoIds.length,
+                    conteoRapidoIds.length + conteoRapidoNoEncontrados.length,
+                    conteoRapidoNoEncontrados.map(item => item.original),
+                    conteoRapidoValores.size
+                );
+                renderNoEncontradosConteoRapido();
+            }
                 
             mostrarNotificacion('✅ Producto creado exitosamente', 'success');
         } else {
@@ -6358,7 +7243,10 @@ async function guardarEdicion() {
             await cargarInventario();
         }
 
+        conteoRapidoCreacionPendiente = null;
+
     } catch (error) {
+        conteoRapidoCreacionPendiente = null;
         manejarError(error, {
             contexto: 'Guardar producto',
             mensajeUsuario: 'No se pudo guardar el producto. Intenta nuevamente.',
@@ -6945,13 +7833,8 @@ function actualizarTotalesCaja() {
     // Calcular total de pagos al personal
     const totalPagosPersonal = pagosPersonalDelDia.reduce((sum, pago) => sum + parseFloat(pago.total_pago), 0);
 
-    // Efectivo reparto: usar el confirmado por rendición si existe, sino el del sistema
-    const repartoEfectivo = repartoDelDia.efectivoConfirmado !== undefined
-        ? repartoDelDia.efectivoConfirmado
-        : (repartoDelDia.efectivo || 0);
-
-    // Calcular efectivo esperado (Sencillo + POS + Reparto - gastos - pagos personal)
-    const efectivoEsperado = sencilloInicial + ventasDelDia.efectivo + repartoEfectivo - totalGastos - totalPagosPersonal;
+    // Caja Local POS: solo considera efectivo del local.
+    const efectivoEsperado = sencilloInicial + ventasDelDia.efectivo - totalGastos - totalPagosPersonal;
     document.getElementById('efectivoEsperado').textContent = '$' + formatoMoneda(efectivoEsperado);
 
     // Recalcular diferencia si hay efectivo real ingresado
@@ -6998,21 +7881,6 @@ function actualizarTotalesConsolidados() {
     document.getElementById('consolidadoTarjetas').textContent = '$' + formatoMoneda(consolidadoTarjetas);
     document.getElementById('consolidadoTransferencias').textContent = '$' + formatoMoneda(consolidadoTransferencias);
     document.getElementById('totalGeneralConsolidado').textContent = '$' + formatoMoneda(consolidadoTotal);
-
-    // OPCIÓN B: Mostrar transferencias combinadas (POS + Reparto) en la sección Local POS
-    const elVentasTransf = document.getElementById('ventasTransferencia');
-    if (elVentasTransf) elVentasTransf.textContent = '$' + formatoMoneda(consolidadoTransferencias);
-    
-    const elDesgloseBloque = document.getElementById('desgloseTranferenciaReparto');
-    if (elDesgloseBloque) {
-        if (repartoTransferencias > 0) {
-            elDesgloseBloque.style.display = 'flex';
-            document.getElementById('transferenciaLocal').textContent = '$' + formatoMoneda(posTransferencias);
-            document.getElementById('transferenciaReparto').textContent = '$' + formatoMoneda(repartoTransferencias);
-        } else {
-            elDesgloseBloque.style.display = 'none';
-        }
-    }
 
     // Actualizar desglose POS
     document.getElementById('consolidadoEfectivoPOS').textContent = '$' + formatoMoneda(posEfectivo);
@@ -7061,14 +7929,7 @@ function calcularDiferenciaCaja() {
     const totalGastos = gastosDelDia.reduce((sum, gasto) => sum + parseFloat(gasto.monto), 0);
     const totalPagosPersonal = pagosPersonalDelDia.reduce((sum, pago) => sum + parseFloat(pago.total_pago), 0);
     
-    // Obtener efectivo del reparto
-    const repartoEfectivoText = document.getElementById('repartoEfectivo')?.textContent || '$0';
-    const limpiarMoneda = (texto) => {
-        return parseFloat(texto.replace(/\$/g, '').replace(/\./g, '').replace(/,/g, '.')) || 0;
-    };
-    const repartoEfectivo = limpiarMoneda(repartoEfectivoText);
-    
-    const efectivoEsperado = sencilloInicial + ventasDelDia.efectivo + repartoEfectivo - totalGastos - totalPagosPersonal;
+    const efectivoEsperado = sencilloInicial + ventasDelDia.efectivo - totalGastos - totalPagosPersonal;
     const diferencia = efectivoReal - efectivoEsperado;
 
     // Mostrar container
@@ -7114,26 +7975,21 @@ async function cerrarCajaDiaria() {
     const totalGastos = gastosDelDia.reduce((sum, gasto) => sum + parseFloat(gasto.monto), 0);
     const totalPagosPersonal = pagosPersonalDelDia.reduce((sum, pago) => sum + parseFloat(pago.total_pago), 0);
     
-    // Obtener efectivo del reparto
-    const repartoEfectivoText = document.getElementById('repartoEfectivo')?.textContent || '$0';
-    const limpiarMoneda = (texto) => {
-        return parseFloat(texto.replace(/\$/g, '').replace(/\./g, '').replace(/,/g, '.')) || 0;
-    };
-    const repartoEfectivo = limpiarMoneda(repartoEfectivoText);
-    
-    const efectivoEsperado = sencilloInicial + ventasDelDia.efectivo + repartoEfectivo - totalGastos - totalPagosPersonal;
+    const efectivoEsperado = sencilloInicial + ventasDelDia.efectivo - totalGastos - totalPagosPersonal;
     const diferencia = efectivoReal - efectivoEsperado;
 
     // Confirmación
     const confirmMsg = `¿Confirmar cierre de caja?
 
 📊 Resumen:
-• Total Ventas: $${formatoMoneda(ventasDelDia.total)}
+• Ventas Local POS: $${formatoMoneda(ventasDelDia.total)}
 • Gastos Operacionales: $${formatoMoneda(totalGastos)}
 • Pagos al Personal: $${formatoMoneda(totalPagosPersonal)}
-• Efectivo Esperado: $${formatoMoneda(efectivoEsperado)}
+• Efectivo Esperado Local: $${formatoMoneda(efectivoEsperado)}
 • Efectivo Real: $${formatoMoneda(efectivoReal)}
-• Diferencia: $${formatoMoneda(Math.abs(diferencia))} ${diferencia >= 0 ? '(Sobrante)' : '(Faltante)'}`;
+• Diferencia: $${formatoMoneda(Math.abs(diferencia))} ${diferencia >= 0 ? '(Sobrante)' : '(Faltante)'}
+
+ℹ️ Reparto se guarda por separado en el desglose del cierre.`;
 
     if (!confirm(confirmMsg)) return;
 
@@ -7165,22 +8021,29 @@ async function cerrarCajaDiaria() {
             ? repartoDelDia.efectivoConfirmado : (repartoDelDia.efectivo || 0);
         const repartoTarjetasCierre = repartoDelDia.tarjetas || 0;
         const repartoTransferCierre = repartoDelDia.transferencias || 0;
+        const repartoPagadoLocalCierre = repartoDelDia.pagado_local || 0;
         const repartoTotalCierre = repartoDelDia.total || 0;
 
         const { data, error } = await window.supabaseClient
             .from('cierres_diarios')
             .upsert({
                 fecha: hoy,
-                total_ventas: ventasDelDia.total + repartoTotalCierre,
-                ventas_efectivo: ventasDelDia.efectivo + repartoEfectivoCierre,
-                ventas_transferencia: ventasDelDia.transferencia + repartoTransferCierre,
-                ventas_transbank: ventasDelDia.transbank + repartoTarjetasCierre,
+                total_ventas: ventasDelDia.total,
+                ventas_efectivo: ventasDelDia.efectivo,
+                ventas_transferencia: ventasDelDia.transferencia,
+                ventas_transbank: ventasDelDia.transbank,
                 total_gastos: totalGastos,
                 detalle_gastos_json: {
                     gastos_operacionales: detalleGastos,
                     pagos_personal: detallePagosPersonal,
                     total_pagos_personal: totalPagosPersonal,
                     sencillo_inicial: sencilloInicial,
+                    resumen_consolidado: {
+                        total: ventasDelDia.total + repartoTotalCierre,
+                        efectivo: ventasDelDia.efectivo + repartoEfectivoCierre,
+                        transbank: ventasDelDia.transbank + repartoTarjetasCierre,
+                        transferencia: ventasDelDia.transferencia + repartoTransferCierre
+                    },
                     desglose_ventas: {
                         pos: {
                             efectivo: ventasDelDia.efectivo,
@@ -7192,6 +8055,7 @@ async function cerrarCajaDiaria() {
                             efectivo: repartoEfectivoCierre,
                             tarjetas: repartoTarjetasCierre,
                             transferencias: repartoTransferCierre,
+                            pagado_local: repartoPagadoLocalCierre,
                             total: repartoTotalCierre
                         }
                     }
@@ -7201,7 +8065,7 @@ async function cerrarCajaDiaria() {
                 diferencia: diferencia,
                 cerrado_por: currentUser,
                 cerrado_at: new Date().toISOString(),
-                notas: `Sencillo: $${formatoMoneda(sencilloInicial)} | Gastos Operacionales: $${formatoMoneda(totalGastos)} | Pagos Personal: $${formatoMoneda(totalPagosPersonal)}`
+                notas: `Caja Local POS | Sencillo: $${formatoMoneda(sencilloInicial)} | Gastos Operacionales: $${formatoMoneda(totalGastos)} | Pagos Personal: $${formatoMoneda(totalPagosPersonal)}`
             }, {
                 onConflict: 'fecha'
             })
@@ -8357,6 +9221,7 @@ async function ejecutarCierreAutomatico() {
         let repartoEfectivo = 0;
         let repartoTarjetas = 0;
         let repartoTransferencias = 0;
+        let repartoPagadoLocal = 0;
         let repartoTotal = 0;
         
         try {
@@ -8364,45 +9229,24 @@ async function ejecutarCierreAutomatico() {
                 .rpc('obtener_pedidos_dia', { fecha_consulta: fechaHoy });
             
             if (!errorReparto && pedidosReparto && pedidosReparto.length > 0) {
-                pedidosReparto.forEach(pedido => {
-                    const metodo = pedido.metodo_pago;
-                    const monto = parseFloat(pedido.total) || 0;
-                    
-                    // Solo contar pedidos confirmados/entregados
-                    const esTransferencia = metodo === 'TP' || metodo === 'TG' || metodo === 'T';
-                    const fechaContabilizar = new Date(pedido.fecha);
-                    
-                    if (esTransferencia && pedido.boleteada && pedido.fecha_boleta) {
-                        fechaContabilizar.setTime(new Date(pedido.fecha_boleta).getTime());
-                    } else if (metodo === 'TG') {
-                        fechaContabilizar.setTime(pedido.fecha_boleta ? new Date(pedido.fecha_boleta).getTime() : new Date(pedido.fecha).getTime());
-                    } else if (metodo === 'TP') {
-                        // TP sin boletear: cuenta en fecha del pedido (igual que actualizarResumenReparto)
-                        fechaContabilizar.setTime(new Date(pedido.fecha + 'T00:00:00').getTime());
-                    }
-                    
-                    const fechaContabilizar_str = fechaContabilizar.toISOString().split('T')[0];
-                    if (fechaContabilizar_str === fechaHoy) {
-                        repartoTotal += monto;
-                        if (metodo === 'E') repartoEfectivo += monto;
-                        else if (metodo === 'DC') repartoTarjetas += monto;
-                        else if (esTransferencia) repartoTransferencias += monto;
-                    }
-                });
+                const resumenReparto = calcularResumenRepartoUnificado(pedidosReparto, fechaHoy);
+                repartoEfectivo = resumenReparto.efectivo;
+                repartoTarjetas = resumenReparto.tarjetas;
+                repartoTransferencias = resumenReparto.transferencias;
+                repartoPagadoLocal = resumenReparto.pagadoLocal;
+                repartoTotal = resumenReparto.totalRecaudado;
             }
         } catch (errorReparto) {
             console.warn('⚠️ No se pudieron cargar datos de reparto:', errorReparto);
             // Continuar sin datos de reparto
         }
         
-        // CONSOLIDAR: Sumar POS + Reparto en las columnas existentes
+        // Resumen consolidado solo informativo: el cierre principal sigue siendo del POS local.
         const efectivoConsolidado = ventasEfectivo + repartoEfectivo;
         const transbankConsolidado = ventasTransbank + repartoTarjetas;
         const transferenciaConsolidada = ventasTransferencia + repartoTransferencias;
         const totalVentasConsolidado = totalVentas + repartoTotal;
-        
-        // Calcular efectivo esperado con reparto incluido
-        const efectivoEsperado = efectivoConsolidado - totalGastos - totalPagosPersonal;
+        const efectivoEsperado = ventasEfectivo - totalGastos - totalPagosPersonal;
         
         // Preparar detalles para JSON
         const detalleGastosCompleto = {
@@ -8422,6 +9266,7 @@ async function ejecutarCierreAutomatico() {
                     efectivo: repartoEfectivo,
                     tarjetas: repartoTarjetas,
                     transferencias: repartoTransferencias,
+                    pagado_local: repartoPagadoLocal,
                     total: repartoTotal,
                     cantidad_pedidos: 0 // Se actualizará si hay datos
                 }
@@ -8433,10 +9278,10 @@ async function ejecutarCierreAutomatico() {
             .from('cierres_diarios')
             .insert({
                 fecha: fechaHoy,
-                total_ventas: totalVentasConsolidado,
-                ventas_efectivo: efectivoConsolidado,
-                ventas_transferencia: transferenciaConsolidada,
-                ventas_transbank: transbankConsolidado,
+                total_ventas: totalVentas,
+                ventas_efectivo: ventasEfectivo,
+                ventas_transferencia: ventasTransferencia,
+                ventas_transbank: ventasTransbank,
                 total_gastos: totalGastos,
                 detalle_gastos_json: detalleGastosCompleto,
                 efectivo_esperado: efectivoEsperado,
@@ -8448,7 +9293,7 @@ async function ejecutarCierreAutomatico() {
 
 📊 RESUMEN CONSOLIDADO:
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-💰 VENTAS TOTAL: $${formatoMoneda(totalVentasConsolidado)}
+🏪 VENTAS LOCAL POS: $${formatoMoneda(totalVentas)}
 
 🏪 POS LOCAL: $${formatoMoneda(totalVentas)}
    • Efectivo: $${formatoMoneda(ventasEfectivo)}
@@ -8465,8 +9310,10 @@ async function ejecutarCierreAutomatico() {
    • Gastos Operacionales: $${formatoMoneda(totalGastos)}
    • Pagos Personal: $${formatoMoneda(totalPagosPersonal)}
 
-💵 EFECTIVO ESPERADO EN CAJA: $${formatoMoneda(efectivoEsperado)}
-   (Efectivo POS + Delivery - Gastos - Pagos)
+📊 RESUMEN CONSOLIDADO INFORMATIVO: $${formatoMoneda(totalVentasConsolidado)}
+
+💵 EFECTIVO ESPERADO EN CAJA LOCAL: $${formatoMoneda(efectivoEsperado)}
+    (Efectivo POS - Gastos - Pagos)
 
 ⚠️ PENDIENTE: Ingresar efectivo real para completar arqueo`,
                 cierre_automatico: true
@@ -8500,8 +9347,9 @@ async function ejecutarCierreAutomatico() {
             setTimeout(() => {
                 mostrarNotificacion(
                     `✅ Cierre automático completado para ${new Date(fechaHoy).toLocaleDateString('es-CL')}\n\n` +
-                    `💰 Total ventas: $${formatoMoneda(totalVentasConsolidado)}\n` +
-                    `💵 Efectivo esperado: $${formatoMoneda(efectivoEsperado)}\n\n` +
+                    `🏪 Ventas Local POS: $${formatoMoneda(totalVentas)}\n` +
+                    `📊 Consolidado informativo: $${formatoMoneda(totalVentasConsolidado)}\n` +
+                    `💵 Efectivo esperado local: $${formatoMoneda(efectivoEsperado)}\n\n` +
                     `⏳ Pendiente: Completar arqueo de efectivo real`,
                     'success',
                     12000
@@ -8673,6 +9521,7 @@ async function crearCierreRecuperado(fecha) {
         let repartoEfectivo = 0;
         let repartoTarjetas = 0;
         let repartoTransferencias = 0;
+        let repartoPagadoLocal = 0;
         let repartoTotal = 0;
         let cantidadPedidosReparto = 0;
         
@@ -8682,36 +9531,19 @@ async function crearCierreRecuperado(fecha) {
             
             if (!errorReparto && pedidosReparto && pedidosReparto.length > 0) {
                 cantidadPedidosReparto = pedidosReparto.length;
-                pedidosReparto.forEach(pedido => {
-                    const metodo = pedido.metodo_pago;
-                    const monto = parseFloat(pedido.total) || 0;
-                    const esTransferencia = metodo === 'TP' || metodo === 'TG' || metodo === 'T';
-                    const fechaContabilizar = new Date(pedido.fecha);
-                    
-                    if (esTransferencia && pedido.boleteada && pedido.fecha_boleta) {
-                        fechaContabilizar.setTime(new Date(pedido.fecha_boleta).getTime());
-                    } else if (metodo === 'TG') {
-                        fechaContabilizar.setTime(pedido.fecha_boleta ? new Date(pedido.fecha_boleta).getTime() : new Date(pedido.fecha).getTime());
-                    } else if (metodo === 'TP') {
-                        // TP sin boletear: cuenta en fecha del pedido (igual que actualizarResumenReparto)
-                        fechaContabilizar.setTime(new Date(pedido.fecha + 'T00:00:00').getTime());
-                    }
-                    
-                    const fechaContabilizar_str = fechaContabilizar.toISOString().split('T')[0];
-                    if (fechaContabilizar_str === fecha) {
-                        repartoTotal += monto;
-                        if (metodo === 'E') repartoEfectivo += monto;
-                        else if (metodo === 'DC') repartoTarjetas += monto;
-                        else if (esTransferencia) repartoTransferencias += monto;
-                    }
-                });
+                const resumenReparto = calcularResumenRepartoUnificado(pedidosReparto, fecha);
+                repartoEfectivo = resumenReparto.efectivo;
+                repartoTarjetas = resumenReparto.tarjetas;
+                repartoTransferencias = resumenReparto.transferencias;
+                repartoPagadoLocal = resumenReparto.pagadoLocal;
+                repartoTotal = resumenReparto.totalRecaudado;
             }
         } catch (errorReparto) {
             console.warn('⚠️ No se pudieron cargar datos de reparto para recuperación:', errorReparto);
         }
         
         const totalVentasConsolidado = totalVentas + repartoTotal;
-        const efectivoEsperado = ventasEfectivo + repartoEfectivo - totalGastos - totalPagosPersonal;
+        const efectivoEsperado = ventasEfectivo - totalGastos - totalPagosPersonal;
         
         // Preparar detalles formateados para JSON
         const detalleGastos = gastos ? gastos.map(g => ({
@@ -8732,7 +9564,7 @@ async function crearCierreRecuperado(fecha) {
             total: p.total_pago
         })) : [];
         
-        // Consolidar POS + Reparto en columnas existentes (igual que ejecutarCierreAutomatico)
+        // Consolidado solo como dato informativo; cierre principal del POS local.
         const efectivoConsolidado = ventasEfectivo + repartoEfectivo;
         const transbankConsolidado = ventasTransbank + repartoTarjetas;
         const transferenciaConsolidada = ventasTransferencia + repartoTransferencias;
@@ -8742,15 +9574,21 @@ async function crearCierreRecuperado(fecha) {
             .from('cierres_diarios')
             .insert({
                 fecha: fecha,
-                total_ventas: totalVentasConsolidado,
-                ventas_efectivo: efectivoConsolidado,
-                ventas_transferencia: transferenciaConsolidada,
-                ventas_transbank: transbankConsolidado,
+                total_ventas: totalVentas,
+                ventas_efectivo: ventasEfectivo,
+                ventas_transferencia: ventasTransferencia,
+                ventas_transbank: ventasTransbank,
                 total_gastos: totalGastos,
                 detalle_gastos_json: {
                     gastos_operacionales: detalleGastos,
                     pagos_personal: detallePagosPersonal,
                     total_pagos_personal: totalPagosPersonal,
+                    resumen_consolidado: {
+                        total: totalVentasConsolidado,
+                        efectivo: efectivoConsolidado,
+                        transbank: transbankConsolidado,
+                        transferencia: transferenciaConsolidada
+                    },
                     desglose_ventas: {
                         pos: {
                             efectivo: ventasEfectivo,
@@ -8762,6 +9600,7 @@ async function crearCierreRecuperado(fecha) {
                             efectivo: repartoEfectivo,
                             tarjetas: repartoTarjetas,
                             transferencias: repartoTransferencias,
+                            pagado_local: repartoPagadoLocal,
                             total: repartoTotal,
                             cantidad_pedidos: cantidadPedidosReparto
                         }
@@ -8779,6 +9618,7 @@ async function crearCierreRecuperado(fecha) {
 
 📊 Datos recuperados:
 • Ventas Local: $${formatoMoneda(totalVentas)} (${ventas ? ventas.length : 0} ventas)
+• Consolidado informativo: $${formatoMoneda(totalVentasConsolidado)}
 • Reparto: $${formatoMoneda(repartoTotal)} (${cantidadPedidosReparto} pedidos)
   - Efectivo: $${formatoMoneda(repartoEfectivo)}
   - Tarjetas: $${formatoMoneda(repartoTarjetas)}
@@ -9176,7 +10016,7 @@ function renderKPIsHistorial() {
     }
     
     // Calcular KPIs
-    const totalVentas = datosHistorialCaja.reduce((sum, d) => sum + (d.total_ventas || 0), 0);
+    const totalVentas = datosHistorialCaja.reduce((sum, d) => sum + obtenerTotalConsolidadoCierre(d), 0);
     const totalGastos = datosHistorialCaja.reduce((sum, d) => sum + (d.total_gastos || 0), 0);
     const promedioDiario = totalVentas / datosHistorialCaja.length;
     
@@ -9185,8 +10025,8 @@ function renderKPIsHistorial() {
     let peorDia = datosHistorialCaja[0];
     
     datosHistorialCaja.forEach(dia => {
-        if ((dia.total_ventas || 0) > (mejorDia.total_ventas || 0)) mejorDia = dia;
-        if ((dia.total_ventas || 0) < (peorDia.total_ventas || 0)) peorDia = dia;
+        if (obtenerTotalConsolidadoCierre(dia) > obtenerTotalConsolidadoCierre(mejorDia)) mejorDia = dia;
+        if (obtenerTotalConsolidadoCierre(dia) < obtenerTotalConsolidadoCierre(peorDia)) peorDia = dia;
     });
     
     // Calcular tendencia (comparar primera mitad vs segunda mitad)
@@ -9200,8 +10040,8 @@ function renderKPIsHistorial() {
         const segundaMitad = datosHistorialCaja.slice(0, mitad);
         const primeraMitad = datosHistorialCaja.slice(mitad);
         
-        const promedioReciente = segundaMitad.reduce((sum, d) => sum + (d.total_ventas || 0), 0) / segundaMitad.length;
-        const promedioAnterior = primeraMitad.reduce((sum, d) => sum + (d.total_ventas || 0), 0) / primeraMitad.length;
+        const promedioReciente = segundaMitad.reduce((sum, d) => sum + obtenerTotalConsolidadoCierre(d), 0) / segundaMitad.length;
+        const promedioAnterior = primeraMitad.reduce((sum, d) => sum + obtenerTotalConsolidadoCierre(d), 0) / primeraMitad.length;
         
         if (promedioAnterior > 0) {
             tendencia = ((promedioReciente - promedioAnterior) / promedioAnterior) * 100;
@@ -9264,7 +10104,7 @@ function renderKPIsHistorial() {
             <div style="background: linear-gradient(135deg, hsl(38 92% 50% / 0.15), hsl(38 92% 50% / 0.05)); border: 2px solid hsl(38 92% 50% / 0.3); border-radius: 12px; padding: 20px; position: relative; overflow: hidden;">
                 <div style="position: absolute; top: -10px; right: -10px; font-size: 60px; opacity: 0.1;">🏆</div>
                 <p style="margin: 0; font-size: 13px; color: hsl(var(--muted-foreground)); font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px;">Mejor Día</p>
-                <p style="margin: 8px 0 4px; font-size: 32px; font-weight: 900; color: hsl(38 92% 50%); line-height: 1;">$${formatoMoneda(mejorDia.total_ventas || 0)}</p>
+                <p style="margin: 8px 0 4px; font-size: 32px; font-weight: 900; color: hsl(38 92% 50%); line-height: 1;">$${formatoMoneda(obtenerTotalConsolidadoCierre(mejorDia))}</p>
                 <p style="margin: 0; font-size: 12px; color: hsl(var(--muted-foreground));">
                     ${formatearFecha(mejorDia.fecha)}
                 </p>
@@ -9405,6 +10245,12 @@ function buscarEnHistorial() {
     }
 }
 
+function obtenerTotalConsolidadoCierre(cierre) {
+    return cierre?.detalle_gastos_json?.resumen_consolidado?.total
+        ?? ((cierre?.detalle_gastos_json?.desglose_ventas?.pos?.total ?? cierre?.total_ventas ?? 0)
+            + (cierre?.detalle_gastos_json?.desglose_ventas?.reparto?.total ?? 0));
+}
+
 /**
  * Renderizar gráfico de historial (con validación mejorada)
  */
@@ -9459,7 +10305,7 @@ function renderChartHistorial() {
         const fecha = new Date(d.fecha);
         return fecha.toLocaleDateString('es-CL', { day: '2-digit', month: 'short' });
     });
-    const ventas = datosOrdenados.map(d => d.total_ventas || 0);
+    const ventas = datosOrdenados.map(d => obtenerTotalConsolidadoCierre(d));
     const gastos = datosOrdenados.map(d => d.total_gastos || 0);
     
     chartHistorialVentas = new Chart(ctx, {
@@ -9654,7 +10500,7 @@ function renderTablaHistorialCaja() {
                 <div style="flex: 1; text-align: center;">
                     <div style="font-size: 11px; color: hsl(var(--muted-foreground)); font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px;">Total Ventas</div>
                     <div style="font-size: 26px; font-weight: 900; color: hsl(142 76% 36%); line-height: 1.2;">
-                        $${formatoMoneda(cierre.total_ventas || 0)}
+                        $${formatoMoneda((cierre.detalle_gastos_json?.resumen_consolidado?.total) ?? ((cierre.detalle_gastos_json?.desglose_ventas?.pos?.total ?? cierre.total_ventas ?? 0) + (cierre.detalle_gastos_json?.desglose_ventas?.reparto?.total ?? 0)))}
                     </div>
                 </div>
 
@@ -9701,7 +10547,7 @@ function renderTablaHistorialCaja() {
                         </div>
                         <div style="background: hsl(142 76% 36% / 0.08); border-radius: 8px; padding: 12px; text-align: center; border: 2px solid hsl(142 76% 36% / 0.3);">
                             <div style="font-size: 11px; color: hsl(142 76% 36%); font-weight: 700; margin-bottom: 4px;">📊 TOTAL</div>
-                            <div style="font-size: 18px; font-weight: 900; color: hsl(142 76% 36%);">$${formatoMoneda(cierre.total_ventas || 0)}</div>
+                            <div style="font-size: 18px; font-weight: 900; color: hsl(142 76% 36%);">$${formatoMoneda((cierre.detalle_gastos_json?.resumen_consolidado?.total) ?? ((cierre.detalle_gastos_json?.desglose_ventas?.pos?.total ?? cierre.total_ventas ?? 0) + (cierre.detalle_gastos_json?.desglose_ventas?.reparto?.total ?? 0)))}</div>
                         </div>
                     </div>
                 </div>
@@ -9712,8 +10558,7 @@ function renderTablaHistorialCaja() {
                     const repTarj = datos.reparto_tarjetas || 0;
                     const repTransf = datos.reparto_transferencias || 0;
                     if (repEf + repTarj + repTransf === 0) return '';
-                    // Para cierres nuevos, usar desglose.pos (ventas_efectivo ya es consolidado)
-                    // Para cierres viejos, ventas_efectivo era solo POS
+                    // Siempre usar el desglose POS cuando exista para evitar mezclar columnas históricas.
                     const posData = cierre.detalle_gastos_json?.desglose_ventas?.pos;
                     const posEf = posData ? (posData.efectivo || 0) : (cierre.ventas_efectivo || 0);
                     const posTarj = posData ? (posData.transbank || 0) : (cierre.ventas_transbank || 0);
@@ -9998,7 +10843,7 @@ async function completarArqueoPendiente(fecha, index) {
         const confirmar = confirm(
             `¿Confirmar arqueo del cierre automático?\\n\\n` +
             `­ƒôà Fecha: ${new Date(fecha).toLocaleDateString('es-CL')}\\n` +
-            `­ƒÆ░ Total Ventas: $${formatoMoneda(cierre.total_ventas || 0)}\\n\\n` +
+            `­ƒÆ░ Total Ventas: $${formatoMoneda((cierre.detalle_gastos_json?.resumen_consolidado?.total) ?? ((cierre.detalle_gastos_json?.desglose_ventas?.pos?.total ?? cierre.total_ventas ?? 0) + (cierre.detalle_gastos_json?.desglose_ventas?.reparto?.total ?? 0)))}\n\n` +
             `­ƒÆÁ Efectivo Esperado: $${formatoMoneda(efectivoEsperado)}\\n` +
             `­ƒÆÁ Efectivo Real: $${formatoMoneda(efectivoReal)}\\n` +
             `­ƒôè Diferencia: ${estadoTexto}\\n\\n` +
@@ -10304,6 +11149,215 @@ async function cargarDatosReparto() {
 }
 
 /**
+ * Clasificar un pedido de reparto por medio de pago para el POS.
+ * Regla correcta de caja:
+ * - PE suma a efectivo
+ * - PC suma a tarjetas
+ * - PX reparte entre efectivo y tarjetas según notas
+ */
+function obtenerDesglosePagoPedidoReparto(pedido) {
+    const metodo = String(pedido?.metodo_pago || pedido?.metodo || 'E').trim().toUpperCase();
+    const notas = typeof pedido?.notas === 'string' ? pedido.notas : '';
+    const total = parseFloat(pedido?.total) || 0;
+    const esTransferencia = ['TP', 'TG', 'T'].includes(metodo) || metodo.includes('TRANSF');
+
+    const extraerMonto = (expresion) => {
+        const match = notas.match(expresion);
+        if (!match) return 0;
+        return parseInt(match[1].replace(/\./g, '').replace(/,/g, ''), 10) || 0;
+    };
+
+    if (metodo === 'PM') {
+        const efectivo = extraerMonto(/(\d+[\.,]?\d*)\s*(?:efectivo|efec|pesos|$)/i);
+        const transferenciasPendientes = Math.max(total - efectivo, 0);
+        return {
+            efectivo,
+            tarjetas: 0,
+            transferencias: transferenciasPendientes,
+            transferenciasPendientes,
+            transferenciasPagadas: 0,
+            pagadoLocal: 0
+        };
+    }
+
+    if (metodo === 'PMP') {
+        const efectivo = extraerMonto(/(\d+[\.,]?\d*)\s*(?:efectivo|efec|pesos|$)/i);
+        const transferenciasPagadas = Math.max(total - efectivo, 0);
+        return {
+            efectivo,
+            tarjetas: 0,
+            transferencias: transferenciasPagadas,
+            transferenciasPendientes: 0,
+            transferenciasPagadas,
+            pagadoLocal: 0
+        };
+    }
+
+    if (notas.includes('PAGO MIXTO:')) {
+        const efectivo = extraerMonto(/💵 Efectivo:\s*\$?([0-9.,]+)/i);
+        const tarjetas = extraerMonto(/💳 Tarjeta:\s*\$?([0-9.,]+)/i);
+        const transferenciasPagadas = extraerMonto(/✅ Transferencia PAGADA:\s*\$?([0-9.,]+)/i);
+        const transferenciasPendientes = extraerMonto(/🔄 Transferencia:\s*\$?([0-9.,]+)/i);
+        return {
+            efectivo,
+            tarjetas,
+            transferencias: transferenciasPagadas + transferenciasPendientes,
+            transferenciasPendientes,
+            transferenciasPagadas,
+            pagadoLocal: 0
+        };
+    }
+
+    if (metodo === 'PE' || metodo === 'PC' || metodo === 'PX' || metodo === 'P') {
+        return {
+            efectivo: 0,
+            tarjetas: 0,
+            transferencias: 0,
+            transferenciasPendientes: 0,
+            transferenciasPagadas: 0,
+            pagadoLocal: total
+        };
+    }
+
+    if (metodo === 'E' || metodo.includes('EFECTIVO')) {
+        return {
+            efectivo: total,
+            tarjetas: 0,
+            transferencias: 0,
+            transferenciasPendientes: 0,
+            transferenciasPagadas: 0,
+            pagadoLocal: 0
+        };
+    }
+
+    if (metodo === 'DC' || metodo.includes('TARJETA') || metodo.includes('DEBITO') || metodo.includes('CREDITO')) {
+        return {
+            efectivo: 0,
+            tarjetas: total,
+            transferencias: 0,
+            transferenciasPendientes: 0,
+            transferenciasPagadas: 0,
+            pagadoLocal: 0
+        };
+    }
+
+    if (esTransferencia) {
+        const transferenciasPendientes = metodo === 'TP' || metodo === 'T' ? total : 0;
+        const transferenciasPagadas = transferenciasPendientes > 0 ? 0 : total;
+        return {
+            efectivo: 0,
+            tarjetas: 0,
+            transferencias: total,
+            transferenciasPendientes,
+            transferenciasPagadas,
+            pagadoLocal: 0
+        };
+    }
+
+    return {
+        efectivo: total,
+        tarjetas: 0,
+        transferencias: 0,
+        transferenciasPendientes: 0,
+        transferenciasPagadas: 0,
+        pagadoLocal: 0
+    };
+}
+
+function obtenerTotalPedidoReparto(pedido) {
+    if (typeof pedido?.total === 'number') return pedido.total;
+    if (typeof pedido?.total === 'string') return parseInt(pedido.total, 10) || 0;
+    if (typeof pedido?.precio === 'number') return pedido.precio;
+    if (typeof pedido?.precio === 'string') return parseInt(pedido.precio, 10) || 0;
+    return 0;
+}
+
+function obtenerFechaContabilizacionActualReparto(pedido) {
+    const metodo = String(pedido?.metodo_pago || pedido?.metodo || 'E').trim().toUpperCase();
+    const esTransferencia = ['TP', 'TG', 'T'].includes(metodo) || metodo.includes('TRANSF');
+
+    if (esTransferencia && pedido.boleteada && pedido.fecha_boleta) {
+        return new Date(pedido.fecha_boleta);
+    }
+
+    if (metodo === 'TG' || metodo.includes('TRANSF')) {
+        if (pedido.fecha_boleta) {
+            return new Date(pedido.fecha_boleta);
+        }
+        if (pedido.updated_at) {
+            return new Date(pedido.updated_at);
+        }
+        if (pedido.fecha) {
+            return new Date(pedido.fecha + 'T00:00:00');
+        }
+        return new Date(pedido.created_at);
+    }
+
+    if (metodo === 'TP' || metodo === 'T') {
+        return new Date(pedido.fecha + 'T00:00:00');
+    }
+
+    return new Date(pedido.fecha + 'T00:00:00');
+}
+
+function calcularResumenRepartoUnificado(pedidos, fechaHoy) {
+    const resumen = {
+        efectivo: 0,
+        tarjetas: 0,
+        transferencias: 0,
+        transferenciasPendientes: 0,
+        transferenciasPagadas: 0,
+        pagadoLocal: 0,
+        totalRecaudado: 0,
+        totalContable: 0,
+        cantidadContabilizados: 0,
+        cantidadPendientes: 0
+    };
+
+    if (!Array.isArray(pedidos) || pedidos.length === 0) {
+        return resumen;
+    }
+
+    const hoy = fechaHoy ? new Date(fechaHoy + 'T00:00:00') : new Date();
+    hoy.setHours(0, 0, 0, 0);
+    const manana = new Date(hoy);
+    manana.setDate(manana.getDate() + 1);
+
+    pedidos.forEach(pedido => {
+        if (!pedido.entregado || pedido.estado === 'ANULADO') {
+            const fechaPedido = pedido.fecha ? pedido.fecha.split('T')[0] : null;
+            const fechaHoyStr = fechaHoy || new Date().toISOString().split('T')[0];
+            if (!pedido.entregado && fechaPedido === fechaHoyStr) {
+                resumen.cantidadPendientes += 1;
+            }
+            return;
+        }
+
+        const fechaContabilizar = obtenerFechaContabilizacionActualReparto(pedido);
+        if (!(fechaContabilizar >= hoy && fechaContabilizar < manana)) {
+            return;
+        }
+
+        const total = obtenerTotalPedidoReparto(pedido);
+        if (total <= 0) return;
+
+        resumen.cantidadContabilizados += 1;
+        const desglose = obtenerDesglosePagoPedidoReparto(pedido);
+        resumen.efectivo += desglose.efectivo || 0;
+        resumen.tarjetas += desglose.tarjetas || 0;
+        resumen.transferencias += desglose.transferencias || 0;
+        resumen.transferenciasPendientes += desglose.transferenciasPendientes || 0;
+        resumen.transferenciasPagadas += desglose.transferenciasPagadas || 0;
+        resumen.pagadoLocal += desglose.pagadoLocal || 0;
+    });
+
+    resumen.totalRecaudado = resumen.efectivo + resumen.tarjetas + resumen.transferencias;
+    resumen.totalContable = resumen.totalRecaudado + resumen.pagadoLocal;
+
+    return resumen;
+}
+
+/**
  * Actualizar resumen de reparto en el panel con lógica de contabilización
  */
 function actualizarResumenReparto(pedidos, fechaHoy) {
@@ -10312,6 +11366,8 @@ function actualizarResumenReparto(pedidos, fechaHoy) {
         document.getElementById('totalRecaudadoReparto').textContent = 'N/A';
         document.getElementById('repartoEfectivo').textContent = 'N/A';
         document.getElementById('repartoTarjetas').textContent = 'N/A';
+        document.getElementById('repartoTransferencias').textContent = 'N/A';
+        document.getElementById('repartoPagadoLocal').textContent = 'N/A';
         document.getElementById('repartoPendientesCantidad').textContent = '0';
         document.getElementById('repartoPendientesMonto').textContent = '$0';
         document.getElementById('repartoPagadasCantidad').textContent = '0';
@@ -10324,6 +11380,8 @@ function actualizarResumenReparto(pedidos, fechaHoy) {
         document.getElementById('totalRecaudadoReparto').textContent = '$0';
         document.getElementById('repartoEfectivo').textContent = '$0';
         document.getElementById('repartoTarjetas').textContent = '$0';
+        document.getElementById('repartoTransferencias').textContent = '$0';
+        document.getElementById('repartoPagadoLocal').textContent = '$0';
         document.getElementById('repartoPendientesCantidad').textContent = '0';
         document.getElementById('repartoPendientesMonto').textContent = '$0';
         document.getElementById('repartoPagadasCantidad').textContent = '0';
@@ -10331,12 +11389,8 @@ function actualizarResumenReparto(pedidos, fechaHoy) {
         return;
     }
 
-    // Calcular estadísticas con lógica de contabilización
-    let efectivo = 0;
-    let tarjetas = 0;
-    let transferencias = 0;
+    const resumen = calcularResumenRepartoUnificado(pedidos, fechaHoy);
     let pendientes = [];
-    let contabilizadosHoy = [];
 
     const hoy = fechaHoy ? new Date(fechaHoy + 'T00:00:00') : new Date();
     const manana = new Date(hoy);
@@ -10361,79 +11415,29 @@ function actualizarResumenReparto(pedidos, fechaHoy) {
 
         const total = pedido.total || 0;
         const metodo = pedido.metodo_pago || pedido.metodo || 'E';
-
-        console.log(`­ƒöÄ Evaluando: ${pedido.nombre} | Método: ${metodo} | Total: $${total} | Entregado: ${pedido.entregado} | Boleteada: ${pedido.boleteada}`);
-
-        // ============================================================
-        // LÓGICA DE FECHA DE CONTABILIZACIÓN (IGUAL QUE EN REPARTO)
-        // ============================================================
-        let fechaContabilizar;
-        const esTransferencia = ['TP', 'TG', 'T', 'P'].includes(metodo) || metodo.includes('TRANSF');
-
-        if (esTransferencia && pedido.boleteada && pedido.fecha_boleta) {
-            // CASO 1: TPÔåÆTG (confirmada) ÔåÆ cuenta día de CONFIRMACIÓN
-            fechaContabilizar = new Date(pedido.fecha_boleta);
-            console.log(`­ƒÆ░ Transferencia CONFIRMADA: ${pedido.nombre} - $${total} cuenta para ${fechaContabilizar.toLocaleDateString('es-CL')}`);
-        } else if (metodo === 'TG' || metodo.includes('TRANSF')) {
-            // CASO 2: TG (Transferencia Pagada) ÔåÆ cuenta día de ENTREGA (si está entregado)
-            if (pedido.fecha_boleta) {
-                fechaContabilizar = new Date(pedido.fecha_boleta);
-                console.log(`Ô£à Transferencia PAGADA con fecha_boleta: ${pedido.nombre} - $${total} cuenta para ${fechaContabilizar.toLocaleDateString('es-CL')}`);
-            } else if (pedido.fecha) {
-                fechaContabilizar = new Date(pedido.fecha + 'T00:00:00');
-                console.log(`Ô£à Transferencia PAGADA entregada: ${pedido.nombre} - $${total} cuenta para ${fechaContabilizar.toLocaleDateString('es-CL')}`);
-            } else {
-                fechaContabilizar = new Date(pedido.created_at);
-                console.log(`Ô£à Transferencia PAGADA desde inicio: ${pedido.nombre} - $${total} cuenta para ${fechaContabilizar.toLocaleDateString('es-CL')}`);
-            }
-        } else if (metodo === 'TP' || metodo === 'T') {
-            // CASO 3: TP (Transferencia Pendiente) ÔåÆ SÍ CUENTA usando fecha del pedido
-            fechaContabilizar = new Date(pedido.fecha + 'T00:00:00');
-            console.log(`­ƒÆ© Transferencia PENDIENTE (sin boleta): ${pedido.nombre} - $${total} cuenta para ${fechaContabilizar.toLocaleDateString('es-CL')}`);
-        } else {
-            // CASO 4: Otros métodos (E, DC) ÔåÆ cuenta día de ENTREGA
-            fechaContabilizar = new Date(pedido.fecha + 'T00:00:00');
-        }
+        const fechaContabilizar = obtenerFechaContabilizacionActualReparto(pedido);
 
         // Verificar si cuenta para HOY
         if (fechaContabilizar >= hoy && fechaContabilizar < manana) {
-            contabilizadosHoy.push(pedido);
-
-            // Contabilizar por método de pago (IGUAL QUE EN REPARTO)
-            if (metodo === 'E' || metodo.toLowerCase().includes('efectivo')) {
-                efectivo += total;
-            } else if (metodo === 'DC' || metodo.toLowerCase().includes('tarjeta') || metodo.toLowerCase().includes('debito') || metodo.toLowerCase().includes('credito')) {
-                tarjetas += total;
-            } else if (esTransferencia) {
-                transferencias += total;
-            } else {
-                // Por defecto contar como efectivo
-                efectivo += total;
-            }
-
             console.log(`Ô£à CUENTA HOY: ${pedido.nombre} - ${metodo} - $${total}`);
         } else {
             console.log(`ÔÅ¡´©Å NO cuenta hoy (fecha: ${fechaContabilizar ? fechaContabilizar.toLocaleDateString('es-CL') : 'N/A'}): ${pedido.nombre} - ${metodo} - $${total}`);
         }
     });
 
-    const totalRecaudado = efectivo + tarjetas + transferencias;
+    const totalRecaudado = resumen.totalRecaudado;
     const montoPendientes = pendientes.reduce((sum, p) => sum + (p.total || 0), 0);
-    
-    // Calcular transferencias pendientes del total de pendientes
-    const transferenciasPendientes = pendientes.filter(p => {
-        const metodo = p.metodo_pago || p.metodo || 'E';
-        return ['TP', 'TG', 'T', 'P'].includes(metodo) || metodo.includes('TRANSF');
-    }).reduce((sum, p) => sum + (p.total || 0), 0);
+    const transferenciasPendientes = resumen.transferenciasPendientes;
 
     console.log('ÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉ');
     console.log(`­ƒôè RESUMEN REPARTO CONTABILIZACIÓN:`);
     console.log(`   ­ƒôÑ Pedidos recibidos: ${pedidos.length}`);
-    console.log(`   Ô£à Contabilizados HOY: ${contabilizadosHoy.length}`);
+    console.log(`   Ô£à Contabilizados HOY: ${resumen.cantidadContabilizados}`);
     console.log(`   ÔÅ│ Pendientes: ${pendientes.length}`);
-    console.log(`   ­ƒÆÁ Efectivo: $${efectivo.toLocaleString('es-CL')}`);
-    console.log(`   ­ƒÆ│ Tarjetas: $${tarjetas.toLocaleString('es-CL')}`);
-    console.log(`   ­ƒÅª Transferencias: $${transferencias.toLocaleString('es-CL')}`);
+    console.log(`   ­ƒÆÁ Efectivo: $${resumen.efectivo.toLocaleString('es-CL')}`);
+    console.log(`   ­ƒÆ│ Tarjetas: $${resumen.tarjetas.toLocaleString('es-CL')}`);
+    console.log(`   ­ƒÅª Transferencias: $${resumen.transferencias.toLocaleString('es-CL')}`);
+    console.log(`   🏪 Pagado en local: $${resumen.pagadoLocal.toLocaleString('es-CL')}`);
     console.log(`   ÔÅ│ Transf. Pendientes: $${transferenciasPendientes.toLocaleString('es-CL')}`);
     console.log(`   ­ƒÆ░ TOTAL RECAUDADO: $${totalRecaudado.toLocaleString('es-CL')}`);
     console.log('ÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉ');
@@ -10441,39 +11445,45 @@ function actualizarResumenReparto(pedidos, fechaHoy) {
     // Guardar en variable global (preservar efectivoConfirmado si ya fue rendido)
     const confirmadoPrevio = repartoDelDia.efectivoConfirmado;
     repartoDelDia = {
-        efectivo,
-        tarjetas,
-        transferencias,
+        efectivo: resumen.efectivo,
+        tarjetas: resumen.tarjetas,
+        transferencias: resumen.transferencias,
         transferencias_pendientes: transferenciasPendientes,
-        total: totalRecaudado
+        transferencias_pagadas: resumen.transferenciasPagadas,
+        pagado_local: resumen.pagadoLocal,
+        total: totalRecaudado,
+        total_contable: resumen.totalContable
     };
     if (confirmadoPrevio !== undefined) repartoDelDia.efectivoConfirmado = confirmadoPrevio;
 
     // Sincronizar bloque de rendición con el efectivo calculado
     const rendicionEsperadoEl = document.getElementById('rendicionEsperado');
-    if (rendicionEsperadoEl) rendicionEsperadoEl.textContent = '$' + formatoMoneda(efectivo);
+    if (rendicionEsperadoEl) rendicionEsperadoEl.textContent = '$' + formatoMoneda(resumen.efectivo);
     // Recalcular diferencia si ya había un monto ingresado
     calcularDiferenciaRendicion();
 
     // Actualizar UI
     document.getElementById('totalRecaudadoReparto').textContent = '$' + formatoMoneda(totalRecaudado);
-    document.getElementById('repartoEfectivo').textContent = '$' + formatoMoneda(efectivo);
-    document.getElementById('repartoTarjetas').textContent = '$' + formatoMoneda(tarjetas);
+    document.getElementById('repartoEfectivo').textContent = '$' + formatoMoneda(resumen.efectivo);
+    document.getElementById('repartoTarjetas').textContent = '$' + formatoMoneda(resumen.tarjetas);
     const elRepartoTransf = document.getElementById('repartoTransferencias');
-    if (elRepartoTransf) elRepartoTransf.textContent = '$' + formatoMoneda(transferencias);
+    if (elRepartoTransf) elRepartoTransf.textContent = '$' + formatoMoneda(resumen.transferencias);
+    const elRepartoPagadoLocal = document.getElementById('repartoPagadoLocal');
+    if (elRepartoPagadoLocal) elRepartoPagadoLocal.textContent = '$' + formatoMoneda(resumen.pagadoLocal);
     document.getElementById('repartoPendientesCantidad').textContent = pendientes.length;
     document.getElementById('repartoPendientesMonto').textContent = '$' + formatoMoneda(montoPendientes);
-    document.getElementById('repartoPagadasCantidad').textContent = contabilizadosHoy.length;
-    document.getElementById('repartoPagadasMonto').textContent = '$' + formatoMoneda(totalRecaudado);
+    document.getElementById('repartoPagadasCantidad').textContent = resumen.cantidadContabilizados;
+    document.getElementById('repartoPagadasMonto').textContent = '$' + formatoMoneda(resumen.totalContable);
 
     console.log('­ƒôè Resumen reparto actualizado:', {
         total: totalRecaudado,
-        efectivo,
-        tarjetas,
-        transferencias,
+        efectivo: resumen.efectivo,
+        tarjetas: resumen.tarjetas,
+        transferencias: resumen.transferencias,
+        pagado_local: resumen.pagadoLocal,
         transferencias_pendientes: transferenciasPendientes,
         pendientes: pendientes.length,
-        contabilizadosHoy: contabilizadosHoy.length
+        contabilizadosHoy: resumen.cantidadContabilizados
     });
     
     // Actualizar totales consolidados (POS + Reparto)
@@ -11673,6 +12683,224 @@ async function guardarNuevoProducto() {
 
 let productoSeleccionado = null; // Producto al que se asignará el código
 let productosSinCodigo = [];
+let productosConCodigoAsignados = [];
+let ultimoEscaneoAsignacion = null;
+
+function guardarUltimoEscaneoAsignacion(data) {
+    ultimoEscaneoAsignacion = {
+        ...data,
+        fecha: new Date().toISOString()
+    };
+
+    try {
+        localStorage.setItem('sabrofood_ultimo_escaneo_asignacion', JSON.stringify(ultimoEscaneoAsignacion));
+    } catch (error) {
+        console.warn('No se pudo persistir el último escaneo de asignación:', error);
+    }
+
+    renderUltimoEscaneoAsignacion();
+}
+
+function cargarUltimoEscaneoAsignacionGuardado() {
+    try {
+        const guardado = localStorage.getItem('sabrofood_ultimo_escaneo_asignacion');
+        ultimoEscaneoAsignacion = guardado ? JSON.parse(guardado) : null;
+    } catch (error) {
+        console.warn('No se pudo leer el último escaneo guardado:', error);
+        ultimoEscaneoAsignacion = null;
+    }
+
+    renderUltimoEscaneoAsignacion();
+}
+
+function limpiarUltimoEscaneoAsignacion() {
+    ultimoEscaneoAsignacion = null;
+
+    try {
+        localStorage.removeItem('sabrofood_ultimo_escaneo_asignacion');
+    } catch (error) {
+        console.warn('No se pudo limpiar el último escaneo guardado:', error);
+    }
+
+    renderUltimoEscaneoAsignacion();
+}
+
+function renderUltimoEscaneoAsignacion() {
+    const container = document.getElementById('asignarUltimoEscaneoBody');
+    if (!container) return;
+
+    if (!ultimoEscaneoAsignacion) {
+        container.textContent = 'Aún no hay escaneos registrados en esta sesión.';
+        return;
+    }
+
+    const fechaTexto = ultimoEscaneoAsignacion.fecha
+        ? new Date(ultimoEscaneoAsignacion.fecha).toLocaleString('es-CL', { timeZone: 'America/Santiago' })
+        : 'Sin fecha';
+
+    const estadoClase = ultimoEscaneoAsignacion.estado === 'guardado'
+        ? 'ok'
+        : ultimoEscaneoAsignacion.estado === 'duplicado'
+            ? 'warning'
+            : ultimoEscaneoAsignacion.estado === 'pendiente'
+                ? 'info'
+                : 'error';
+
+    container.innerHTML = `
+        <div class="asignar-last-scan-grid">
+            <div>
+                <span class="asignar-last-scan-label">Producto</span>
+                <strong>${escapeHtml(ultimoEscaneoAsignacion.producto || 'Sin producto')}</strong>
+            </div>
+            <div>
+                <span class="asignar-last-scan-label">Código</span>
+                <strong>${escapeHtml(ultimoEscaneoAsignacion.codigo || 'Sin código')}</strong>
+            </div>
+            <div>
+                <span class="asignar-last-scan-label">Estado</span>
+                <span class="asignar-inline-badge ${estadoClase}">${escapeHtml(ultimoEscaneoAsignacion.mensaje || 'Sin estado')}</span>
+            </div>
+            <div>
+                <span class="asignar-last-scan-label">Fecha</span>
+                <strong>${escapeHtml(fechaTexto)}</strong>
+            </div>
+        </div>
+    `;
+}
+
+function obtenerResumenCodigosDuplicados(productos) {
+    const conteo = {};
+
+    productos.forEach(producto => {
+        const codigo = String(producto.codigo_barras || '').trim();
+        if (!codigo) return;
+        conteo[codigo] = (conteo[codigo] || 0) + 1;
+    });
+
+    return new Set(
+        Object.entries(conteo)
+            .filter(([, cantidad]) => cantidad > 1)
+            .map(([codigo]) => codigo)
+    );
+}
+
+function actualizarResumenAsignacionCodigos() {
+    const sinCodigo = document.getElementById('asignarSinCodigoCount');
+    const conCodigo = document.getElementById('asignarConCodigoCount');
+    const duplicados = document.getElementById('asignarDuplicadosCount');
+
+    if (sinCodigo) sinCodigo.textContent = productosSinCodigo.length;
+    if (conCodigo) conCodigo.textContent = productosConCodigoAsignados.length;
+    if (duplicados) duplicados.textContent = obtenerResumenCodigosDuplicados(productosConCodigoAsignados).size;
+}
+
+async function cargarProductosConCodigoAsignado() {
+    try {
+        const { data, error } = await window.supabaseClient
+            .from('productos')
+            .select('id, nombre, marca, categoria, stock, codigo_barras, updated_at')
+            .not('codigo_barras', 'is', null)
+            .neq('codigo_barras', '')
+            .order('updated_at', { ascending: false })
+            .limit(5000);
+
+        if (error) throw error;
+
+        productosConCodigoAsignados = data || [];
+        renderProductosConCodigoAsignado(productosConCodigoAsignados);
+        actualizarResumenAsignacionCodigos();
+    } catch (error) {
+        manejarError(error, {
+            contexto: 'cargarProductosConCodigoAsignado',
+            mensajeUsuario: 'Error cargando productos con código'
+        });
+    }
+}
+
+function renderProductosConCodigoAsignado(productos) {
+    const container = document.getElementById('listaProductosConCodigo');
+    if (!container) return;
+
+    if (productos.length === 0) {
+        container.innerHTML = `
+            <div class="alert-info" style="padding: 24px; text-align: center;">
+                <h3 style="margin-bottom: 8px;">Aún no hay productos con código</h3>
+                <p>Cuando se asignen códigos aparecerán aquí.</p>
+            </div>
+        `;
+        return;
+    }
+
+    const codigosDuplicados = obtenerResumenCodigosDuplicados(productosConCodigoAsignados);
+
+    container.innerHTML = productos.map(producto => {
+        const codigo = String(producto.codigo_barras || '').trim();
+        const tieneDuplicado = codigosDuplicados.has(codigo);
+        const fechaActualizacion = producto.updated_at
+            ? new Date(producto.updated_at).toLocaleString('es-CL', { timeZone: 'America/Santiago' })
+            : 'Sin registro';
+
+        return `
+            <div class="product-row product-row-codigo">
+                <div style="flex: 1; min-width: 0;">
+                    <h4 style="font-size: 15px; font-weight: 600; margin: 0 0 4px 0;">${escapeHtml(producto.nombre)}</h4>
+                    <p style="font-size: 13px; color: hsl(var(--muted-foreground)); margin: 0 0 8px 0;">
+                        ${escapeHtml(producto.marca || 'Sin marca')} · ${escapeHtml(producto.categoria || 'Sin categoría')} · Stock: ${escapeHtml(String(producto.stock ?? 0))}
+                    </p>
+                    <div class="asignar-code-meta">
+                        <span class="asignar-code-pill">${escapeHtml(codigo)}</span>
+                        <span class="asignar-inline-badge ${tieneDuplicado ? 'warning' : 'ok'}">${tieneDuplicado ? 'Duplicado' : 'OK'}</span>
+                        <span class="asignar-code-date">Actualizado: ${escapeHtml(fechaActualizacion)}</span>
+                    </div>
+                </div>
+                <button class="btn btn-secondary" type="button" onclick="abrirEditorProductoDesdeAsignacion(${producto.id})">Editar</button>
+            </div>
+        `;
+    }).join('');
+}
+
+function filtrarProductosConCodigo() {
+    const query = String(document.getElementById('buscarConCodigo')?.value || '').toLowerCase();
+
+    const filtrados = productosConCodigoAsignados.filter(producto =>
+        String(producto.nombre || '').toLowerCase().includes(query) ||
+        String(producto.marca || '').toLowerCase().includes(query) ||
+        String(producto.categoria || '').toLowerCase().includes(query) ||
+        String(producto.codigo_barras || '').toLowerCase().includes(query)
+    );
+
+    renderProductosConCodigoAsignado(filtrados);
+}
+
+async function abrirEditorProductoDesdeAsignacion(productoId) {
+    try {
+        const { data, error } = await window.supabaseClient
+            .from('productos')
+            .select('*')
+            .eq('id', productoId)
+            .single();
+
+        if (error) throw error;
+
+        abrirModalEditar(data);
+    } catch (error) {
+        manejarError(error, {
+            contexto: 'abrirEditorProductoDesdeAsignacion',
+            mensajeUsuario: 'No se pudo abrir el producto para edición'
+        });
+    }
+}
+
+async function cargarPanelAsignacionCodigos() {
+    cargarUltimoEscaneoAsignacionGuardado();
+
+    await Promise.all([
+        cargarProductosSinCodigo(),
+        cargarProductosConCodigoAsignado()
+    ]);
+
+    actualizarResumenAsignacionCodigos();
+}
 
 async function cargarProductosSinCodigo() {
     try {
@@ -11691,6 +12919,7 @@ async function cargarProductosSinCodigo() {
         console.log(`Ô£à Encontrados ${productosSinCodigo.length} productos sin código`);
 
         renderProductosSinCodigo(productosSinCodigo);
+        actualizarResumenAsignacionCodigos();
 
     } catch (error) {
         manejarError(error, {
@@ -11765,6 +12994,8 @@ function seleccionarProductoParaCodigo(productoId) {
 function abrirEscanerAsignacion() {
     const modal = document.getElementById('modalEscaner');
     const rolMensaje = document.getElementById('rolMensaje');
+    scannerMode = 'asignar';
+    ocultarConfirmacionAsignacion();
 
     rolMensaje.innerHTML = `
         <strong>­ƒÄ» Asignando código a:</strong><br>
@@ -11775,36 +13006,47 @@ function abrirEscanerAsignacion() {
     modal.style.display = 'flex';
     modal.classList.add('show');
 
+    guardarUltimoEscaneoAsignacion({
+        producto: productoSeleccionado?.nombre || 'Sin producto',
+        codigo: codigoPendienteAsignacion || 'Pendiente de lectura',
+        estado: 'pendiente',
+        mensaje: 'Producto listo para escanear'
+    });
+
     // Iniciar escáner en modo asignación
     iniciarEscanerAsignacion();
 }
 
-function iniciarEscanerAsignacion() {
-    const config = {
-        fps: 10,
-        qrbox: { width: 250, height: 150 },
-        aspectRatio: 1.777778,
-        videoConstraints: {
-            facingMode: "environment"
-        }
-    };
+async function iniciarEscanerAsignacion() {
+    const reader = document.getElementById('reader');
+    if (reader) {
+        reader.style.display = '';
+    }
 
-    html5QrCode = new Html5Qrcode("reader");
-
-    html5QrCode.start(
-        { facingMode: "environment" },
-        config,
-        (decodedText, decodedResult) => {
-            console.log(`Ô£à Código escaneado: ${decodedText}`);
-            asignarCodigoAProducto(decodedText);
+    await iniciarEscanerBase(
+        (decodedText) => {
+            console.log(`✅ Código escaneado: ${decodedText}`);
+            mostrarConfirmacionAsignacion(decodedText);
         },
-        (errorMessage) => {
-            // Errores normales de escaneo
-        }
-    ).catch((err) => {
-        console.error('ÔØî Error iniciando escáner:', err);
-        mostrarNotificacion('Error al acceder a la cámara', 'error');
-    });
+        'Cámara lista. Enfoca el código físico del producto o sube una foto si el código es muy pequeño.'
+    );
+}
+
+async function volverAEscanearCodigoAsignacion() {
+    await reiniciarEscanerSegunModo();
+}
+
+async function confirmarAsignacionCodigo() {
+    const input = document.getElementById('codigoAsignacionConfirmado');
+    const codigoFinal = input?.value?.trim();
+
+    if (!codigoFinal) {
+        mostrarNotificacion('Ingresa o corrige el código antes de confirmar', 'warning');
+        input?.focus();
+        return;
+    }
+
+    await asignarCodigoAProducto(codigoFinal);
 }
 
 async function asignarCodigoAProducto(codigoBarra) {
@@ -11827,8 +13069,14 @@ async function asignarCodigoAProducto(codigoBarra) {
             .single();
 
         if (existente) {
-            mostrarNotificacion(`ÔÜá´©Å Este código ya está asignado a: ${existente.nombre}`, 'error');
-            cerrarEscaner();
+            mostrarNotificacion(`Este código ya está asignado a: ${existente.nombre}`, 'error');
+            actualizarEstadoEscaner('Ese código ya existe. Puedes corregirlo o volver a escanear.', 'error');
+            guardarUltimoEscaneoAsignacion({
+                producto: productoSeleccionado?.nombre || 'Sin producto',
+                codigo: codigoBarra,
+                estado: 'duplicado',
+                mensaje: `Duplicado con ${existente.nombre}`
+            });
             return;
         }
 
@@ -11840,12 +13088,19 @@ async function asignarCodigoAProducto(codigoBarra) {
 
         if (error) throw error;
 
-        mostrarNotificacion(`Ô£à Código asignado a ${productoSeleccionado.nombre}`, 'success');
+        mostrarNotificacion(`Código asignado a ${productoSeleccionado.nombre}`, 'success');
+
+        guardarUltimoEscaneoAsignacion({
+            producto: productoSeleccionado?.nombre || 'Sin producto',
+            codigo: codigoBarra,
+            estado: 'guardado',
+            mensaje: 'Código guardado correctamente'
+        });
 
         cerrarEscaner();
 
         // Recargar lista
-        await cargarProductosSinCodigo();
+        await cargarPanelAsignacionCodigos();
 
         productoSeleccionado = null;
 
@@ -11853,9 +13108,18 @@ async function asignarCodigoAProducto(codigoBarra) {
         manejarError(error, {
             contexto: 'asignarCodigoAProducto',
             mensajeUsuario: 'Error al asignar código',
-            callback: () => cerrarEscaner()
+            callback: () => actualizarEstadoEscaner('No se pudo asignar. Corrige el código o reintenta.', 'error')
+        });
+
+        guardarUltimoEscaneoAsignacion({
+            producto: productoSeleccionado?.nombre || 'Sin producto',
+            codigo: codigoBarra,
+            estado: 'error',
+            mensaje: 'Error al asignar el código'
         });
     }
+
+    scannerProcesando = false;
 }
 
 // ===================================

@@ -349,7 +349,7 @@ async function agregarSolicitudReposicion(productoId, nombreProducto, categoria)
  * Marcar solicitud como completada y descontar stock
  */
 async function completarSolicitud(solicitudId) {
-    const confirmar = confirm('¿Abrir saco? Esto descontará 1 unidad del stock.');
+    const confirmar = confirm('¿Abrir saco? Esto descontará 1 unidad del stock, incluso si queda negativo temporalmente.');
     if (!confirmar) return;
 
     try {
@@ -369,11 +369,6 @@ async function completarSolicitud(solicitudId) {
         if (errorProducto) throw errorProducto;
 
         const nuevoStock = (producto.stock || 0) - 1;
-
-        if (nuevoStock < 0) {
-            mostrarNotificacion('⚠️ Stock insuficiente para completar', 'warning');
-            return;
-        }
 
         // Actualizar stock del producto
         const { error: errorStock } = await window.supabaseClient
@@ -395,7 +390,7 @@ async function completarSolicitud(solicitudId) {
 
         if (error) throw error;
 
-        mostrarNotificacion('📦 Saco abierto - Stock descontado', 'success');
+        mostrarNotificacion('📦 Saco abierto - Stock actualizado aunque quede negativo', 'success');
 
         // Recargar todo
         await cargarSolicitudesReposicion();

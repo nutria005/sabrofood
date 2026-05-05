@@ -263,92 +263,95 @@
         <!-- MAIN CONTENT -->
         <main class="main-content">
             <!-- POS VIEW -->
-            <div id="posView" class="view-container">
-                <div class="view-header">
-                    <div class="view-title">
+            <div id="posView" class="view-container pos-view-shell">
+                <div class="view-header pos-view-header">
+                    <div class="view-title pos-view-title">
                         <h2>Punto de Venta</h2>
                         <p class="view-subtitle">Gestiona tus ventas</p>
                     </div>
-                    <div class="view-actions">
-                        <button class="btn btn-primary" onclick="abrirEscaner()" style="margin-right: 12px;">
+                    <div class="view-actions pos-view-actions">
+                        <button class="btn btn-primary btn-pos-scan" onclick="abrirEscaner()">
                             <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
                                 <rect x="3" y="3" width="18" height="18" rx="2" stroke="currentColor" stroke-width="2"/>
                                 <path d="M9 9h6M9 12h6M9 15h6" stroke="currentColor" stroke-width="2"/>
                             </svg>
                             <span>ESCANEAR</span>
                         </button>
+                        <div class="pos-header-badges">
+                            <span id="connectionStatus" class="connection-badge online" title="Estado de conexión">
+                                <span class="connection-dot"></span>
+                                <span class="connection-text">Online</span>
+                            </span>
 
-                        <span id="connectionStatus" class="connection-badge online" title="Estado de conexión">
-                            <span class="connection-dot"></span>
-                            <span class="connection-text">Online</span>
-                        </span>
+                            <span class="user-badge" id="topUsername">Usuario</span>
 
-                        <span class="user-badge" id="topUsername">Usuario</span>
-
-                        <button class="btn-logout-header" onclick="handleLogout()" title="Cerrar sesión">
-                            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                                <path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4"/>
-                                <polyline points="16 17 21 12 16 7"/>
-                                <line x1="21" y1="12" x2="9" y2="12"/>
-                            </svg>
-                        </button>
+                            <button class="btn-logout-header" onclick="handleLogout()" title="Cerrar sesión">
+                                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                    <path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4"/>
+                                    <polyline points="16 17 21 12 16 7"/>
+                                    <line x1="21" y1="12" x2="9" y2="12"/>
+                                </svg>
+                            </button>
+                        </div>
                     </div>
                 </div>
 
                 <div class="pos-layout">
                     <div class="pos-products">
-                        <!-- Barcode Scanner - PRINCIPAL -->
-                        <div class="search-box barcode-search-main">
-                            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" class="search-icon">
-                                <rect x="4" y="6" width="16" height="12" rx="2" stroke="currentColor" stroke-width="2" fill="none"/>
-                                <path d="M7 9h2M7 12h2M7 15h2M11 9v6M13 9v6M15 9v6M17 9v6" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
-                            </svg>
-                            <input type="text"
-                                   id="inputCodigoBarras"
-                                   placeholder="🔍 Escanea o escribe el código de barras aquí..."
-                                   class="search-input barcode-input"
-                                   autofocus
-                                   autocomplete="off">
-                            <button class="btn-clear-search" onclick="limpiarBusquedaCodigo()" style="display: none;">
-                                <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
-                                    <path d="M18 6L6 18M6 6l12 12" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+                        <div class="pos-discovery-stack">
+                            <!-- Barcode Scanner - PRINCIPAL -->
+                            <div class="search-box barcode-search-main">
+                                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" class="search-icon">
+                                    <rect x="4" y="6" width="16" height="12" rx="2" stroke="currentColor" stroke-width="2" fill="none"/>
+                                    <path d="M7 9h2M7 12h2M7 15h2M11 9v6M13 9v6M15 9v6M17 9v6" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
                                 </svg>
-                            </button>
-                        </div>
+                                <input type="text"
+                                       id="inputCodigoBarras"
+                                       placeholder="🔍 Escanea o escribe el código de barras aquí..."
+                                       class="search-input barcode-input"
+                                       autofocus
+                                       autocomplete="off">
+                                <button class="btn-clear-search" onclick="limpiarBusquedaCodigo()" style="display: none;">
+                                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
+                                        <path d="M18 6L6 18M6 6l12 12" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+                                    </svg>
+                                </button>
+                            </div>
 
-                        <!-- Search Manual (secundario) -->
-                        <div class="search-box search-secondary">
-                            <svg width="20" height="20" viewBox="0 0 20 20" fill="none" class="search-icon">
-                                <circle cx="9" cy="9" r="6" stroke="currentColor" stroke-width="2"/>
-                                <path d="M13 13l4 4" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
-                            </svg>
-                            <input type="text"
-                                   id="searchInput"
-                                   placeholder="O busca por nombre..."
-                                   class="search-input">
-                            <button class="btn-clear-search" onclick="limpiarBusquedaTexto()" style="display: none;" title="Limpiar búsqueda">
-                                <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
-                                    <path d="M18 6L6 18M6 6l12 12" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+                            <!-- Search Manual (secundario) -->
+                            <div class="search-box search-secondary">
+                                <svg width="20" height="20" viewBox="0 0 20 20" fill="none" class="search-icon">
+                                    <circle cx="9" cy="9" r="6" stroke="currentColor" stroke-width="2"/>
+                                    <path d="M13 13l4 4" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
                                 </svg>
-                            </button>
-                        </div>
+                                <input type="text"
+                                       id="searchInput"
+                                       placeholder="O busca por nombre..."
+                                       class="search-input">
+                                <button class="btn-clear-search" onclick="limpiarBusquedaTexto()" style="display: none;" title="Limpiar búsqueda">
+                                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
+                                        <path d="M18 6L6 18M6 6l12 12" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+                                    </svg>
+                                </button>
+                            </div>
 
-                        <!-- Categories -->
-                        <div class="categories-scroll">
-                            <button class="category-chip active" data-categoria="Todos" onclick="filtrarCategoria('Todos')">Todos</button>
-                            <button class="category-chip" onclick="abrirModalGranel()" style="background: hsl(var(--success)); color: white; border-color: hsl(var(--success));">🌾 Granel</button>
-                            <button class="category-chip" data-categoria="Adulto" onclick="filtrarCategoria('Adulto')">🐕 Perro Adulto</button>
-                            <button class="category-chip" data-categoria="Cachorro" onclick="filtrarCategoria('Cachorro')">🐶 Cachorro</button>
-                            <button class="category-chip" data-categoria="Senior" onclick="filtrarCategoria('Senior')">🦴 Senior</button>
-                            <button class="category-chip" data-categoria="Gato" onclick="filtrarCategoria('Gato')">🐈 Gato</button>
-                            <button class="category-chip" data-categoria="Gatito" onclick="filtrarCategoria('Gatito')">🐱 Gatito</button>
-                            <button class="category-chip" data-categoria="Arena" onclick="filtrarCategoria('Arena')">🏖️ Arena</button>
-                            <button class="category-chip" data-categoria="Snacks" onclick="filtrarCategoria('Snacks')">🍖 Snacks</button>
-                            <button class="category-chip" data-categoria="Accesorios" onclick="filtrarCategoria('Accesorios')">🎾 Accesorios</button>
+                            <!-- Categories -->
+                            <div class="categories-scroll pos-categories-strip">
+                                <button class="category-chip active" data-categoria="Todos" onclick="filtrarCategoria('Todos')">Todos</button>
+                                <button class="category-chip" onclick="abrirModalGranel()" style="background: hsl(var(--success)); color: white; border-color: hsl(var(--success));">🌾 Granel</button>
+                                <button class="category-chip" data-categoria="Adulto" onclick="filtrarCategoria('Adulto')">🐕 Perro Adulto</button>
+                                <button class="category-chip" data-categoria="Cachorro" onclick="filtrarCategoria('Cachorro')">🐶 Cachorro</button>
+                                <button class="category-chip" data-categoria="Senior" onclick="filtrarCategoria('Senior')">🦴 Senior</button>
+                                <button class="category-chip" data-categoria="Gato" onclick="filtrarCategoria('Gato')">🐈 Gato</button>
+                                <button class="category-chip" data-categoria="Gatito" onclick="filtrarCategoria('Gatito')">🐱 Gatito</button>
+                                <button class="category-chip" data-categoria="Arena" onclick="filtrarCategoria('Arena')">🏖️ Arena</button>
+                                <button class="category-chip" data-categoria="Snacks" onclick="filtrarCategoria('Snacks')">🍖 Snacks</button>
+                                <button class="category-chip" data-categoria="Accesorios" onclick="filtrarCategoria('Accesorios')">🎾 Accesorios</button>
+                            </div>
                         </div>
 
                         <!-- Products Grid -->
-                        <div class="products-grid" id="productosGrid">
+                        <div class="products-grid pos-products-grid" id="productosGrid">
                             <div class="loading-state">
                                 <div class="spinner"></div>
                                 <p>Cargando productos...</p>
@@ -357,14 +360,17 @@
                     </div>
 
                     <!-- Cart Sidebar -->
-                    <div class="pos-cart">
+                    <div class="pos-cart pos-cart-sheet">
                         <div class="cart-header">
                             <button class="btn-close-cart" onclick="cerrarCarritoMobile()" title="Cerrar carrito">
                                 <svg width="24" height="24" viewBox="0 0 20 20" fill="none">
                                     <path d="M15 5L5 15M5 5l10 10" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
                                 </svg>
                             </button>
-                            <h3>Carrito</h3>
+                            <div class="cart-header-copy">
+                                <h3>Carrito</h3>
+                                <span class="cart-header-caption">Revisa el pedido y cobra sin perder el contexto</span>
+                            </div>
                             <button class="btn-icon" onclick="limpiarCarrito()" title="Limpiar carrito">
                                 <svg width="18" height="18" viewBox="0 0 20 20" fill="none">
                                     <path d="M3 6h14M8 6V4a2 2 0 012-2h0a2 2 0 012 2v2m3 0v10a2 2 0 01-2 2H7a2 2 0 01-2-2V6h10z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
@@ -390,7 +396,7 @@
                                 <span>Total</span>
                                 <span class="total-amount" id="totalAmount">$0</span>
                             </div>
-                            <button class="btn btn-success btn-block" id="btnCobrar" onclick="abrirModalCobro()" disabled>
+                            <button class="btn btn-success btn-block btn-checkout-main" id="btnCobrar" onclick="abrirModalCobro()" disabled>
                                 <span>Procesar Pago</span>
                                 <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
                                     <path d="M7.5 15L12.5 10L7.5 5" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
@@ -402,13 +408,13 @@
             </div>
 
             <!-- INVENTORY VIEW -->
-            <div id="inventoryView" class="view-container" style="display: none;">
-                <div class="view-header">
-                    <div class="view-title">
+            <div id="inventoryView" class="view-container inventory-view-shell" style="display: none;">
+                <div class="view-header inventory-view-header">
+                    <div class="view-title inventory-view-title">
                         <h2>Gestión de Inventario</h2>
                         <p class="view-subtitle">Control de stock y productos</p>
                     </div>
-                    <div class="view-actions">
+                    <div class="view-actions inventory-view-actions">
                         <button class="btn-logout-header" onclick="handleLogout()" title="Cerrar sesión">
                             <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                                 <path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4"/>
@@ -419,8 +425,8 @@
                     </div>
                 </div>
 
-                <div class="inventory-content">
-                    <div class="inventory-stats">
+                <div class="inventory-content inventory-content-shell">
+                    <div class="inventory-stats inventory-stats-grid">
                         <div class="stat-card stat-card-clickable" onclick="filtrarInventario('todos')" data-filtro="todos" title="Ver todos los productos">
                             <div class="stat-icon bg-blue">
                                 <svg width="24" height="24" viewBox="0 0 20 20" fill="none">
@@ -481,40 +487,65 @@
                         </div>
                     </div>
 
-                    <div style="margin: 10px 0; padding: 15px; background: white; border-radius: 8px; box-shadow: 0 1px 3px rgba(0,0,0,0.1);">
-                        <!-- Filtros reorganizados en grid -->
-                        <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 15px; margin-bottom: 15px;">
-                            <div>
-                                <label for="filtroProveedor" style="display: block; margin-bottom: 6px; font-weight: 500; color: #374151; font-size: 14px;">
+                    <div class="inventory-toolbar-card inventory-toolbar-card-compact">
+                        <div class="inventory-search-row">
+                            <div class="inventory-search-field">
+                                <label for="buscadorProductos" class="inventory-filter-label">
+                                    🔎 Buscar producto para editar
+                                </label>
+                                <div class="inventory-search-input-wrap">
+                                    <input
+                                        type="text"
+                                        id="buscadorProductos"
+                                        class="inventory-search-input"
+                                        placeholder="Escribe nombre, proveedor, categoría o código..."
+                                        oninput="manejarBusquedaInventario()"
+                                        onkeydown="if(event.key === 'Enter') abrirPrimerResultadoInventario()"
+                                    >
+                                    <button
+                                        type="button"
+                                        id="btnLimpiarBusqueda"
+                                        class="inventory-search-clear"
+                                        onclick="limpiarBusquedaInventario()"
+                                        style="display: none;"
+                                        aria-label="Limpiar búsqueda"
+                                    >
+                                        ✕
+                                    </button>
+                                </div>
+                                <p class="inventory-search-hint">Tip: presiona Enter para abrir el primer producto encontrado.</p>
+                            </div>
+                        </div>
+                        <div class="inventory-filters-grid">
+                            <div class="inventory-filter-field">
+                                <label for="filtroProveedor" class="inventory-filter-label">
                                     📦 Proveedor
                                 </label>
-                                <select id="filtroProveedor" onchange="cargarInventario()" style="width: 100%; padding: 8px 12px; border: 1px solid #d1d5db; border-radius: 6px; font-size: 14px; background: white;">
+                                <select id="filtroProveedor" onchange="cargarInventario()" class="inventory-filter-select">
                                     <option value="">Todos los proveedores</option>
                                     <option value="Sin proveedor">Sin proveedor</option>
                                 </select>
                             </div>
-                            <div>
-                                <label for="filtroCategoria" style="display: block; margin-bottom: 6px; font-weight: 500; color: #374151; font-size: 14px;">
+                            <div class="inventory-filter-field">
+                                <label for="filtroCategoria" class="inventory-filter-label">
                                     📂 Categoría
                                 </label>
-                                <select id="filtroCategoria" onchange="cargarInventario()" style="width: 100%; padding: 8px 12px; border: 1px solid #d1d5db; border-radius: 6px; font-size: 14px; background: white;">
+                                <select id="filtroCategoria" onchange="cargarInventario()" class="inventory-filter-select">
                                     <option value="">Todas las categorías</option>
                                 </select>
                             </div>
-                            <div>
-                                <label for="filtroMarca" style="display: block; margin-bottom: 6px; font-weight: 500; color: #374151; font-size: 14px;">
+                            <div class="inventory-filter-field">
+                                <label for="filtroMarca" class="inventory-filter-label">
                                     🏷️ Marca
                                 </label>
-                                <select id="filtroMarca" onchange="cargarInventario()" style="width: 100%; padding: 8px 12px; border: 1px solid #d1d5db; border-radius: 6px; font-size: 14px; background: white;">
+                                <select id="filtroMarca" onchange="cargarInventario()" class="inventory-filter-select">
                                     <option value="">Todas las marcas</option>
                                 </select>
                             </div>
                         </div>
                         
-                        <!-- Botones reorganizados en dos secciones -->
-                        <div style="display: flex; gap: 20px; justify-content: space-between; align-items: flex-start;">
-                            <!-- Botones de acción principal -->
-                            <div style="display: flex; gap: 10px;">
+                        <div class="inventory-toolbar-actions">
+                            <div class="inventory-primary-actions">
                                 <button id="btnRegistrarMerma" class="btn btn-warning" onclick="abrirModalMerma()" style="display: none;">
                                     <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
                                         <path d="M10 6v4m0 4h.01M6 2l2 2m6-2l-2 2m-6 14h8a2 2 0 002-2V8l-6-6H6a2 2 0 00-2 2v12a2 2 0 002 2z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
@@ -529,8 +560,7 @@
                                 </button>
                             </div>
                             
-                            <!-- Botones de gestión de filtros -->
-                            <div style="display: flex; gap: 10px; flex-wrap: wrap;">
+                            <div class="inventory-secondary-actions">
                                 <button id="btnGestionarProveedores" class="btn btn-primary" onclick="abrirModalProveedores()" style="display: none;">
                                     <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
                                         <path d="M17 18.5V16c0-1.1-.9-2-2-2H5c-1.1 0-2 .9-2 2v2.5M15 7.5a3 3 0 11-6 0 3 3 0 016 0zM6 7.5a3 3 0 11-6 0 3 3 0 016 0z" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
@@ -551,9 +581,41 @@
                                 </button>
                             </div>
                         </div>
+
+                        <details class="inventory-tools-disclosure">
+                            <summary class="inventory-tools-summary">
+                                <span>Conteo rápido desde lista</span>
+                                <span class="inventory-tools-summary-note">Opcional</span>
+                            </summary>
+                            <div class="inventory-count-card inventory-count-card-inline">
+                                <div class="inventory-count-card-copy">
+                                    <p class="inventory-count-subtitle">Pega una lista como la que te envían por WhatsApp. El sistema intentará encontrar los productos y mostrará solo esos para actualizar stock directo en la tabla.</p>
+                                </div>
+                                <div class="inventory-count-layout">
+                                    <div class="inventory-count-input-wrap">
+                                        <label for="conteoRapidoLista" class="inventory-filter-label">Lista de productos a contar</label>
+                                        <textarea id="conteoRapidoLista" class="inventory-count-textarea" placeholder="Ejemplo:
+9 Ganacan 25 kg
+7 Compinches 25 kg
+3 Odwalla adulto 25 kg
+1 Champion adulto"></textarea>
+                                    </div>
+                                    <div class="inventory-count-actions">
+                                        <button class="btn btn-primary" onclick="aplicarListaConteoRapido()">
+                                            <span>Cargar Lista</span>
+                                        </button>
+                                        <button class="btn btn-secondary" onclick="limpiarConteoRapido()">
+                                            <span>Limpiar Conteo</span>
+                                        </button>
+                                    </div>
+                                </div>
+                                <div id="conteoRapidoResumen" class="inventory-count-summary">Sin conteo activo.</div>
+                                <div id="conteoRapidoNoEncontradosPanel" class="inventory-count-missing-panel" style="display: none;"></div>
+                            </div>
+                        </details>
                     </div>
 
-                    <div class="inventory-table-container">
+                    <div class="inventory-table-container inventory-table-shell">
                         <table class="inventory-table" id="inventoryTable">
                             <thead>
                                 <tr>
@@ -581,9 +643,9 @@
                     </div>
 
                     <!-- SECCIÓN: Historial de Mermas -->
-                    <div id="historialMermas" class="mermas-history-card" style="margin-top: 24px; display: none;">
-                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
-                            <h3 style="margin: 0; font-size: 18px; font-weight: 600;">📦 Historial de Mermas y Pérdidas</h3>
+                    <div id="historialMermas" class="mermas-history-card inventory-mermas-card" style="margin-top: 24px; display: none;">
+                        <div class="inventory-mermas-header">
+                            <h3 class="inventory-mermas-title">📦 Historial de Mermas y Pérdidas</h3>
                             <button class="btn btn-secondary" onclick="cargarHistorialMermas()">
                                 <svg width="16" height="16" viewBox="0 0 20 20" fill="none">
                                     <path d="M17 10a7 7 0 11-14 0 7 7 0 0114 0z" stroke="currentColor" stroke-width="2"/>
@@ -771,20 +833,78 @@
                 </div>
 
                 <div class="asignar-content">
-                    <!-- Search Box -->
-                    <div class="search-box" style="margin-bottom: 24px;">
-                        <svg width="20" height="20" viewBox="0 0 20 20" fill="none" class="search-icon">
-                            <circle cx="9" cy="9" r="6" stroke="currentColor" stroke-width="2"/>
-                            <path d="M13 13l4 4" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
-                        </svg>
-                        <input type="text" id="buscarAsignar" placeholder="Buscar productos sin código..." class="search-input" oninput="filtrarProductosAsignar()">
+                    <div class="asignar-dashboard-grid">
+                        <div class="asignar-stat-card">
+                            <span class="asignar-stat-label">Sin código</span>
+                            <strong class="asignar-stat-value" id="asignarSinCodigoCount">0</strong>
+                            <span class="asignar-stat-hint">Productos pendientes por asignar</span>
+                        </div>
+                        <div class="asignar-stat-card">
+                            <span class="asignar-stat-label">Con código</span>
+                            <strong class="asignar-stat-value" id="asignarConCodigoCount">0</strong>
+                            <span class="asignar-stat-hint">Productos ya listos para escanear</span>
+                        </div>
+                        <div class="asignar-stat-card">
+                            <span class="asignar-stat-label">Duplicados</span>
+                            <strong class="asignar-stat-value" id="asignarDuplicadosCount">0</strong>
+                            <span class="asignar-stat-hint">Códigos repetidos que conviene revisar</span>
+                        </div>
                     </div>
 
-                    <!-- Lista de Productos -->
-                    <div id="listaProductosAsignar" style="display: flex; flex-direction: column; gap: 12px;">
-                        <div class="loading-state">
-                            <div class="spinner"></div>
-                            <p>Cargando productos...</p>
+                    <div class="asignar-last-scan-card" id="asignarUltimoEscaneoCard">
+                        <div class="asignar-last-scan-header">
+                            <div>
+                                <h3>Último escaneo</h3>
+                                <p>Referencia rápida para saber qué se leyó y qué pasó después.</p>
+                            </div>
+                            <button class="btn btn-secondary" type="button" onclick="limpiarUltimoEscaneoAsignacion()">Limpiar</button>
+                        </div>
+                        <div id="asignarUltimoEscaneoBody" class="asignar-last-scan-body">
+                            Aún no hay escaneos registrados en esta sesión.
+                        </div>
+                    </div>
+
+                    <div class="asignar-section-card">
+                        <div class="asignar-section-header">
+                            <div>
+                                <h3>Productos sin código</h3>
+                                <p>Selecciona uno para iniciar el flujo de escaneo y confirmación.</p>
+                            </div>
+                        </div>
+                        <div class="search-box" style="margin-bottom: 24px;">
+                            <svg width="20" height="20" viewBox="0 0 20 20" fill="none" class="search-icon">
+                                <circle cx="9" cy="9" r="6" stroke="currentColor" stroke-width="2"/>
+                                <path d="M13 13l4 4" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+                            </svg>
+                            <input type="text" id="buscarAsignar" placeholder="Buscar productos sin código..." class="search-input" oninput="filtrarProductosAsignar()">
+                        </div>
+                        <div id="listaProductosAsignar" style="display: flex; flex-direction: column; gap: 12px;">
+                            <div class="loading-state">
+                                <div class="spinner"></div>
+                                <p>Cargando productos...</p>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="asignar-section-card">
+                        <div class="asignar-section-header">
+                            <div>
+                                <h3>Productos con código</h3>
+                                <p>Consulta qué ya fue asignado, detecta duplicados y abre edición si algo quedó mal.</p>
+                            </div>
+                        </div>
+                        <div class="search-box" style="margin-bottom: 24px;">
+                            <svg width="20" height="20" viewBox="0 0 20 20" fill="none" class="search-icon">
+                                <circle cx="9" cy="9" r="6" stroke="currentColor" stroke-width="2"/>
+                                <path d="M13 13l4 4" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+                            </svg>
+                            <input type="text" id="buscarConCodigo" placeholder="Buscar productos con código..." class="search-input" oninput="filtrarProductosConCodigo()">
+                        </div>
+                        <div id="listaProductosConCodigo" style="display: flex; flex-direction: column; gap: 12px;">
+                            <div class="loading-state">
+                                <div class="spinner"></div>
+                                <p>Cargando productos con código...</p>
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -1069,7 +1189,7 @@
                                 </div>
 
                             <div class="panel-header">
-                                <h3>🏪 Ventas del Día (Local POS)</h3>
+                                <h3>🏪 Caja Local POS</h3>
                                 <p class="panel-subtitle" id="cajaFechaHoy">Cargando...</p>
                             </div>
 
@@ -1108,11 +1228,6 @@
                                         </span>
                                         <span class="stat-value stat-transferencia" id="ventasTransferencia">$0</span>
                                     </div>
-                                    <!-- Desglose reparto en transferencias -->
-                                    <div id="desgloseTranferenciaReparto" style="display:none; padding: 6px 12px; background: hsl(var(--primary) / 0.07); border-radius: 6px; font-size: 12px; color: hsl(var(--muted-foreground)); display: flex; justify-content: space-between;">
-                                        <span>🏪 Local: <strong id="transferenciaLocal">$0</strong></span>
-                                        <span>🚚 Reparto: <strong id="transferenciaReparto" style="color: hsl(var(--primary));">$0</strong></span>
-                                    </div>
                                     <button onclick="abrirModalDetalleTransferencias(); event.stopPropagation();" style="background: linear-gradient(135deg, hsl(var(--primary)) 0%, hsl(var(--primary) / 0.8) 100%); color: white; border: none; padding: 10px 16px; border-radius: 8px; font-size: 13px; font-weight: 600; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 6px; transition: all 0.2s; box-shadow: 0 2px 4px rgba(0,0,0,0.1);" onmouseover="this.style.transform='translateY(-1px)'; this.style.boxShadow='0 4px 8px rgba(0,0,0,0.15)';" onmouseout="this.style.transform='translateY(0)'; this.style.boxShadow='0 2px 4px rgba(0,0,0,0.1)';" title="Ver lista detallada de transferencias para boletear">
                                         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                                             <path d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" stroke-linecap="round" stroke-linejoin="round"/>
@@ -1130,7 +1245,7 @@
                             <!-- Reparto / Delivery -->
                             <div class="panel-header" style="margin-top: 32px;">
                                 <h3>🚚 Reparto / Delivery</h3>
-                                <p class="panel-subtitle">Pedidos del sistema de reparto</p>
+                                <p class="panel-subtitle">Cobros y estados contables del sistema de reparto</p>
                             </div>
 
                             <div class="stats-summary">
@@ -1139,7 +1254,7 @@
                                         <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
                                             <path d="M1 1h4l2.68 13.39a2 2 0 002 1.61h9.72a2 2 0 002-1.61L23 6H6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
                                         </svg>
-                                        <strong>Total Recaudado Reparto</strong>
+                                        <strong>Total Caja Reparto</strong>
                                     </span>
                                     <span class="stat-value" style="color: hsl(var(--primary)); font-size: 24px;" id="totalRecaudadoReparto">$0</span>
                                 </div>
@@ -1174,11 +1289,20 @@
                                         </span>
                                         <span class="stat-value" style="font-size: 16px;" id="repartoTransferencias">$0</span>
                                     </div>
+                                    <div class="stat-row">
+                                        <span class="stat-label">
+                                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
+                                                <path d="M12 2v20M17 5H9.5a3.5 3.5 0 000 7h5a3.5 3.5 0 010 7H6" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+                                            </svg>
+                                            Pagado en local
+                                        </span>
+                                        <span class="stat-value" style="font-size: 16px;" id="repartoPagadoLocal">$0</span>
+                                    </div>
                                 </div>
 
                                 <div class="stat-row" style="margin-top: 12px; background: hsl(var(--warning) / 0.1); border-left: 3px solid hsl(var(--warning));">
                                     <span class="stat-label">
-                                        ⏳ Pendientes
+                                        ⏳ Transferencias pendientes
                                     </span>
                                     <span class="stat-value" style="color: hsl(var(--warning));">
                                         <span id="repartoPendientesCantidad">0</span> pedidos
@@ -1188,7 +1312,7 @@
 
                                 <div class="stat-row" style="background: hsl(var(--success) / 0.1); border-left: 3px solid hsl(var(--success));">
                                     <span class="stat-label">
-                                        ✅ Pagadas/Entregadas
+                                        ✅ Contabilizados hoy
                                     </span>
                                     <span class="stat-value" style="color: hsl(var(--success));">
                                         <span id="repartoPagadasCantidad">0</span> pedidos
@@ -1247,7 +1371,7 @@
                             <!-- Total General Destacado -->
                             <div style="background: linear-gradient(135deg, hsl(142 76% 36% / 0.15), hsl(142 76% 36% / 0.05)); border: 3px solid hsl(142 76% 36%); border-radius: 12px; padding: 28px; text-align: center; margin-bottom: 28px;">
                                 <p style="margin: 0 0 8px; font-size: 15px; font-weight: 700; color: hsl(142 76% 36%); text-transform: uppercase; letter-spacing: 1.5px;">
-                                    💰 Ventas Totales del Día
+                                    💰 Caja Total del Día
                                 </p>
                                 <p style="margin: 0; font-size: 52px; font-weight: 900; color: hsl(142 76% 36%); line-height: 1; text-shadow: 0 2px 4px rgba(0,0,0,0.05);" id="totalGeneralConsolidado">
                                     $0
@@ -1647,7 +1771,7 @@
         </main>
 
         <!-- MOBILE BOTTOM NAV -->
-        <nav class="bottom-nav">
+        <nav class="bottom-nav bottom-nav-shell">
             <button class="bottom-nav-item active" data-view="pos" onclick="cambiarVista('pos')">
                 <svg width="24" height="24" viewBox="0 0 20 20" fill="none">
                     <path d="M3 3h6v6H3V3zm8 0h6v6h-6V3zM3 11h6v6H3v-6zm8 0h6v6h-6v-6z" stroke="currentColor" stroke-width="2"/>
@@ -1701,7 +1825,7 @@
     <!-- MODAL: Checkout -->
     <div id="modalCobro" class="modal">
         <div class="modal-overlay" onclick="cerrarModalCobro()"></div>
-        <div class="modal-content modal-large">
+        <div class="modal-content modal-large checkout-modal-card">
             <div class="modal-header">
                 <h3>Procesar Pago</h3>
                 <button class="btn-close" onclick="cerrarModalCobro()">
@@ -1943,7 +2067,30 @@
                 <div class="alert alert-info" style="margin-bottom: 16px;">
                     <strong id="rolMensaje">Modo Vendedor:</strong> Escanea para agregar al carrito
                 </div>
+                <div class="scanner-toolbar">
+                    <button class="btn btn-secondary scanner-toolbar-btn" onclick="document.getElementById('inputImagenCodigo').click()">
+                        <span>Subir foto del código</span>
+                    </button>
+                    <span class="scanner-toolbar-tip">Para códigos pequeños: acércate, llena el recuadro y evita reflejos. Si falla, usa una foto.</span>
+                </div>
                 <div id="reader" style="width: 100%; max-width: 500px; margin: 0 auto;"></div>
+                <input type="file" id="inputImagenCodigo" accept="image/*" capture="environment" onchange="escanearCodigoDesdeImagen(event)" style="display: none;">
+                <div id="scannerConfirmacionAsignacion" class="scanner-confirm-card" style="display: none;">
+                    <div class="scanner-confirm-header">
+                        <h4>Confirmar código leído</h4>
+                        <p>Revisa el producto y el código antes de guardarlo definitivamente.</p>
+                    </div>
+                    <div class="scanner-confirm-product" id="scannerProductoAsignacion"></div>
+                    <div class="scanner-confirm-field">
+                        <label for="codigoAsignacionConfirmado">Código leído</label>
+                        <input type="text" id="codigoAsignacionConfirmado" class="form-input" placeholder="Código de barras leído">
+                        <small>Puedes corregirlo manualmente si el escáner leyó algo raro.</small>
+                    </div>
+                    <div class="scanner-confirm-actions">
+                        <button type="button" class="btn btn-secondary" onclick="volverAEscanearCodigoAsignacion()">Escanear de nuevo</button>
+                        <button type="button" class="btn btn-primary" onclick="confirmarAsignacionCodigo()">Confirmar y guardar</button>
+                    </div>
+                </div>
                 <div id="escanerStatus" style="margin-top: 16px; text-align: center; font-weight: 600;"></div>
             </div>
         </div>
@@ -2816,6 +2963,7 @@
             <circle cx="9" cy="21" r="1.5" fill="currentColor"/>
             <circle cx="18" cy="21" r="1.5" fill="currentColor"/>
         </svg>
+        <span class="cart-float-label">Carrito</span>
         <span id="badgeCarritoMobile" class="cart-badge" style="display: none;">0</span>
     </button>
 
