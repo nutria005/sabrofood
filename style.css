@@ -1913,6 +1913,37 @@ body {
   padding: 4px 8px;
 }
 
+.inventory-hidden-products-card {
+  margin-top: 12px;
+  padding: 14px 16px;
+  border: 1px dashed hsl(var(--border));
+  border-radius: 14px;
+  background: hsl(var(--secondary) / 0.35);
+}
+
+.inventory-hidden-products-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 14px;
+  font-weight: 600;
+  color: hsl(var(--foreground));
+  cursor: pointer;
+}
+
+.inventory-hidden-products-toggle input {
+  width: 16px;
+  height: 16px;
+  accent-color: hsl(var(--primary));
+}
+
+.inventory-hidden-products-copy {
+  margin: 10px 0 0;
+  font-size: 13px;
+  color: hsl(var(--muted-foreground));
+  line-height: 1.45;
+}
+
 .inventory-count-card {
   margin-bottom: 16px;
   padding: 16px;
@@ -2162,6 +2193,15 @@ body {
 
 .inventory-cell-actions {
   white-space: nowrap;
+}
+
+.inventory-row-inactive {
+  opacity: 0.82;
+}
+
+.badge-muted {
+  background: hsl(var(--muted) / 0.16);
+  color: hsl(var(--muted-foreground));
 }
 
 .inventory-quick-count {
@@ -4016,6 +4056,70 @@ body {
    =================================== */
 
 /* Campo de esc�ner principal */
+.barcode-search-panel {
+  margin-bottom: 12px;
+}
+
+.barcode-search-toggle {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  border: 1px solid hsl(var(--border));
+  background: linear-gradient(135deg, hsl(var(--card)) 0%, hsl(var(--muted) / 0.35) 100%);
+  border-radius: 12px;
+  padding: 14px 16px;
+  color: hsl(var(--foreground));
+  cursor: pointer;
+  margin-bottom: 10px;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease, background 0.2s ease;
+}
+
+.barcode-search-toggle:hover {
+  border-color: hsl(var(--primary) / 0.4);
+  box-shadow: 0 8px 18px hsl(var(--primary) / 0.08);
+}
+
+.barcode-search-toggle-copy {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  text-align: left;
+  min-width: 0;
+}
+
+.barcode-search-toggle-title {
+  font-size: 15px;
+  font-weight: 700;
+}
+
+.barcode-search-toggle-subtitle {
+  font-size: 12px;
+  color: hsl(var(--muted-foreground));
+}
+
+.barcode-search-toggle-text {
+  font-size: 12px;
+  font-weight: 700;
+  color: hsl(var(--primary));
+  margin-left: auto;
+}
+
+.barcode-search-toggle-icon {
+  flex: 0 0 auto;
+  color: hsl(var(--primary));
+  transition: transform 0.2s ease;
+}
+
+.barcode-search-panel.is-collapsed .barcode-search-toggle-icon {
+  transform: rotate(-90deg);
+}
+
+.barcode-search-panel-body[hidden] {
+  display: none !important;
+}
+
 .barcode-search-main {
   background: linear-gradient(135deg, hsl(var(--primary)) 0%, hsl(var(--primary) / 0.8) 100%);
   border: 2px solid hsl(var(--primary));
@@ -4053,18 +4157,77 @@ body {
 }
 
 .search-secondary {
-  opacity: 0.85;
+  opacity: 1;
   border: 1px solid hsl(var(--border));
-  margin-bottom: 16px;
+  background: linear-gradient(180deg, hsl(var(--card)) 0%, hsl(var(--muted) / 0.28) 100%);
+  border-radius: 16px;
+  box-shadow: 0 10px 24px hsl(var(--foreground) / 0.05), inset 0 1px 0 hsl(var(--background) / 0.7);
+  margin-bottom: 18px;
+  position: relative;
+  overflow: hidden;
 }
 
 .search-secondary:hover {
-  opacity: 1;
+  border-color: hsl(var(--primary) / 0.28);
+  box-shadow: 0 14px 30px hsl(var(--primary) / 0.08), inset 0 1px 0 hsl(var(--background) / 0.75);
+}
+
+.search-secondary::before {
+  content: '';
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 4px;
+  background: linear-gradient(180deg, hsl(var(--primary)) 0%, hsl(var(--accent)) 100%);
+  opacity: 0.85;
+}
+
+.search-secondary .search-icon {
+  color: hsl(var(--primary) / 0.7);
+  left: 18px;
+}
+
+.search-secondary .search-input {
+  background: transparent;
+  border: none;
+  min-height: 54px;
+  padding-left: 52px;
+  padding-right: 52px;
+  font-size: 16px;
+  font-weight: 500;
+  color: hsl(var(--foreground));
+}
+
+.search-secondary .search-input::placeholder {
+  color: hsl(var(--muted-foreground));
+  font-weight: 400;
+}
+
+.search-secondary .search-input:focus {
+  background: transparent;
+  box-shadow: none;
+}
+
+.search-secondary:focus-within {
+  border-color: hsl(var(--primary) / 0.42);
+  box-shadow: 0 0 0 3px hsl(var(--primary) / 0.12), 0 16px 30px hsl(var(--primary) / 0.1);
 }
 
 /* Asegurar padding correcto en search-secondary */
 .search-secondary .search-input {
   padding-right: 48px; /* Espacio para botón de limpiar */
+}
+
+.search-secondary .btn-clear-search {
+  right: 14px;
+  background: hsl(var(--primary) / 0.1);
+}
+
+.search-secondary .btn-clear-search:hover {
+  background: hsl(var(--primary) / 0.18);
+}
+
+.search-secondary .btn-clear-search svg {
+  color: hsl(var(--primary));
 }
 
 .btn-clear-search {
@@ -4109,6 +4272,23 @@ body {
 }
 
 @media (max-width: 768px) {
+  .pos-categories-shell {
+    gap: 6px;
+  }
+
+  .pos-categories-nav {
+    width: 34px;
+    height: 34px;
+  }
+
+  .barcode-search-toggle {
+    align-items: flex-start;
+  }
+
+  .barcode-search-toggle-text {
+    margin-left: 0;
+  }
+
   .barcode-search-main {
     padding: 14px 16px;
   }
@@ -4125,6 +4305,15 @@ body {
 
 /* Media query específico para móviles pequeños */
 @media (max-width: 480px) {
+  .pos-categories-nav {
+    width: 32px;
+    height: 32px;
+  }
+
+  .search-secondary {
+    border-radius: 14px;
+  }
+
   .search-icon {
     left: 14px; /* Acercar un poco el ícono en móviles */
   }
@@ -4901,6 +5090,43 @@ body {
 
 .pos-categories-strip {
   padding-top: 2px;
+}
+
+.pos-categories-shell {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.pos-categories-shell .pos-categories-strip {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.pos-categories-nav {
+  width: 38px;
+  height: 38px;
+  border-radius: 999px;
+  border: 1px solid hsl(var(--border));
+  background: hsl(var(--card));
+  color: hsl(var(--primary));
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+  cursor: pointer;
+  box-shadow: 0 8px 18px hsl(var(--foreground) / 0.06);
+  transition: transform 0.2s ease, box-shadow 0.2s ease, border-color 0.2s ease;
+}
+
+.pos-categories-nav:hover {
+  border-color: hsl(var(--primary) / 0.4);
+  box-shadow: 0 10px 22px hsl(var(--primary) / 0.12);
+  transform: translateY(-1px);
+}
+
+.pos-categories-nav:active {
+  transform: translateY(0);
 }
 
 .pos-products-grid {

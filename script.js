@@ -380,6 +380,9 @@ function deleteCookie(name) {
 let currentUser = '';
 let currentUserRole = ''; // 'vendedor' o 'encargado'
 let currentView = 'pos';
+let ventasComisionesCache = [];
+let itemsComisionesCache = [];
+const BARCODE_SEARCH_COLLAPSED_KEY = 'sabrofood:barcode-search-collapsed';
 let productos = [];
 let carrito = [];
 let totalVenta = 0;
@@ -1620,6 +1623,7 @@ async function cargarProductos() {
             const { data, error } = await window.supabaseClient
                 .from('productos')
                 .select('*')
+                .or('activo.is.null,activo.eq.true')
                 .order('nombre', { ascending: true})
                 .range(offset, offset + pageSize - 1);
 
@@ -1699,9 +1703,9 @@ async function cargarProductos() {
 
 function mostrarProductosMock() {
     productos = [
-        { id: 1, nombre: 'Pro Plan Adult 15kg', categoria: 'Adulto', precio: 54990, stock: 12, stock_minimo: 5, tipo: 'saco', peso_saco: '15kg' },
-        { id: 2, nombre: 'Royal Canin Puppy 13kg', categoria: 'Cachorro', precio: 62990, stock: 8, stock_minimo: 5, tipo: 'saco', peso_saco: '13kg' },
-        { id: 3, nombre: 'Whiskas Adult 10kg', categoria: 'Gato Adulto', precio: 38990, stock: 15, stock_minimo: 5, tipo: 'saco', peso_saco: '10kg' },
+        { id: 1, nombre: 'Pro Plan Adult 15kg', categoria: 'Adulto', precio: 54990, stock: 12, stock_minimo: 5, tipo: 'saco', peso_kg: 15 },
+        { id: 2, nombre: 'Royal Canin Puppy 13kg', categoria: 'Cachorro', precio: 62990, stock: 8, stock_minimo: 5, tipo: 'saco', peso_kg: 13 },
+        { id: 3, nombre: 'Whiskas Adult 10kg', categoria: 'Gato Adulto', precio: 38990, stock: 15, stock_minimo: 5, tipo: 'saco', peso_kg: 10 },
         { id: 4, nombre: 'Arena Gato Premium 10L', categoria: 'Arena', precio: 15990, stock: 20, stock_minimo: 8, tipo: 'unidad' },
         { id: 5, nombre: 'Shampoo Antipulgas 500ml', categoria: 'Farmacia', precio: 12990, stock: 25, stock_minimo: 10, tipo: 'unidad' },
         { id: 6, nombre: 'Snacks Dentales x12', categoria: 'Snacks', precio: 9990, stock: 30, stock_minimo: 15, tipo: 'unidad' }
@@ -1872,7 +1876,8 @@ function agregarAlCarrito(productoId) {
             nombre: producto.nombre,
             precio: producto.precio,
             cantidad: 1,
-            stock: producto.stock
+            stock: producto.stock,
+            comision_venta: Number(producto.comision_venta) || 0
         });
     }
 
@@ -2086,6 +2091,19 @@ function filtrarCategoria(categoria) {
     renderProductos();
 }
 
+function desplazarCategoriasPos(direccion) {
+    const container = document.getElementById('posCategoriesStrip');
+    if (!container) {
+        return;
+    }
+
+    const distancia = Math.max(container.clientWidth * 0.7, 180);
+    container.scrollBy({
+        left: distancia * direccion,
+        behavior: 'smooth'
+    });
+}
+
 // ===================================
 // 🔍 CONFIGURACIÓN DE EVENT LISTENERS DEL BUSCADOR
 // ===================================
@@ -2144,10 +2162,10 @@ function configurarEventListenersBuscador() {
     const inputCodigoBarras = document.getElementById('inputCodigoBarras');
     if (inputCodigoBarras) {
         console.log('🔍 [BARCODE] ✅ inputCodigoBarras encontrado');
+        const barcodeSearchBox = inputCodigoBarras.closest('.barcode-search-main');
+        const btnClear = barcodeSearchBox?.querySelector('.btn-clear-search');
+        aplicarEstadoBarcodeSearchPanel({ shouldFocus: true });
         
-        // Auto-focus al cargar
-        inputCodigoBarras.focus();
-
         // Remover listeners previos
         if (inputCodigoBarras._inputListener) {
             inputCodigoBarras.removeEventListener('input', inputCodigoBarras._inputListener);
@@ -2158,7 +2176,6 @@ function configurarEventListenersBuscador() {
 
         // Mostrar/ocultar botón de limpiar
         const inputListener = (e) => {
-            const btnClear = document.querySelector('.btn-clear-search');
             if (btnClear) {
                 btnClear.style.display = e.target.value ? 'block' : 'none';
             }
@@ -2179,7 +2196,6 @@ function configurarEventListenersBuscador() {
                         e.target.value = '';
                         e.target.focus();
 
-                        const btnClear = document.querySelector('.btn-clear-search');
                         if (btnClear) btnClear.style.display = 'none';
                     } else {
                         mostrarNotificacion('❌ Código no encontrado. Intenta buscar por nombre', 'warning');
@@ -2898,6 +2914,7 @@ function prepararDatosVenta(metodoPagoFinal) {
  */
 function prepararItemsVenta(ventaId) {
     return carrito.map(item => {
+        const comisionUnitaria = Number(item.comision_venta ?? item.comisionVenta ?? item.comision ?? 0) || 0;
         if (item.esGranel) {
             const nombreBase = item.nombre.replace(/\s*\(granel\)\s*/gi, '').trim();
             return {
@@ -2908,7 +2925,9 @@ function prepararItemsVenta(ventaId) {
                 subtotal: item.montoGranel,
                 producto_nombre: nombreBase + ' (Granel)',
                 es_granel: true,
-                peso_estimado_kg: item.pesoEstimado
+                peso_estimado_kg: item.pesoEstimado,
+                comision_unitaria: comisionUnitaria,
+                comision_total: comisionUnitaria
             };
         } else {
             return {
@@ -2918,7 +2937,9 @@ function prepararItemsVenta(ventaId) {
                 precio_unitario: item.precio,
                 subtotal: item.precio * item.cantidad,
                 producto_nombre: item.nombre,
-                es_granel: false
+                es_granel: false,
+                comision_unitaria: comisionUnitaria,
+                comision_total: comisionUnitaria * (Number(item.cantidad) || 0)
             };
         }
     });
@@ -3171,6 +3192,8 @@ function confirmarAbrirSaco() {
 
 let filtroInventarioActivo = 'todos'; // Variable global para mantener el filtro activo
 let textoBusquedaInventario = '';
+let mostrarProductosInactivosInventario = false;
+let productosInactivosInventario = [];
 let conteoRapidoActivo = false;
 let conteoRapidoIds = [];
 let conteoRapidoNoEncontrados = [];
@@ -3218,6 +3241,68 @@ function normalizarTextoInventario(texto) {
         .replace(/[^a-z0-9\s]/g, ' ')
         .replace(/\s+/g, ' ')
         .trim();
+}
+
+function parsearPesoProductoInventario(producto) {
+    const candidatos = [producto?.peso_kg];
+
+    for (const candidato of candidatos) {
+        if (candidato === null || candidato === undefined || candidato === '') continue;
+
+        if (typeof candidato === 'number') {
+            if (Number.isFinite(candidato) && candidato > 0) return candidato;
+            continue;
+        }
+
+        const texto = String(candidato).trim().toLowerCase();
+        const match = texto.match(/(\d+(?:[.,]\d+)?)/);
+        if (!match) continue;
+
+        const numero = Number.parseFloat(match[1].replace(',', '.'));
+        if (Number.isFinite(numero) && numero > 0) {
+            return numero;
+        }
+    }
+
+    return null;
+}
+
+function esProductoActivoInventario(producto) {
+    return producto?.activo !== false;
+}
+
+async function cargarProductosInactivosInventario() {
+    if (!window.supabaseClient) {
+        productosInactivosInventario = [];
+        return [];
+    }
+
+    const { data, error } = await window.supabaseClient
+        .from('productos')
+        .select('*')
+        .eq('activo', false)
+        .order('nombre', { ascending: true })
+        .limit(5000);
+
+    if (error) throw error;
+
+    productosInactivosInventario = data || [];
+    return productosInactivosInventario;
+}
+
+function obtenerProductoPorIdInventario(id) {
+    return productos.find(p => p.id === id) || productosInactivosInventario.find(p => p.id === id) || null;
+}
+
+function toggleProductosInactivosInventario(visible) {
+    mostrarProductosInactivosInventario = Boolean(visible);
+    cargarInventario();
+}
+
+function formatearPesoProductoInventario(producto) {
+    const peso = parsearPesoProductoInventario(producto);
+    if (!peso) return '-';
+    return `${peso.toLocaleString('es-CL', { maximumFractionDigits: 2 })} kg`;
 }
 
 function cargarAliasConteoRapido() {
@@ -3849,6 +3934,7 @@ function actualizarEncabezadosInventario() {
             ${incluyeConteoRapido ? '<th>Conteo rápido</th>' : ''}
             <th>Acciones</th>
             <th>Stock</th>
+            <th>Peso</th>
             <th>Estado</th>
             <th>Proveedor</th>
         `;
@@ -3860,6 +3946,7 @@ function actualizarEncabezadosInventario() {
             <th>Categoría</th>
             <th>Precio</th>
             <th>Stock</th>
+            <th>Peso</th>
             <th>Código de Barras</th>
             <th>Estado</th>
             ${incluyeConteoRapido ? '<th>Conteo rápido</th>' : ''}
@@ -3941,6 +4028,10 @@ function aplicarFiltroInventario(productos, filtroActivo) {
  */
 function aplicarFiltrosAdicionales(productos) {
     let productosFiltrados = [...productos];
+
+    if (!mostrarProductosInactivosInventario) {
+        productosFiltrados = productosFiltrados.filter(esProductoActivoInventario);
+    }
 
     // Filtro por proveedor
     const filtroProveedorSelect = document.getElementById('filtroProveedor');
@@ -4078,8 +4169,12 @@ function generarFilaProducto(producto, esVendedor) {
 
     let estadoBadge = 'badge-success';
     let estadoTexto = 'En Stock';
+    const estaActivo = esProductoActivoInventario(producto);
     
-    if (esGranel) {
+    if (!estaActivo) {
+        estadoBadge = 'badge-muted';
+        estadoTexto = 'Oculto';
+    } else if (esGranel) {
         estadoBadge = 'badge-info';
         estadoTexto = 'Granel';
     } else if (stockCero) {
@@ -4100,6 +4195,7 @@ function generarFilaProducto(producto, esVendedor) {
     }
 
     const nombreEscapado = escapeHtml(producto.nombre);
+    const pesoEscapado = escapeHtml(formatearPesoProductoInventario(producto));
     const columnaConteoRapido = conteoRapidoActivo
         ? `<td data-label="Conteo rápido" class="inventory-cell-quick-count">${generarControlConteoRapido(producto)}</td>`
         : '';
@@ -4119,7 +4215,7 @@ function generarFilaProducto(producto, esVendedor) {
 
     if (esVendedor) {
         return `
-            <tr class="inventory-row inventory-row-vendedor">
+            <tr class="inventory-row inventory-row-vendedor${estaActivo ? '' : ' inventory-row-inactive'}">
                 <td data-label="Producto" class="inventory-cell-product"><strong>${nombreEscapado}</strong></td>
                 ${columnaConteoRapido}
                 <td data-label="Acciones" class="inventory-cell-actions">
@@ -4130,18 +4226,20 @@ function generarFilaProducto(producto, esVendedor) {
                     </button>
                 </td>
                 <td data-label="Stock" class="inventory-cell-stock"><strong>${Math.floor(producto.stock)}</strong></td>
+                <td data-label="Peso">${pesoEscapado}</td>
                 <td data-label="Estado"><span class="badge ${estadoBadge}">${estadoTexto}</span></td>
                 <td data-label="Proveedor">${proveedorCategoria || '-'}</td>
             </tr>
         `;
     } else {
         return `
-            <tr class="inventory-row inventory-row-admin">
+            <tr class="inventory-row inventory-row-admin${estaActivo ? '' : ' inventory-row-inactive'}">
                 <td data-label="Producto" class="inventory-cell-product"><strong>${nombreEscapado}</strong></td>
                 <td data-label="Proveedor">${proveedorCategoria || '-'}</td>
                 <td data-label="Categoría">${producto.categoria || '-'}</td>
                 <td data-label="Precio">$${formatoMoneda(producto.precio)}</td>
                 <td data-label="Stock" class="inventory-cell-stock"><strong>${Math.floor(producto.stock)}</strong></td>
+                <td data-label="Peso">${pesoEscapado}</td>
                 <td data-label="Código">${codigoBarrasHTML}</td>
                 <td data-label="Estado"><span class="badge ${estadoBadge}">${estadoTexto}</span></td>
                 ${columnaConteoRapido}
@@ -4165,6 +4263,25 @@ async function cargarInventario() {
         await cargarProductos();
     }
 
+    if (mostrarProductosInactivosInventario) {
+        try {
+            await cargarProductosInactivosInventario();
+        } catch (error) {
+            manejarError(error, {
+                contexto: 'Cargar productos inactivos',
+                mensajeUsuario: 'No se pudieron cargar los productos ocultos.',
+                esErrorCritico: false
+            });
+            productosInactivosInventario = [];
+        }
+    } else {
+        productosInactivosInventario = [];
+    }
+
+    const productosBaseInventario = mostrarProductosInactivosInventario
+        ? [...productos, ...productosInactivosInventario]
+        : [...productos];
+
     // 1. Actualizar filtros
     actualizarSelectProveedores();
     actualizarSelectCategorias();
@@ -4183,7 +4300,7 @@ async function cargarInventario() {
     actualizarUIEstadisticas(estadisticas);
 
     // 4. Aplicar filtros
-    let productosFiltrados = aplicarFiltroInventario(productos, filtroInventarioActivo);
+    let productosFiltrados = aplicarFiltroInventario(productosBaseInventario, filtroInventarioActivo);
     productosFiltrados = aplicarFiltrosAdicionales(productosFiltrados);
     productosFiltrados = aplicarBusquedaInventario(productosFiltrados);
 
@@ -4217,7 +4334,7 @@ async function cargarInventario() {
             mensajeFiltro = 'No se encontraron productos con esa búsqueda';
         }
 
-        const colspan = esVendedor ? (conteoRapidoActivo ? 6 : 5) : (conteoRapidoActivo ? 9 : 8);
+        const colspan = esVendedor ? (conteoRapidoActivo ? 7 : 6) : (conteoRapidoActivo ? 10 : 9);
         tbody.innerHTML = `
             <tr>
                 <td colspan="${colspan}" style="text-align: center; padding: 40px; color: #6b7280;">
@@ -4245,7 +4362,7 @@ async function cargarInventario() {
 }
 
 function editarProducto(id) {
-    const producto = productos.find(p => p.id === id);
+    const producto = obtenerProductoPorIdInventario(id);
     if (producto) {
         abrirModalEditar(producto);
     } else {
@@ -4503,11 +4620,16 @@ async function cargarVentas() {
         // 9. Ranking de vendedores (solo para admin)
         if (esAdmin) {
             generarTablaVendedores(ventas);
+            await cargarPanelComisiones(ventas, periodo);
             const ranking = document.getElementById('rankingVendedores');
             if (ranking) ranking.style.display = 'block';
+            const panelComisiones = document.getElementById('panelComisionesProductos');
+            if (panelComisiones) panelComisiones.style.display = 'block';
         } else {
             const ranking = document.getElementById('rankingVendedores');
             if (ranking) ranking.style.display = 'none';
+            const panelComisiones = document.getElementById('panelComisionesProductos');
+            if (panelComisiones) panelComisiones.style.display = 'none';
         }
 
         // 10. Historial de devoluciones (solo para admin)
@@ -4928,6 +5050,193 @@ function generarTablaVendedores(ventas) {
             </tbody>
         </table>
     `;
+}
+
+function poblarFiltroVendedorComisiones(ventas) {
+    const select = document.getElementById('filtroComisionVendedor');
+    if (!select) return;
+
+    const valorActual = select.value || '';
+    const vendedores = Array.from(new Set(
+        ventas
+            .map(venta => venta.vendedor_nombre || venta.vendedor || '')
+            .filter(Boolean)
+    )).sort((a, b) => a.localeCompare(b, 'es'));
+
+    select.innerHTML = `
+        <option value="">Todos los vendedores</option>
+        ${vendedores.map(vendedor => `<option value="${escapeHtml(vendedor)}">${escapeHtml(vendedor)}</option>`).join('')}
+    `;
+
+    if (vendedores.includes(valorActual)) {
+        select.value = valorActual;
+    }
+}
+
+function inicializarFechasComisiones(periodo) {
+    const inputDesde = document.getElementById('filtroComisionDesde');
+    const inputHasta = document.getElementById('filtroComisionHasta');
+    if (!inputDesde || !inputHasta) return;
+
+    const hoy = new Date();
+    const hasta = hoy.toISOString().split('T')[0];
+    const desdeDate = new Date(hoy);
+    desdeDate.setDate(desdeDate.getDate() - Math.max(periodo - 1, 0));
+    const desde = desdeDate.toISOString().split('T')[0];
+
+    if (!inputHasta.value) {
+        inputHasta.value = hasta;
+    }
+
+    if (!inputDesde.value) {
+        inputDesde.value = desde;
+    }
+}
+
+async function cargarPanelComisiones(ventas, periodo) {
+    ventasComisionesCache = Array.isArray(ventas) ? ventas : [];
+    itemsComisionesCache = [];
+
+    poblarFiltroVendedorComisiones(ventasComisionesCache);
+    inicializarFechasComisiones(periodo);
+
+    const tbody = document.getElementById('tablaComisionesProductosBody');
+    if (tbody) {
+        tbody.innerHTML = `
+            <tr>
+                <td colspan="7" class="text-center" style="padding: 24px; color: hsl(var(--muted-foreground));">Cargando comisiones...</td>
+            </tr>
+        `;
+    }
+
+    if (ventasComisionesCache.length === 0) {
+        renderPanelComisiones(itemsComisionesCache);
+        return;
+    }
+
+    const ventasIds = ventasComisionesCache.map(venta => venta.id).filter(id => id != null);
+    if (ventasIds.length === 0) {
+        renderPanelComisiones(itemsComisionesCache);
+        return;
+    }
+
+    const { data: items, error } = await window.supabaseClient
+        .from('ventas_items')
+        .select('venta_id, producto_id, producto_nombre, cantidad, comision_unitaria, comision_total')
+        .in('venta_id', ventasIds);
+
+    if (error) {
+        console.error('Error cargando panel de comisiones:', error);
+        if (tbody) {
+            tbody.innerHTML = `
+                <tr>
+                    <td colspan="7" class="text-center" style="padding: 24px; color: hsl(var(--destructive));">
+                        No se pudieron cargar las comisiones. Ejecuta primero la migración SQL de comisiones.
+                    </td>
+                </tr>
+            `;
+        }
+        actualizarResumenComisiones([]);
+        return;
+    }
+
+    const ventasMap = new Map(ventasComisionesCache.map(venta => [venta.id, venta]));
+    itemsComisionesCache = (items || []).map(item => {
+        const venta = ventasMap.get(item.venta_id);
+        const cantidad = Number(item.cantidad) || 0;
+        const comisionUnitaria = Number(item.comision_unitaria) || 0;
+        const comisionTotal = Number(item.comision_total);
+
+        return {
+            ventaId: item.venta_id,
+            productoId: item.producto_id,
+            productoNombre: item.producto_nombre || 'Producto sin nombre',
+            cantidad,
+            vendedor: venta?.vendedor_nombre || venta?.vendedor || 'Sin asignar',
+            fecha: venta?.created_at || venta?.fecha || null,
+            comisionUnitaria,
+            comisionTotal: Number.isFinite(comisionTotal) ? comisionTotal : comisionUnitaria * cantidad
+        };
+    });
+
+    renderPanelComisiones(itemsComisionesCache);
+}
+
+function obtenerComisionesFiltradas() {
+    const vendedor = document.getElementById('filtroComisionVendedor')?.value || '';
+    const desde = document.getElementById('filtroComisionDesde')?.value || '';
+    const hasta = document.getElementById('filtroComisionHasta')?.value || '';
+
+    return itemsComisionesCache.filter(item => {
+        if (vendedor && item.vendedor !== vendedor) {
+            return false;
+        }
+
+        if (!item.fecha) {
+            return false;
+        }
+
+        const fechaItem = String(item.fecha).slice(0, 10);
+        if (desde && fechaItem < desde) {
+            return false;
+        }
+        if (hasta && fechaItem > hasta) {
+            return false;
+        }
+
+        return true;
+    });
+}
+
+function actualizarResumenComisiones(items) {
+    const total = items.reduce((acc, item) => acc + (Number(item.comisionTotal) || 0), 0);
+    const ventas = new Set(items.map(item => item.ventaId)).size;
+    const unidades = items.reduce((acc, item) => acc + (Number(item.cantidad) || 0), 0);
+
+    const totalEl = document.getElementById('comisionResumenTotal');
+    const ventasEl = document.getElementById('comisionResumenVentas');
+    const unidadesEl = document.getElementById('comisionResumenUnidades');
+
+    if (totalEl) totalEl.textContent = '$' + formatoMoneda(total);
+    if (ventasEl) ventasEl.textContent = String(ventas);
+    if (unidadesEl) unidadesEl.textContent = String(unidades);
+}
+
+function renderPanelComisiones(items) {
+    const tbody = document.getElementById('tablaComisionesProductosBody');
+    if (!tbody) return;
+
+    const filtrados = obtenerComisionesFiltradas();
+    actualizarResumenComisiones(filtrados);
+
+    if (filtrados.length === 0) {
+        tbody.innerHTML = `
+            <tr>
+                <td colspan="7" class="text-center" style="padding: 24px; color: hsl(var(--muted-foreground));">No hay comisiones para los filtros seleccionados</td>
+            </tr>
+        `;
+        return;
+    }
+
+    tbody.innerHTML = filtrados
+        .slice()
+        .sort((a, b) => new Date(b.fecha || 0) - new Date(a.fecha || 0))
+        .map(item => `
+            <tr>
+                <td style="padding: 12px;">#${item.ventaId}</td>
+                <td style="padding: 12px;">${new Date(item.fecha).toLocaleString('es-CL', { timeZone: 'America/Santiago' })}</td>
+                <td style="padding: 12px;">${escapeHtml(item.vendedor)}</td>
+                <td style="padding: 12px;">${escapeHtml(item.productoNombre)}</td>
+                <td style="padding: 12px; text-align: center;">${item.cantidad}</td>
+                <td style="padding: 12px; text-align: right;">$${formatoMoneda(item.comisionUnitaria)}</td>
+                <td style="padding: 12px; text-align: right; font-weight: 600;">$${formatoMoneda(item.comisionTotal)}</td>
+            </tr>
+        `)
+        .join('');
+}
+
+function actualizarPanelComisiones() {
+    renderPanelComisiones(itemsComisionesCache);
 }
 
 /**
@@ -6164,13 +6473,37 @@ function escapeHtml(text) {
     return div.innerHTML;
 }
 
+function normalizarTextoCorrupto(texto) {
+    if (texto === null || texto === undefined) return texto;
+
+    return String(texto)
+        .replaceAll('Ô×ò ', '')
+        .replaceAll('Ô£Å´©Å ', '')
+        .replaceAll('­ƒùæ´©Å ', '')
+        .replaceAll('Ô£à ', '')
+        .replaceAll('ÔÜá´©Å ', '')
+        .replaceAll('ÔØî ', 'Error: ')
+        .replaceAll('ÔÇó ', '- ')
+        .replaceAll('ÔØô', '')
+        .replaceAll('­ƒôê ', '')
+        .replaceAll('­ƒôé ', '')
+        .replaceAll('­ƒôà ', '')
+        .replaceAll('ÔÅ│ ', '')
+        .replaceAll('Ôä╣´©Å ', '')
+        .replaceAll('ÔÅ¡´©Å ', '')
+        .replaceAll('ÔòÉ', '-')
+        .replace(/\s{2,}/g, ' ')
+        .trim();
+}
+
 function mostrarNotificacion(mensaje, tipo = 'info', duracion = 3000, destacado = false) {
-    console.log(`[${tipo.toUpperCase()}] ${mensaje}`);
+    const mensajeNormalizado = normalizarTextoCorrupto(mensaje);
+    console.log(`[${tipo.toUpperCase()}] ${mensajeNormalizado}`);
 
     // Crear notificación temporal
     const notif = document.createElement('div');
     notif.className = `notificacion notif-${tipo}`;
-    notif.textContent = mensaje;
+    notif.textContent = mensajeNormalizado;
     notif.style.cssText = `
         position: fixed;
         top: 24px;
@@ -6473,14 +6806,71 @@ async function buscarPorCodigoBarras(codigoBarra) {
     }
 }
 
+function estaBarcodeSearchPanelColapsado() {
+    try {
+        const estadoGuardado = localStorage.getItem(BARCODE_SEARCH_COLLAPSED_KEY);
+        if (estadoGuardado === null) {
+            return true;
+        }
+        return estadoGuardado === '1';
+    } catch (error) {
+        console.warn('No se pudo leer estado del buscador de código:', error);
+        return true;
+    }
+}
+
+function guardarEstadoBarcodeSearchPanel(colapsado) {
+    try {
+        localStorage.setItem(BARCODE_SEARCH_COLLAPSED_KEY, colapsado ? '1' : '0');
+    } catch (error) {
+        console.warn('No se pudo guardar estado del buscador de código:', error);
+    }
+}
+
+function aplicarEstadoBarcodeSearchPanel({ shouldFocus = false } = {}) {
+    const panel = document.getElementById('barcodeSearchPanel');
+    const body = document.getElementById('barcodeSearchPanelBody');
+    const toggle = document.getElementById('barcodeSearchToggle');
+    const toggleText = document.getElementById('barcodeSearchToggleText');
+    const inputCodigo = document.getElementById('inputCodigoBarras');
+
+    if (!panel || !body || !toggle) {
+        return;
+    }
+
+    const colapsado = estaBarcodeSearchPanelColapsado();
+    panel.classList.toggle('is-collapsed', colapsado);
+    body.hidden = colapsado;
+    toggle.setAttribute('aria-expanded', String(!colapsado));
+
+    if (toggleText) {
+        toggleText.textContent = colapsado ? 'Mostrar' : 'Ocultar';
+    }
+
+    if (inputCodigo && shouldFocus && !colapsado) {
+        inputCodigo.focus();
+    }
+}
+
+function toggleBarcodeSearchPanel(forceCollapsed) {
+    const siguienteEstado = typeof forceCollapsed === 'boolean'
+        ? forceCollapsed
+        : !estaBarcodeSearchPanelColapsado();
+
+    guardarEstadoBarcodeSearchPanel(siguienteEstado);
+    aplicarEstadoBarcodeSearchPanel({ shouldFocus: !siguienteEstado });
+}
+
 // Limpiar campo de búsqueda por código de barras
 function limpiarBusquedaCodigo() {
     const inputCodigo = document.getElementById('inputCodigoBarras');
-    const btnClear = document.querySelector('.btn-clear-search');
+    const btnClear = inputCodigo?.closest('.barcode-search-main')?.querySelector('.btn-clear-search');
 
     if (inputCodigo) {
         inputCodigo.value = '';
-        inputCodigo.focus(); // Mantener focus para siguiente escaneo
+        if (!estaBarcodeSearchPanelColapsado()) {
+            inputCodigo.focus();
+        }
     }
 
     if (btnClear) {
@@ -6972,6 +7362,8 @@ function configurarCamposModalSegunRol(esEncargado, modoCrear, producto) {
     const proveedorGroup = document.getElementById('editProveedorGroup');
     const categoriaGroup = document.getElementById('editCategoriaGroup');
     const precioGroup = document.getElementById('editPrecioGroup');
+    const comisionGroup = document.getElementById('editComisionVentaGroup');
+    const pesoGroup = document.getElementById('editPesoGroup');
     const codigoBarrasGroup = document.getElementById('editCodigoBarrasGroup');
     const titulo = document.getElementById('tituloModalProducto');
 
@@ -6982,6 +7374,8 @@ function configurarCamposModalSegunRol(esEncargado, modoCrear, producto) {
         proveedorGroup.style.display = 'none';
         categoriaGroup.style.display = 'none';
         precioGroup.style.display = 'none';
+        comisionGroup.style.display = 'none';
+        pesoGroup.style.display = 'none';
         codigoBarrasGroup.style.display = 'none';
         stockMinimoGroup.style.display = 'none';
         
@@ -6995,6 +7389,8 @@ function configurarCamposModalSegunRol(esEncargado, modoCrear, producto) {
         proveedorGroup.style.display = 'block';
         categoriaGroup.style.display = 'block';
         precioGroup.style.display = 'block';
+        comisionGroup.style.display = 'block';
+        pesoGroup.style.display = 'block';
         codigoBarrasGroup.style.display = 'block';
         stockMinimoGroup.style.display = 'block';
         
@@ -7031,7 +7427,9 @@ function llenarFormularioProducto(producto) {
     categoriaSelect.value = categoriaExiste ? categoriaProducto : '';
     
     document.getElementById('editPrecio').value = producto.precio;
+    document.getElementById('editComisionVenta').value = producto.comision_venta ?? '';
     document.getElementById('editStock').value = producto.stock;
+    document.getElementById('editPesoKg').value = parsearPesoProductoInventario(producto) || '';
     document.getElementById('editCodigoBarras').value = producto.codigo_barras || '';
     document.getElementById('editStockMinimo').value = producto.stock_minimo_sacos || '';
 }
@@ -7044,7 +7442,9 @@ function limpiarFormularioProducto() {
     document.getElementById('editProveedor').value = '';
     document.getElementById('editCategoria').value = '';
     document.getElementById('editPrecio').value = '';
+    document.getElementById('editComisionVenta').value = '';
     document.getElementById('editStock').value = '0';
+    document.getElementById('editPesoKg').value = '';
     document.getElementById('editCodigoBarras').value = '';
     document.getElementById('editStockMinimo').value = '3';
 }
@@ -7126,6 +7526,8 @@ async function guardarEdicion() {
             const nuevoProveedor = document.getElementById('editProveedor').value;
             const nuevaCategoria = document.getElementById('editCategoria').value;
             const nuevoPrecio = parseFloat(document.getElementById('editPrecio').value);
+            const nuevaComisionTexto = document.getElementById('editComisionVenta').value.trim();
+            const nuevoPesoKgTexto = document.getElementById('editPesoKg').value.trim();
             const nuevoCodigoBarras = document.getElementById('editCodigoBarras').value.trim();
             const nuevoStockMinimo = document.getElementById('editStockMinimo').value;
 
@@ -7144,12 +7546,34 @@ async function guardarEdicion() {
                 return;
             }
 
+            let nuevaComisionVenta = 0;
+            if (nuevaComisionTexto !== '') {
+                nuevaComisionVenta = Number.parseFloat(nuevaComisionTexto.replace(',', '.'));
+
+                if (!Number.isFinite(nuevaComisionVenta) || nuevaComisionVenta < 0) {
+                    mostrarNotificacion('Valor de comisión inválido', 'error');
+                    return;
+                }
+            }
+
+            let nuevoPesoKg = null;
+            if (nuevoPesoKgTexto !== '') {
+                nuevoPesoKg = Number.parseFloat(nuevoPesoKgTexto.replace(',', '.'));
+
+                if (!Number.isFinite(nuevoPesoKg) || nuevoPesoKg < 0) {
+                    mostrarNotificacion('Valor de peso inválido', 'error');
+                    return;
+                }
+            }
+
             productData = {
                 nombre: nuevoNombre,
                 proveedor: nuevoProveedor || null,
                 categoria: nuevaCategoria,
                 precio: nuevoPrecio,
+                comision_venta: nuevaComisionVenta,
                 stock: nuevoStock,
+                peso_kg: nuevoPesoKg,
                 codigo_barras: nuevoCodigoBarras || null
             };
 
@@ -7239,7 +7663,7 @@ async function guardarEdicion() {
         await cargarProductos();
 
         // Si estamos en la vista de inventario, recargarla
-        if (currentView === 'inventario') {
+        if (currentView === 'inventory') {
             await cargarInventario();
         }
 
@@ -7271,19 +7695,16 @@ async function eliminarProducto() {
     if (!confirmar) return;
 
     try {
-        const { error } = await window.supabaseClient
-            .from('productos')
-            .delete()
-            .eq('id', productoEditando.id);
+        const resultado = await eliminarProductoODesactivar(productoEditando.id, nombreProducto);
+        if (!resultado.ok) {
+            throw resultado.error;
+        }
 
-        if (error) throw error;
-
-        mostrarNotificacion(`✅ Producto "${nombreProducto}" eliminado exitosamente`, 'success');
         cerrarModalEditar();
         await cargarProductos();
 
         // Si estamos en la vista de inventario, recargarla
-        if (currentView === 'inventario') {
+        if (currentView === 'inventory') {
             await cargarInventario();
         }
 
@@ -7296,7 +7717,11 @@ async function eliminarProducto() {
 }
 
 async function eliminarProductoDirecto(id) {
-    const producto = productos.find(p => p.id === id);
+    if (!requireAdminRole('Eliminar productos')) {
+        return;
+    }
+
+    const producto = obtenerProductoPorIdInventario(id);
 
     if (!producto) {
         mostrarNotificacion('Producto no encontrado', 'error');
@@ -7311,18 +7736,15 @@ async function eliminarProductoDirecto(id) {
     if (!confirmar) return;
 
     try {
-        const { error } = await window.supabaseClient
-            .from('productos')
-            .delete()
-            .eq('id', id);
+        const resultado = await eliminarProductoODesactivar(id, nombreProducto);
+        if (!resultado.ok) {
+            throw resultado.error;
+        }
 
-        if (error) throw error;
-
-        mostrarNotificacion(`✅ Producto "${nombreProducto}" eliminado exitosamente`, 'success');
         await cargarProductos();
 
         // Si estamos en la vista de inventario, recargarla
-        if (currentView === 'inventario') {
+        if (currentView === 'inventory') {
             await cargarInventario();
         }
 
@@ -7333,6 +7755,45 @@ async function eliminarProductoDirecto(id) {
             esErrorCritico: false
         });
     }
+}
+
+function esErrorProductoConReferencias(error) {
+    const codigo = String(error?.code || '').trim();
+    const mensaje = String(error?.message || '').toLowerCase();
+    const detalles = String(error?.details || '').toLowerCase();
+
+    return codigo === '23503'
+        || mensaje.includes('foreign key')
+        || detalles.includes('foreign key');
+}
+
+async function desactivarProducto(id) {
+    const { error } = await window.supabaseClient
+        .from('productos')
+        .update({ activo: false })
+        .eq('id', id);
+
+    if (error) throw error;
+}
+
+async function eliminarProductoODesactivar(id, nombreProducto) {
+    const { error } = await window.supabaseClient
+        .from('productos')
+        .delete()
+        .eq('id', id);
+
+    if (!error) {
+        mostrarNotificacion(`✅ Producto "${nombreProducto}" eliminado exitosamente`, 'success');
+        return { ok: true, modo: 'delete' };
+    }
+
+    if (!esErrorProductoConReferencias(error)) {
+        return { ok: false, error };
+    }
+
+    await desactivarProducto(id);
+    mostrarNotificacion(`✅ Producto "${nombreProducto}" desactivado porque tenía historial asociado`, 'success');
+    return { ok: true, modo: 'soft-delete' };
 }
 
 // ===================================
@@ -8438,77 +8899,44 @@ function cerrarModalAjusteCaja() {
  */
 async function cargarAjustesCaja(fecha) {
     try {
-        const { data, error } = await window.supabaseClient
+        if (!window.supabaseClient || !fecha) {
+            return [];
+        }
+
+        const { data: ajustes, error } = await window.supabaseClient
             .from('caja_ajustes')
             .select('*')
             .eq('fecha', fecha);
-        
+
         if (error) {
-            console.error('Error cargando ajustes:', error);
-            return;
+            throw error;
         }
-        
-        // Ocultar todos los indicadores primero
-        document.getElementById('indicadorAjusteEfectivo').style.display = 'none';
-        document.getElementById('indicadorAjusteTarjeta').style.display = 'none';
-        document.getElementById('indicadorAjusteTransferencia').style.display = 'none';
-        
-        if (!data || data.length === 0) {
-            return;
+
+        if (!Array.isArray(ajustes) || ajustes.length === 0) {
+            return [];
         }
-        
-        // Mostrar indicadores para los métodos ajustados
-        data.forEach(ajuste => {
-            const metodo = ajuste.metodo_pago;
-            let indicador = null;
-            let valorElement = null;
 
-            // Rendición del repartidor: pre-llenar el bloque de rendición
-            if (metodo === 'Efectivo_Reparto') {
-                const inputReal = document.getElementById('rendicionReal');
-                const badge = document.getElementById('badgeRendicion');
-                const btnConfirmar = document.getElementById('btnConfirmarRendicion');
-                if (inputReal) {
-                    inputReal.value = ajuste.monto_ajustado;
-                    inputReal.disabled = true;
-                }
-                if (badge) badge.style.display = 'inline';
-                if (btnConfirmar) {
-                    btnConfirmar.textContent = '✅ Rendición Confirmada';
-                    btnConfirmar.style.opacity = '0.6';
-                    btnConfirmar.style.pointerEvents = 'none';
-                    btnConfirmar.style.background = 'hsl(142 76% 36%)';
-                }
-                // Actualizar estado global con el valor guardado
-                repartoDelDia.efectivoConfirmado = ajuste.monto_ajustado;
-                calcularDiferenciaRendicion();
-                return;
-            }
+        ajustes.forEach(ajuste => {
+            const metodo = String(ajuste.metodo_pago || '').toLowerCase();
+            const montoAjustado = Number(ajuste.monto_ajustado) || 0;
 
-            if (metodo === 'Efectivo') {
-                indicador = document.getElementById('indicadorAjusteEfectivo');
-                valorElement = document.getElementById('ventasEfectivo');
-            } else if (metodo === 'Tarjeta') {
-                indicador = document.getElementById('indicadorAjusteTarjeta');
-                valorElement = document.getElementById('ventasTransbank');
-            } else if (metodo === 'Transferencia') {
-                indicador = document.getElementById('indicadorAjusteTransferencia');
-                valorElement = document.getElementById('ventasTransferencia');
-            }
-            
-            if (indicador && valorElement) {
-                indicador.style.display = 'inline-block';
-                indicador.title = `Ajustado: $${formatoMoneda(ajuste.monto_ajustado)} (Dif: ${ajuste.diferencia >= 0 ? '+' : ''}$${formatoMoneda(ajuste.diferencia)}) - ${ajuste.motivo}`;
-                
-                // Actualizar el valor mostrado con el monto ajustado
-                valorElement.textContent = '$' + formatoMoneda(ajuste.monto_ajustado);
+            if (metodo === 'efectivo') {
+                ventasDelDia.efectivo = montoAjustado;
+            } else if (metodo === 'transbank') {
+                ventasDelDia.transbank = montoAjustado;
+            } else if (metodo === 'transferencia') {
+                ventasDelDia.transferencia = montoAjustado;
+            } else if (metodo === 'efectivo_reparto') {
+                repartoDelDia.efectivoConfirmado = montoAjustado;
             }
         });
-        
-        console.log(`✅ ${data.length} ajustes de caja cargados`);
-        
+
+        actualizarTotalesCaja();
+        return ajustes;
     } catch (error) {
-        console.error('Error en cargarAjustesCaja:', error);
+        console.error('Error cargando ajustes de caja:', error);
+        mostrarNotificacion('Error al cargar ajustes de caja: ' + error.message, 'error', 5000);
+        return [];
     }
 }
 
@@ -10793,19 +11221,19 @@ function calcularDiferenciaArqueo(index, efectivoEsperado, efectivoRealParam) {
         container.style.borderLeftColor = 'hsl(142 76% 36%)';
         container.style.background = 'hsl(142 76% 36% / 0.1)';
         montoElement.style.color = 'hsl(142 76% 36%)';
-        montoElement.textContent = 'Ô£à ¡Cuadrado! ($0)';
+        montoElement.textContent = 'Cuadrado ($0)';
     } else if (diferencia > 0) {
         // Sobrante (azul)
         container.style.borderLeftColor = 'hsl(199 89% 48%)';
         container.style.background = 'hsl(199 89% 48% / 0.1)';
         montoElement.style.color = 'hsl(199 89% 48%)';
-        montoElement.textContent = '­ƒôê Sobrante: +$' + formatoMoneda(diferencia);
+        montoElement.textContent = 'Sobrante: +$' + formatoMoneda(diferencia);
     } else {
         // Faltante (rojo)
         container.style.borderLeftColor = 'hsl(0 84% 60%)';
         container.style.background = 'hsl(0 84% 60% / 0.1)';
         montoElement.style.color = 'hsl(0 84% 60%)';
-        montoElement.textContent = 'ÔÜá´©Å Faltante: -$' + formatoMoneda(Math.abs(diferencia));
+        montoElement.textContent = 'Faltante: -$' + formatoMoneda(Math.abs(diferencia));
     }
 }
 
@@ -10819,13 +11247,13 @@ async function completarArqueoPendiente(fecha, index) {
         
         // Validaciones
         if (!efectivoReal && efectivoReal !== 0) {
-            mostrarNotificacion('ÔÜá´©Å Ingresa el efectivo real contado en caja', 'warning', 4000);
+            mostrarNotificacion('Ingresa el efectivo real contado en caja', 'warning', 4000);
             input.focus();
             return;
         }
         
         if (efectivoReal < 0) {
-            mostrarNotificacion('ÔÜá´©Å El efectivo real no puede ser negativo', 'warning', 4000);
+            mostrarNotificacion('El efectivo real no puede ser negativo', 'warning', 4000);
             return;
         }
         
@@ -10836,9 +11264,9 @@ async function completarArqueoPendiente(fecha, index) {
         
         // Confirmación
         let estadoTexto = '';
-        if (diferencia === 0) estadoTexto = 'Ô£à Cuadrado';
-        else if (diferencia > 0) estadoTexto = '­ƒôê Sobrante: +$' + formatoMoneda(diferencia);
-        else estadoTexto = 'ÔÜá´©Å Faltante: -$' + formatoMoneda(Math.abs(diferencia));
+        if (diferencia === 0) estadoTexto = 'Cuadrado';
+        else if (diferencia > 0) estadoTexto = 'Sobrante: +$' + formatoMoneda(diferencia);
+        else estadoTexto = 'Faltante: -$' + formatoMoneda(Math.abs(diferencia));
         
         const confirmar = confirm(
             `¿Confirmar arqueo del cierre automático?\\n\\n` +
@@ -10882,7 +11310,7 @@ async function completarArqueoPendiente(fecha, index) {
         
     } catch (error) {
         console.error('ÔØî Error completando arqueo:', error);
-        mostrarNotificacion('ÔØî Error al completar arqueo: ' + error.message, 'error', 5000);
+        mostrarNotificacion('Error al completar arqueo: ' + error.message, 'error', 5000);
     }
 }
 
@@ -11008,7 +11436,7 @@ async function registrarPagoPersonal(event) {
 
         if (error) throw error;
 
-        mostrarNotificacion(`Ô£à Pago registrado exitosamente para ${empleado}`, 'success');
+        mostrarNotificacion(`Pago registrado exitosamente para ${empleado}`, 'success');
 
         // Cerrar modal
         cerrarModalPagoPersonal();
@@ -11645,7 +12073,7 @@ async function guardarPagoEditado(pagoId) {
 
         if (error) throw error;
 
-        mostrarNotificacion('Ô£à Pago actualizado correctamente', 'success');
+        mostrarNotificacion('Pago actualizado correctamente', 'success');
 
         // Actualizar en la lista local
         const pagoIndex = pagosPersonalDelDia.findIndex(p => p.id === pagoId);
@@ -11840,6 +12268,8 @@ function actualizarSelectCategorias() {
         `;
         nuevoCategoria.value = valorActualNuevo;
     }
+
+    renderizarCategoriasPos();
 }
 
 /**
@@ -11856,7 +12286,7 @@ async function abrirModalProveedores() {
     
     proveedorEditando = null;
     document.getElementById('inputNombreProveedor').value = '';
-    document.getElementById('tituloFormProveedor').textContent = 'Ô×ò Agregar Proveedor';
+    document.getElementById('tituloFormProveedor').textContent = 'Agregar Proveedor';
     document.getElementById('textoBotonProveedor').textContent = 'Agregar';
     document.getElementById('btnCancelarEditProveedor').style.display = 'none';
     
@@ -11902,10 +12332,10 @@ function renderizarListaProveedores() {
             </div>
             <div style="display: flex; gap: 8px;">
                 <button class="btn btn-sm btn-primary" onclick="editarProveedor('${proveedor.replace(/'/g, "\\'")}')">
-                    Ô£Å´©Å Editar
+                    Editar
                 </button>
                 <button class="btn btn-sm btn-danger" onclick="eliminarProveedor('${proveedor.replace(/'/g, "\\'")}')">
-                    ­ƒùæ´©Å Eliminar
+                    Eliminar
                 </button>
             </div>
         </div>
@@ -11987,7 +12417,7 @@ async function guardarProveedor() {
         // Limpiar formulario
         input.value = '';
         proveedorEditando = null;
-        document.getElementById('tituloFormProveedor').textContent = 'Ô×ò Agregar Proveedor';
+        document.getElementById('tituloFormProveedor').textContent = 'Agregar Proveedor';
         document.getElementById('textoBotonProveedor').textContent = 'Agregar';
         document.getElementById('btnCancelarEditProveedor').style.display = 'none';
         
@@ -12006,7 +12436,7 @@ function editarProveedor(nombreProveedor) {
     proveedorEditando = nombreProveedor;
     
     document.getElementById('inputNombreProveedor').value = nombreProveedor;
-    document.getElementById('tituloFormProveedor').textContent = 'Ô£Å´©Å Editar Proveedor';
+    document.getElementById('tituloFormProveedor').textContent = 'Editar Proveedor';
     document.getElementById('textoBotonProveedor').textContent = 'Guardar Cambios';
     document.getElementById('btnCancelarEditProveedor').style.display = 'inline-block';
     
@@ -12021,7 +12451,7 @@ function cancelarEditarProveedor() {
     proveedorEditando = null;
     
     document.getElementById('inputNombreProveedor').value = '';
-    document.getElementById('tituloFormProveedor').textContent = 'Ô×ò Agregar Proveedor';
+    document.getElementById('tituloFormProveedor').textContent = 'Agregar Proveedor';
     document.getElementById('textoBotonProveedor').textContent = 'Agregar';
     document.getElementById('btnCancelarEditProveedor').style.display = 'none';
 }
@@ -12071,6 +12501,63 @@ async function eliminarProveedor(nombreProveedor) {
 
 let categoriasActuales = [];
 let categoriaEditando = null;
+
+const POS_CATEGORY_ICON_MAP = {
+    'perro adulto': '🐕',
+    'adulto': '🐕',
+    'cachorro': '🐶',
+    'senior': '🦴',
+    'gato adulto': '🐈',
+    'gato': '🐈',
+    'gato kitten': '🐱',
+    'gatito': '🐱',
+    'arena': '🏖️',
+    'snacks': '🍖',
+    'accesorios': '🎾',
+    'otros': '📦',
+    'super premium gato': '✨',
+    'super premium perro': '✨',
+    'veterinario gato': '🩺',
+    'veterinario perro': '🩺'
+};
+
+function obtenerIconoCategoriaPos(categoria) {
+    const clave = String(categoria || '').trim().toLowerCase();
+    return POS_CATEGORY_ICON_MAP[clave] || '🏷️';
+}
+
+function renderizarCategoriasPos() {
+    const container = document.getElementById('posCategoriesStrip');
+    if (!container) {
+        return;
+    }
+
+    if (categoriasActuales.length === 0) {
+        return;
+    }
+
+    const categoriasOrdenadas = [...new Set(categoriasActuales)]
+        .filter(Boolean)
+        .sort((a, b) => a.localeCompare(b, 'es', { sensitivity: 'base' }));
+
+    if (categoriaActual !== 'Todos' && !categoriasOrdenadas.includes(categoriaActual)) {
+        categoriaActual = 'Todos';
+    }
+
+    const botonesCategorias = categoriasOrdenadas.map(categoria => {
+        const categoriaEscapada = categoria.replace(/'/g, "\\'");
+        const activa = categoriaActual === categoria ? ' active' : '';
+        const icono = obtenerIconoCategoriaPos(categoria);
+
+        return `<button class="category-chip${activa}" data-categoria="${categoria}" onclick="filtrarCategoria('${categoriaEscapada}')">${icono} ${categoria}</button>`;
+    }).join('');
+
+    container.innerHTML = `
+        <button class="category-chip${categoriaActual === 'Todos' ? ' active' : ''}" data-categoria="Todos" onclick="filtrarCategoria('Todos')">Todos</button>
+        <button class="category-chip" onclick="abrirModalGranel()" style="background: hsl(var(--success)); color: white; border-color: hsl(var(--success));">🌾 Granel</button>
+        ${botonesCategorias}
+    `;
+}
 
 /**
  * Inicializar categorías desde localStorage
@@ -12184,10 +12671,10 @@ function renderizarListaCategorias() {
             </div>
             <div style="display: flex; gap: 8px;">
                 <button class="btn btn-sm btn-primary" onclick="editarCategoria('${categoria.replace(/'/g, "\\'")}')">
-                    Ô£Å´©Å Editar
+                    Editar
                 </button>
                 <button class="btn btn-sm btn-danger" onclick="eliminarCategoria('${categoria.replace(/'/g, "\\'")}')">
-                    ­ƒùæ´©Å Eliminar
+                    Eliminar
                 </button>
             </div>
         </div>
@@ -12257,7 +12744,7 @@ function editarCategoria(nombreCategoria) {
     categoriaEditando = nombreCategoria;
     
     document.getElementById('inputNombreCategoria').value = nombreCategoria;
-    document.getElementById('tituloFormCategoria').textContent = 'Ô£Å´©Å Editar Categoría';
+    document.getElementById('tituloFormCategoria').textContent = 'Editar Categoría';
     document.getElementById('textoBotonCategoria').textContent = 'Guardar';
     document.getElementById('btnCancelarEditCategoria').style.display = 'inline-block';
     document.getElementById('inputNombreCategoria').focus();
@@ -12270,7 +12757,7 @@ function cancelarEditarCategoria() {
     categoriaEditando = null;
     
     document.getElementById('inputNombreCategoria').value = '';
-    document.getElementById('tituloFormCategoria').textContent = 'Ô×ò Agregar Categoría';
+    document.getElementById('tituloFormCategoria').textContent = 'Agregar Categoría';
     document.getElementById('textoBotonCategoria').textContent = 'Agregar';
     document.getElementById('btnCancelarEditCategoria').style.display = 'none';
 }
@@ -12340,7 +12827,7 @@ async function inicializarMarcas() {
             marcasActuales = [];
         } else {
             marcasActuales = data.map(m => m.nombre);
-            console.log('Ô£à Marcas cargadas desde Supabase:', marcasActuales.length);
+            console.log('Marcas cargadas desde Supabase:', marcasActuales.length);
         }
         
     } catch (error) {
@@ -12394,7 +12881,7 @@ async function abrirModalMarcas() {
     
     marcaEditando = null;
     document.getElementById('inputNombreMarca').value = '';
-    document.getElementById('tituloFormMarca').textContent = 'Ô×ò Agregar Marca';
+    document.getElementById('tituloFormMarca').textContent = 'Agregar Marca';
     document.getElementById('textoBotonMarca').textContent = 'Agregar';
     document.getElementById('btnCancelarEditMarca').style.display = 'none';
     
@@ -12443,10 +12930,10 @@ function renderizarListaMarcas() {
             </div>
             <div style="display: flex; gap: 8px;">
                 <button class="btn btn-sm btn-primary" onclick="editarMarca('${marca.replace(/'/g, "\\'")}')">
-                    Ô£Å´©Å Editar
+                    Editar
                 </button>
                 <button class="btn btn-sm btn-danger" onclick="eliminarMarca('${marca.replace(/'/g, "\\'")}')">
-                    ­ƒùæ´©Å Eliminar
+                    Eliminar
                 </button>
             </div>
         </div>
@@ -12528,7 +13015,7 @@ async function guardarMarca() {
         // Limpiar formulario
         input.value = '';
         marcaEditando = null;
-        document.getElementById('tituloFormMarca').textContent = 'Ô×ò Agregar Marca';
+        document.getElementById('tituloFormMarca').textContent = 'Agregar Marca';
         document.getElementById('textoBotonMarca').textContent = 'Agregar';
         document.getElementById('btnCancelarEditMarca').style.display = 'none';
         
@@ -12547,7 +13034,7 @@ function editarMarca(nombreMarca) {
     marcaEditando = nombreMarca;
     
     document.getElementById('inputNombreMarca').value = nombreMarca;
-    document.getElementById('tituloFormMarca').textContent = 'Ô£Å´©Å Editar Marca';
+    document.getElementById('tituloFormMarca').textContent = 'Editar Marca';
     document.getElementById('textoBotonMarca').textContent = 'Guardar Cambios';
     document.getElementById('btnCancelarEditMarca').style.display = 'inline-block';
     
@@ -12562,7 +13049,7 @@ function cancelarEditarMarca() {
     marcaEditando = null;
     
     document.getElementById('inputNombreMarca').value = '';
-    document.getElementById('tituloFormMarca').textContent = 'Ô×ò Agregar Marca';
+    document.getElementById('tituloFormMarca').textContent = 'Agregar Marca';
     document.getElementById('textoBotonMarca').textContent = 'Agregar';
     document.getElementById('btnCancelarEditMarca').style.display = 'none';
 }
@@ -12663,7 +13150,7 @@ async function guardarNuevoProducto() {
 
         if (error) throw error;
 
-        mostrarNotificacion('Ô£à Producto registrado exitosamente', 'success');
+        mostrarNotificacion('Producto registrado exitosamente', 'success');
         cerrarModalNuevo();
         await cargarProductos();
 
@@ -13533,7 +14020,7 @@ async function abrirModalEditarAsistencia(id) {
             <div class="modal-overlay" id="modalEditarAsistencia" onclick="cerrarModalEditarAsistencia()">
                 <div class="modal-content" onclick="event.stopPropagation()" style="max-width: 500px;">
                     <div class="modal-header">
-                        <h3>Ô£Å´©Å Editar Asistencia</h3>
+                        <h3>Editar Asistencia</h3>
                         <button class="modal-close" onclick="cerrarModalEditarAsistencia()">
                             <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
                                 <path d="M18 6L6 18M6 6l12 12" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
@@ -13661,7 +14148,7 @@ async function verificarSalidaPendiente() {
 
         // Si hay registro y no marcó salida, preguntar
         if (data && !data.hora_salida) {
-            return confirm('ÔÜá´©Å No has marcado tu hora de salida.\n\n¿Deseas marcarla ahora antes de cerrar sesión?');
+            return confirm(normalizarTextoCorrupto('ÔÜá´©Å No has marcado tu hora de salida.\n\n¿Deseas marcarla ahora antes de cerrar sesión?'));
         }
 
         return false;
@@ -14657,7 +15144,7 @@ async function procesarDevolucion(datosDevolucion) {
         }
         
         // 4. Mostrar éxito
-        mostrarNotificacion(`Ô£à Devolución procesada exitosamente - $${formatoMoneda(datosDevolucion.totalReembolso)}`, 'success');
+        mostrarNotificacion(`Devolución procesada exitosamente - $${formatoMoneda(datosDevolucion.totalReembolso)}`, 'success');
         
         // 5. Cerrar modal
         cerrarModalDevolucion();
@@ -14754,7 +15241,7 @@ async function cargarHistorialDevoluciones() {
                 if (container) {
                     container.innerHTML = `
                         <div style="text-align: center; padding: 40px; color: hsl(var(--destructive));">
-                            <p>ÔØî Error al cargar devoluciones</p>
+                            <p>Error al cargar devoluciones</p>
                             <small>${error.message}</small>
                         </div>
                     `;
@@ -15221,7 +15708,7 @@ async function verDetalleDevolucion(devolucionId) {
         }
 
         if (title) {
-            title.textContent = `­ƒöä Detalle de Devolución #${devolucion.id}`;
+            title.textContent = `Detalle de Devolución #${devolucion.id}`;
         }
 
         if (printButton) {
@@ -15360,7 +15847,7 @@ async function guardarNuevoMetodoPago() {
         
         console.log('Ô£à Método de pago actualizado correctamente');
         
-        mostrarNotificacion(`Ô£à Método de pago actualizado a: ${nuevoMetodo}`, 'success');
+        mostrarNotificacion(`Método de pago actualizado a: ${nuevoMetodo}`, 'success');
         
         // Cerrar modal
         cerrarModalEditarMetodoPago();
@@ -15383,7 +15870,7 @@ async function guardarNuevoMetodoPago() {
  */
 function confirmarEliminarVenta(ventaId) {
     // Doble confirmación por seguridad
-    const confirmar1 = confirm(
+    const confirmar1 = confirm(normalizarTextoCorrupto(
         `ÔÜá´©Å ELIMINAR VENTA #${ventaId}\n\n` +
         `Esta acción eliminará PERMANENTEMENTE:\n\n` +
         `Ô£ô El registro de la venta\n` +
@@ -15392,16 +15879,16 @@ function confirmarEliminarVenta(ventaId) {
         `ÔÜá´©Å IMPORTANTE: Esta es una eliminación PERMANENTE.\n` +
         `No se puede deshacer.\n\n` +
         `¿Está seguro de continuar?`
-    );
+    ));
     
     if (!confirmar1) return;
     
-    const confirmar2 = confirm(
+    const confirmar2 = confirm(normalizarTextoCorrupto(
         `ÔÜá´©Å ÚLTIMA CONFIRMACIÓN\n\n` +
         `Venta #${ventaId} será ELIMINADA PERMANENTEMENTE.\n\n` +
         `Esta acción NO SE PUEDE DESHACER.\n\n` +
         `¿Confirma que desea eliminar?`
-    );
+    ));
     
     if (confirmar2) {
         eliminarVenta(ventaId);
@@ -15449,6 +15936,7 @@ async function eliminarVenta(ventaId) {
         // 3. Restaurar stock de los productos (solo si no son a granel)
         if (items && items.length > 0) {
             console.log('­ƒöä Restaurando stock...');
+            const erroresRestauracion = [];
             
             for (const item of items) {
                 try {
@@ -15461,13 +15949,16 @@ async function eliminarVenta(ventaId) {
                     
                     if (prodError) {
                         console.error(`ÔØî Error al obtener producto ${item.producto_id}:`, prodError);
+                        erroresRestauracion.push(`No se pudo obtener el producto ${item.producto_id}: ${prodError.message}`);
                         continue;
                     }
                     
                     if (producto && !producto.es_granel) {
-                        const nuevoStock = producto.stock + item.cantidad;
+                        const stockActual = Number(producto.stock) || 0;
+                        const cantidadItem = Number(item.cantidad) || 0;
+                        const nuevoStock = stockActual + cantidadItem;
                         
-                        console.log(`­ƒôª Restaurando stock de "${producto.nombre}": ${producto.stock} + ${item.cantidad} = ${nuevoStock}`);
+                        console.log(`­ƒôª Restaurando stock de "${producto.nombre}": ${stockActual} + ${cantidadItem} = ${nuevoStock}`);
                         
                         const { error: stockError } = await window.supabaseClient
                             .from('productos')
@@ -15476,6 +15967,7 @@ async function eliminarVenta(ventaId) {
                         
                         if (stockError) {
                             console.error(`ÔØî Error al restaurar stock del producto ${item.producto_id}:`, stockError);
+                            erroresRestauracion.push(`No se pudo restaurar stock de "${producto.nombre}": ${stockError.message}`);
                         } else {
                             console.log(`Ô£à Stock restaurado exitosamente`);
                         }
@@ -15484,7 +15976,12 @@ async function eliminarVenta(ventaId) {
                     }
                 } catch (prodError) {
                     console.error(`ÔØî Error procesando producto ${item.producto_id}:`, prodError);
+                    erroresRestauracion.push(`Error procesando el producto ${item.producto_id}: ${prodError.message}`);
                 }
+            }
+
+            if (erroresRestauracion.length > 0) {
+                throw new Error(`No se pudo restaurar el stock antes de eliminar la venta. ${erroresRestauracion[0]}`);
             }
         }
         
@@ -15520,7 +16017,7 @@ async function eliminarVenta(ventaId) {
         
         console.log('Ô£àÔ£àÔ£à Venta eliminada exitosamente');
         
-        mostrarNotificacion(`Ô£à Venta #${ventaId} eliminada correctamente`, 'success');
+        mostrarNotificacion(`Venta #${ventaId} eliminada correctamente`, 'success');
         
         // 6. Recargar ventas y otras vistas
         await cargarVentas();

@@ -300,22 +300,43 @@
                     <div class="pos-products">
                         <div class="pos-discovery-stack">
                             <!-- Barcode Scanner - PRINCIPAL -->
-                            <div class="search-box barcode-search-main">
-                                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" class="search-icon">
-                                    <rect x="4" y="6" width="16" height="12" rx="2" stroke="currentColor" stroke-width="2" fill="none"/>
-                                    <path d="M7 9h2M7 12h2M7 15h2M11 9v6M13 9v6M15 9v6M17 9v6" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
-                                </svg>
-                                <input type="text"
-                                       id="inputCodigoBarras"
-                                       placeholder="🔍 Escanea o escribe el código de barras aquí..."
-                                       class="search-input barcode-input"
-                                       autofocus
-                                       autocomplete="off">
-                                <button class="btn-clear-search" onclick="limpiarBusquedaCodigo()" style="display: none;">
-                                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
-                                        <path d="M18 6L6 18M6 6l12 12" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+                            <div id="barcodeSearchPanel" class="barcode-search-panel">
+                                <button
+                                    id="barcodeSearchToggle"
+                                    class="barcode-search-toggle"
+                                    type="button"
+                                    onclick="toggleBarcodeSearchPanel()"
+                                    aria-expanded="true"
+                                    aria-controls="barcodeSearchPanelBody"
+                                >
+                                    <span class="barcode-search-toggle-copy">
+                                        <span class="barcode-search-toggle-title">Escáner rápido</span>
+                                        <span class="barcode-search-toggle-subtitle">Muestra u oculta la barra para escanear códigos</span>
+                                    </span>
+                                    <span id="barcodeSearchToggleText" class="barcode-search-toggle-text">Ocultar</span>
+                                    <svg class="barcode-search-toggle-icon" width="18" height="18" viewBox="0 0 20 20" fill="none" aria-hidden="true">
+                                        <path d="M5 7.5L10 12.5L15 7.5" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
                                     </svg>
                                 </button>
+
+                                <div id="barcodeSearchPanelBody" class="barcode-search-panel-body">
+                                    <div class="search-box barcode-search-main">
+                                        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" class="search-icon">
+                                            <rect x="4" y="6" width="16" height="12" rx="2" stroke="currentColor" stroke-width="2" fill="none"/>
+                                            <path d="M7 9h2M7 12h2M7 15h2M11 9v6M13 9v6M15 9v6M17 9v6" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+                                        </svg>
+                                        <input type="text"
+                                               id="inputCodigoBarras"
+                                               placeholder="🔍 Escanea o escribe el código de barras aquí..."
+                                               class="search-input barcode-input"
+                                               autocomplete="off">
+                                        <button class="btn-clear-search" onclick="limpiarBusquedaCodigo()" style="display: none;">
+                                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
+                                                <path d="M18 6L6 18M6 6l12 12" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+                                            </svg>
+                                        </button>
+                                    </div>
+                                </div>
                             </div>
 
                             <!-- Search Manual (secundario) -->
@@ -336,17 +357,20 @@
                             </div>
 
                             <!-- Categories -->
-                            <div class="categories-scroll pos-categories-strip">
-                                <button class="category-chip active" data-categoria="Todos" onclick="filtrarCategoria('Todos')">Todos</button>
-                                <button class="category-chip" onclick="abrirModalGranel()" style="background: hsl(var(--success)); color: white; border-color: hsl(var(--success));">🌾 Granel</button>
-                                <button class="category-chip" data-categoria="Adulto" onclick="filtrarCategoria('Adulto')">🐕 Perro Adulto</button>
-                                <button class="category-chip" data-categoria="Cachorro" onclick="filtrarCategoria('Cachorro')">🐶 Cachorro</button>
-                                <button class="category-chip" data-categoria="Senior" onclick="filtrarCategoria('Senior')">🦴 Senior</button>
-                                <button class="category-chip" data-categoria="Gato" onclick="filtrarCategoria('Gato')">🐈 Gato</button>
-                                <button class="category-chip" data-categoria="Gatito" onclick="filtrarCategoria('Gatito')">🐱 Gatito</button>
-                                <button class="category-chip" data-categoria="Arena" onclick="filtrarCategoria('Arena')">🏖️ Arena</button>
-                                <button class="category-chip" data-categoria="Snacks" onclick="filtrarCategoria('Snacks')">🍖 Snacks</button>
-                                <button class="category-chip" data-categoria="Accesorios" onclick="filtrarCategoria('Accesorios')">🎾 Accesorios</button>
+                            <div class="pos-categories-shell">
+                                <button class="pos-categories-nav pos-categories-nav-left" type="button" onclick="desplazarCategoriasPos(-1)" aria-label="Mover categorías a la izquierda">
+                                    <svg width="18" height="18" viewBox="0 0 20 20" fill="none" aria-hidden="true">
+                                        <path d="M12.5 5L7.5 10L12.5 15" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                                    </svg>
+                                </button>
+                                <div id="posCategoriesStrip" class="categories-scroll pos-categories-strip">
+                                    <button class="category-chip active" data-categoria="Todos" onclick="filtrarCategoria('Todos')">Todos</button>
+                                </div>
+                                <button class="pos-categories-nav pos-categories-nav-right" type="button" onclick="desplazarCategoriasPos(1)" aria-label="Mover categorías a la derecha">
+                                    <svg width="18" height="18" viewBox="0 0 20 20" fill="none" aria-hidden="true">
+                                        <path d="M7.5 5L12.5 10L7.5 15" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                                    </svg>
+                                </button>
                             </div>
                         </div>
 
@@ -582,6 +606,20 @@
                             </div>
                         </div>
 
+                        <details class="inventory-tools-disclosure inventory-tools-disclosure-hidden-products">
+                            <summary class="inventory-tools-summary">
+                                <span>Productos ocultos</span>
+                                <span class="inventory-tools-summary-note">Por si acaso</span>
+                            </summary>
+                            <div class="inventory-hidden-products-card">
+                                <label class="inventory-hidden-products-toggle" for="toggleInventarioInactivos">
+                                    <input type="checkbox" id="toggleInventarioInactivos" onchange="toggleProductosInactivosInventario(this.checked)">
+                                    <span>Mostrar productos inactivos en esta vista</span>
+                                </label>
+                                <p class="inventory-hidden-products-copy">Los productos desactivados siguen ocultos por defecto y solo se muestran aquí cuando activas esta opción.</p>
+                            </div>
+                        </details>
+
                         <details class="inventory-tools-disclosure">
                             <summary class="inventory-tools-summary">
                                 <span>Conteo rápido desde lista</span>
@@ -759,6 +797,69 @@
                     <div id="rankingVendedores" class="vendedores-card" style="background: hsl(var(--card)); border: 1px solid hsl(var(--border)); border-radius: 12px; padding: 20px; margin-bottom: 24px;">
                         <h3 style="font-size: 16px; font-weight: 600; margin: 0 0 16px 0;">👥 Ranking de Vendedores</h3>
                         <div id="tablaVendedores"></div>
+                    </div>
+
+                    <div id="panelComisionesProductos" class="sales-history-card" style="background: hsl(var(--card)); border: 1px solid hsl(var(--border)); border-radius: 12px; padding: 20px; margin-bottom: 24px; display: none;">
+                        <div style="display: flex; justify-content: space-between; align-items: center; gap: 16px; flex-wrap: wrap; margin-bottom: 16px;">
+                            <div>
+                                <h3 style="font-size: 16px; font-weight: 600; margin: 0 0 4px 0;">💸 Comisiones por Producto</h3>
+                                <p style="margin: 0; font-size: 13px; color: hsl(var(--muted-foreground));">Consulta el acumulado por vendedor y rango de fechas usando la comisión configurada en cada producto.</p>
+                            </div>
+                            <button class="btn btn-secondary" type="button" onclick="actualizarPanelComisiones()">Aplicar filtros</button>
+                        </div>
+
+                        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 12px; margin-bottom: 16px;">
+                            <div class="form-group" style="margin: 0;">
+                                <label>Vendedor</label>
+                                <select id="filtroComisionVendedor" class="form-select" onchange="actualizarPanelComisiones()">
+                                    <option value="">Todos los vendedores</option>
+                                </select>
+                            </div>
+                            <div class="form-group" style="margin: 0;">
+                                <label>Desde</label>
+                                <input type="date" id="filtroComisionDesde" class="form-input" onchange="actualizarPanelComisiones()">
+                            </div>
+                            <div class="form-group" style="margin: 0;">
+                                <label>Hasta</label>
+                                <input type="date" id="filtroComisionHasta" class="form-input" onchange="actualizarPanelComisiones()">
+                            </div>
+                        </div>
+
+                        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 12px; margin-bottom: 16px;">
+                            <div style="background: hsl(var(--muted) / 0.35); border-radius: 10px; padding: 16px;">
+                                <div style="font-size: 12px; color: hsl(var(--muted-foreground)); margin-bottom: 6px;">Comisión acumulada</div>
+                                <div id="comisionResumenTotal" style="font-size: 22px; font-weight: 700;">$0</div>
+                            </div>
+                            <div style="background: hsl(var(--muted) / 0.35); border-radius: 10px; padding: 16px;">
+                                <div style="font-size: 12px; color: hsl(var(--muted-foreground)); margin-bottom: 6px;">Ventas con comisión</div>
+                                <div id="comisionResumenVentas" style="font-size: 22px; font-weight: 700;">0</div>
+                            </div>
+                            <div style="background: hsl(var(--muted) / 0.35); border-radius: 10px; padding: 16px;">
+                                <div style="font-size: 12px; color: hsl(var(--muted-foreground)); margin-bottom: 6px;">Unidades comisionadas</div>
+                                <div id="comisionResumenUnidades" style="font-size: 22px; font-weight: 700;">0</div>
+                            </div>
+                        </div>
+
+                        <div class="sales-table-container">
+                            <table class="sales-table">
+                                <thead>
+                                    <tr>
+                                        <th>Venta</th>
+                                        <th>Fecha</th>
+                                        <th>Vendedor</th>
+                                        <th>Producto</th>
+                                        <th>Cantidad</th>
+                                        <th>Comisión Unit.</th>
+                                        <th>Total Comisión</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="tablaComisionesProductosBody">
+                                    <tr>
+                                        <td colspan="7" class="text-center" style="padding: 24px; color: hsl(var(--muted-foreground));">Cargando comisiones...</td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
                     </div>
 
                     <!-- SECCIÓN 4: Tabla de Historial (la actual, mantenerla) -->
@@ -2374,9 +2475,23 @@
                     <label>Precio</label>
                     <input type="number" id="editPrecio" class="form-input" placeholder="Nuevo precio" step="1">
                 </div>
+                <div class="form-group" id="editComisionVentaGroup" style="display: none;">
+                    <label>Comisión por unidad</label>
+                    <input type="number" id="editComisionVenta" class="form-input" placeholder="Ej: 500" step="0.01" min="0">
+                    <small style="color: hsl(var(--muted-foreground)); font-size: 12px;">
+                        Monto fijo que gana el vendedor por cada unidad vendida de este producto.
+                    </small>
+                </div>
                 <div class="form-group" id="editStockGroup">
                     <label>Stock Actual</label>
                     <input type="number" id="editStock" class="form-input" placeholder="Nuevo stock" step="0.1">
+                </div>
+                <div class="form-group" id="editPesoGroup" style="display: none;">
+                    <label>Peso por saco (kg)</label>
+                    <input type="number" id="editPesoKg" class="form-input" placeholder="Ej: 25" step="0.01" min="0">
+                    <small style="color: hsl(var(--muted-foreground)); font-size: 12px;">
+                        Solo para productos que realmente aportan peso de carga. Deja vacio si no aplica.
+                    </small>
                 </div>
                 <div class="form-group" id="editStockMinimoGroup" style="display: none;">
                     <label>Stock Mínimo (Alerta)</label>
