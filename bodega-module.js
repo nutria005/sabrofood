@@ -10,6 +10,27 @@ let productosConStock = []; // Ahora consultamos productos directamente
 let productoSacoActual = null;
 let realtimeChannelBodega = null;
 
+function obtenerClaseBadgeCategoriaBodega(categoria) {
+    const valor = String(categoria || '').trim().toLowerCase();
+
+    if (!valor) return 'badge-info';
+    if (valor === 'adulto' || valor === 'perro adulto') return 'badge-adulto';
+    if (valor === 'cachorro' || valor === 'perro cachorro') return 'badge-cachorro';
+    if (valor === 'senior') return 'badge-senior';
+    if (valor === 'gato' || valor === 'gato adulto') return 'badge-gato-adulto';
+    if (valor === 'gatito' || valor === 'gato kitten') return 'badge-gatito';
+    if (valor === 'arena') return 'badge-arena';
+    if (valor === 'accesorios') return 'badge-accesorios';
+    if (valor === 'snacks') return 'badge-snacks';
+    if (valor === 'super premium perro') return 'badge-super-premium-perro';
+    if (valor === 'super premium gato') return 'badge-super-premium-gato';
+    if (valor === 'veterinario perro') return 'badge-veterinario-perro';
+    if (valor === 'veterinario gato') return 'badge-veterinario-gato';
+    if (valor === 'otros') return 'badge-otros';
+
+    return 'badge-info';
+}
+
 // ===================================
 // INICIALIZACIÓN Y CARGA DE DATOS
 // ===================================
@@ -99,7 +120,7 @@ function renderizarSolicitudes() {
                 <div class="solicitud-info">
                     <div class="solicitud-header">
                         <h4>${producto.nombre || 'Producto sin nombre'}</h4>
-                        <span class="badge badge-${producto.categoria?.toLowerCase() || 'info'}">${producto.categoria || 'Sin categoría'}</span>
+                        <span class="badge ${obtenerClaseBadgeCategoriaBodega(producto.categoria)}">${producto.categoria || 'Sin categoría'}</span>
                     </div>
                     <div class="solicitud-meta">
                         <span class="meta-item">
@@ -221,6 +242,36 @@ function cerrarModalSolicitarProducto() {
     }
 }
 
+async function buscarProductosReposicionEnPaginas(query) {
+    const resultados = [];
+    const pageSize = 1000;
+    let offset = 0;
+
+    while (true) {
+        const { data, error } = await window.supabaseClient
+            .from('productos')
+            .select('id, nombre, categoria, tipo, activo')
+            .or('activo.is.null,activo.eq.true')
+            .ilike('nombre', `%${query}%`)
+            .neq('tipo', 'granel')
+            .order('nombre', { ascending: true })
+            .range(offset, offset + pageSize - 1);
+
+        if (error) throw error;
+
+        const lote = data || [];
+        resultados.push(...lote);
+
+        if (lote.length < pageSize) {
+            break;
+        }
+
+        offset += pageSize;
+    }
+
+    return resultados;
+}
+
 /**
  * Buscar productos para agregar a reposición
  */
@@ -240,25 +291,11 @@ async function buscarProductosParaReposicion() {
     }
 
     try {
-        // Buscar productos con stock real (excluye granel — se venden por peso, no tienen stock de sacos)
-        const { data, error } = await window.supabaseClient
-            .from('productos')
-            .select('id, nombre, categoria, tipo')
-            .in('categoria', [
-                'Adulto', 'Cachorro', 'Senior',           // Perros
-                'Gato', 'Gatito',                           // Gatos genéricos
-                'Gato Adulto', 'Gato Kitten',              // Gatos específicos
-                'Perro Adulto', 'Perro Cachorro',          // Perros específicos
-                'Arena'                                     // Arena para gatos
-            ])
-            .ilike('nombre', `%${query}%`)
-            .neq('tipo', 'granel')
-            .limit(10);
-
-        if (error) throw error;
+        const data = await buscarProductosReposicionEnPaginas(query);
 
         // Filtro de seguridad adicional: excluir cualquier producto con "(granel)" en el nombre
         const productosFiltrados = data.filter(p =>
+            p?.activo !== false &&
             !p.nombre?.toLowerCase().includes('(granel)') && p.tipo !== 'granel'
         );
 
@@ -282,7 +319,7 @@ async function buscarProductosParaReposicion() {
                 <div class="producto-busqueda-item">
                     <div class="producto-info-mini">
                         <strong>${prod.nombre}</strong>
-                        <span class="badge badge-${prod.categoria?.toLowerCase()}">${prod.categoria}</span>
+                        <span class="badge ${obtenerClaseBadgeCategoriaBodega(prod.categoria)}">${prod.categoria}</span>
                     </div>
                     <button
                         class="btn ${btnClass} btn-sm"
@@ -349,7 +386,7 @@ async function agregarSolicitudReposicion(productoId, nombreProducto, categoria)
  * Marcar solicitud como completada y descontar stock
  */
 async function completarSolicitud(solicitudId) {
-    const confirmar = confirm('¿Abrir saco? Esto descontará 1 unidad del stock, incluso si queda negativo temporalmente.');
+    const confirmar = confirm('¿Abrir saco? Si hay stock disponible, descontará 1 unidad. Si el stock está en 0, completará la solicitud sin bajar de cero.');
     if (!confirmar) return;
 
     try {
@@ -362,21 +399,26 @@ async function completarSolicitud(solicitudId) {
         // Obtener stock actual del producto
         const { data: producto, error: errorProducto } = await window.supabaseClient
             .from('productos')
-            .select('stock')
+            .select('id, nombre, stock')
             .eq('id', solicitud.producto_id)
-            .single();
+            .maybeSingle();
 
         if (errorProducto) throw errorProducto;
+        if (!producto) {
+            throw new Error('Producto no encontrado para descontar stock');
+        }
 
-        const nuevoStock = (producto.stock || 0) - 1;
+        const stockActual = Number.parseFloat(producto.stock ?? 0) || 0;
+        const nuevoStock = stockActual > 0 ? stockActual - 1 : 0;
 
-        // Actualizar stock del producto
-        const { error: errorStock } = await window.supabaseClient
-            .from('productos')
-            .update({ stock: nuevoStock })
-            .eq('id', solicitud.producto_id);
+        if (stockActual > 0) {
+            const { error: errorStock } = await window.supabaseClient
+                .from('productos')
+                .update({ stock: nuevoStock })
+                .eq('id', solicitud.producto_id);
 
-        if (errorStock) throw errorStock;
+            if (errorStock) throw errorStock;
+        }
 
         // Marcar solicitud como completada
         const { error } = await window.supabaseClient
@@ -390,7 +432,10 @@ async function completarSolicitud(solicitudId) {
 
         if (error) throw error;
 
-        mostrarNotificacion('📦 Saco abierto - Stock actualizado aunque quede negativo', 'success');
+        const mensajeExito = stockActual > 0
+            ? `📦 Saco abierto: ${producto.nombre || 'Producto'} quedó con stock ${nuevoStock}`
+            : `📦 Saco abierto sin descuento: ${producto.nombre || 'Producto'} sigue con stock 0`;
+        mostrarNotificacion(mensajeExito, 'success');
 
         // Recargar todo
         await cargarSolicitudesReposicion();
@@ -482,7 +527,7 @@ async function cargarHistorialSacos() {
                 <div class="historial-item">
                     <div class="historial-info">
                         <strong>${producto.nombre || 'Producto desconocido'}</strong>
-                        <span class="badge badge-${producto.categoria?.toLowerCase() || 'info'}" style="font-size: 0.7rem;">${producto.categoria || 'N/A'}</span>
+                        <span class="badge ${obtenerClaseBadgeCategoriaBodega(producto.categoria)}" style="font-size: 0.7rem;">${producto.categoria || 'N/A'}</span>
                     </div>
                     <div class="historial-meta">
                         <span style="font-size: 0.75rem; color: #6b7280;">✅ ${sol.completado_por || 'Usuario'}</span>

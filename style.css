@@ -4827,8 +4827,16 @@ body {
 .badge-cachorro { background: #f59e0b; color: white; }
 .badge-senior { background: #8b5cf6; color: white; }
 .badge-gato { background: #ec4899; color: white; }
+.badge-gato-adulto { background: #ec4899; color: white; }
 .badge-gatito { background: #f97316; color: white; }
 .badge-arena { background: #64748b; color: white; }
+.badge-accesorios { background: #0f766e; color: white; }
+.badge-snacks { background: #ea580c; color: white; }
+.badge-super-premium-perro { background: #1d4ed8; color: white; }
+.badge-super-premium-gato { background: #be185d; color: white; }
+.badge-veterinario-perro { background: #7c3aed; color: white; }
+.badge-veterinario-gato { background: #9333ea; color: white; }
+.badge-otros { background: #475569; color: white; }
 
 /* Animaciones */
 @keyframes slideUp {

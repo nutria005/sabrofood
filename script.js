@@ -1464,6 +1464,51 @@ async function verificarSesionGuardada() {
 
 // Intervalo de refresco automático del reparto (activo solo en vista caja)
 let _repartoRefreshInterval = null;
+let historialVentasCache = [];
+
+function obtenerClaveRepartidorHistorial(registro) {
+    const valor = String(
+        registro?.asignado_a
+        || registro?.chofer_asignado
+        || registro?.vendedor_nombre
+        || registro?.vendedor
+        || ''
+    ).trim().toLowerCase();
+
+    if (valor.includes('repartidor_1') || valor.includes('repartidor 1')) return 'repartidor_1';
+    if (valor.includes('repartidor_2') || valor.includes('repartidor 2')) return 'repartidor_2';
+    return '';
+}
+
+function formatearNombreRepartidorHistorial(valor) {
+    const clave = obtenerClaveRepartidorHistorial({ vendedor_nombre: valor, vendedor: valor, asignado_a: valor });
+    if (clave === 'repartidor_1') return 'Repartidor 1';
+    if (clave === 'repartidor_2') return 'Repartidor 2';
+    return valor || 'Sin asignar';
+}
+
+function obtenerRegistrosFiltradosHistorialVentas(registros = historialVentasCache) {
+    const filtroOrigen = document.getElementById('filtroHistorialOrigen')?.value || 'todos';
+    const filtroRepartidor = document.getElementById('filtroHistorialRepartidor')?.value || 'todos';
+
+    return registros.filter((registro) => {
+        const esReparto = registro?.tipo_registro === 'movimiento' || registro?.metodo_pago === 'REPARTO';
+
+        if (filtroOrigen === 'pos' && esReparto) return false;
+        if (filtroOrigen === 'reparto' && !esReparto) return false;
+
+        if (filtroRepartidor !== 'todos') {
+            if (!esReparto) return false;
+            return obtenerClaveRepartidorHistorial(registro) === filtroRepartidor;
+        }
+
+        return true;
+    });
+}
+
+function aplicarFiltrosHistorialVentas() {
+    renderTablaHistorialVentas(obtenerRegistrosFiltradosHistorialVentas());
+}
 
 function cambiarVista(vista) {
     currentView = vista;
@@ -3271,22 +3316,43 @@ function esProductoActivoInventario(producto) {
     return producto?.activo !== false;
 }
 
+async function cargarTodosLosProductosPaginados(construirQuery, pageSize = 1000) {
+    const resultados = [];
+    let offset = 0;
+
+    while (true) {
+        const { data, error } = await construirQuery(offset, pageSize);
+
+        if (error) throw error;
+
+        const lote = data || [];
+        resultados.push(...lote);
+
+        if (lote.length < pageSize) {
+            break;
+        }
+
+        offset += pageSize;
+    }
+
+    return resultados;
+}
+
 async function cargarProductosInactivosInventario() {
     if (!window.supabaseClient) {
         productosInactivosInventario = [];
         return [];
     }
 
-    const { data, error } = await window.supabaseClient
-        .from('productos')
-        .select('*')
-        .eq('activo', false)
-        .order('nombre', { ascending: true })
-        .limit(5000);
+    productosInactivosInventario = await cargarTodosLosProductosPaginados((offset, pageSize) => {
+        return window.supabaseClient
+            .from('productos')
+            .select('*')
+            .eq('activo', false)
+            .order('nombre', { ascending: true })
+            .range(offset, offset + pageSize - 1);
+    });
 
-    if (error) throw error;
-
-    productosInactivosInventario = data || [];
     return productosInactivosInventario;
 }
 
@@ -4525,12 +4591,12 @@ async function cargarMovimientosStock(periodo) {
             try {
                 const { data: pedidos, error: pedidosError } = await window.supabaseClient
                     .from('pedidos')
-                    .select('id, chofer_asignado')
+                    .select('id, asignado_a, chofer_asignado')
                     .in('id', pedidosIds);
 
                 if (!pedidosError && pedidos) {
                     repartidoresPorPedido = Object.fromEntries(
-                        pedidos.map(p => [p.id, p.chofer_asignado || 'Sin asignar'])
+                        pedidos.map(p => [p.id, p.asignado_a || p.chofer_asignado || 'Sin asignar'])
                     );
                     console.log('✅ Integración con sistema de reparto exitosa');
                 }
@@ -4548,7 +4614,7 @@ async function cargarMovimientosStock(periodo) {
                 id: `M-${m.id}`,
                 created_at: m.created_at,
                 fecha: m.created_at,
-                vendedor_nombre: repartidoresPorPedido[m.pedido_id] || '🚚 Reparto',
+                vendedor_nombre: formatearNombreRepartidorHistorial(repartidoresPorPedido[m.pedido_id] || '🚚 Reparto'),
                 productos: [{
                     nombre: nombreProducto,
                     cantidad: m.cantidad
@@ -4556,6 +4622,7 @@ async function cargarMovimientosStock(periodo) {
                 total: esGranel ? m.cantidad : 0,
                 metodo_pago: 'REPARTO',
                 pedido_id: m.pedido_id,
+                asignado_a: repartidoresPorPedido[m.pedido_id] || '',
                 tipo_registro: 'movimiento',
                 motivo: m.motivo,
                 es_granel: esGranel
@@ -4639,7 +4706,8 @@ async function cargarVentas() {
         }
 
         // 11. Renderizar tabla de historial
-        renderTablaHistorialVentas(todosLosRegistros);
+        historialVentasCache = todosLosRegistros;
+        aplicarFiltrosHistorialVentas();
 
     } catch (error) {
         manejarError(error, {
@@ -5274,7 +5342,7 @@ function renderFilaMovimiento(movimiento) {
         <tr>
             <td><strong>${movimiento.id}</strong></td>
             <td>${new Date(movimiento.created_at).toLocaleString('es-CL', { timeZone: 'America/Santiago' })}</td>
-            <td>${movimiento.vendedor_nombre}</td>
+            <td>${formatearNombreRepartidorHistorial(movimiento.vendedor_nombre)}</td>
             <td>${productosHTML}</td>
             <td colspan="2"></td>
             <td>${totalCelda}</td>
@@ -5340,7 +5408,7 @@ function renderFilaVenta(venta) {
         <tr class="${filaClass}">
             <td><strong>#${venta.id}</strong> ${badgeDevolucion}</td>
             <td>${new Date(venta.created_at || venta.fecha).toLocaleString('es-CL', { timeZone: 'America/Santiago' })}</td>
-            <td>${venta.vendedor_nombre || venta.vendedor || 'Sin asignar'}</td>
+            <td>${formatearNombreRepartidorHistorial(venta.vendedor_nombre || venta.vendedor || 'Sin asignar')}</td>
             <td>${productosHTML}</td>
             <td>${subtotalOriginal}</td>
             <td>${descuentoTexto}</td>
@@ -5374,7 +5442,7 @@ function renderTablaHistorialVentas(ventas) {
         tbody.innerHTML = `
             <tr>
                 <td colspan="9" class="text-center">
-                    <p style="padding: 24px; color: hsl(var(--muted-foreground));">No hay ventas en este período</p>
+                    <p style="padding: 24px; color: hsl(var(--muted-foreground));">No hay transacciones con los filtros seleccionados</p>
                 </td>
             </tr>
         `;
@@ -6981,18 +7049,16 @@ let productosGranel = [];
 
 async function cargarProductosGranel() {
     try {
-        // Cargar productos tipo="granel" de la base de datos
-        const { data, error } = await window.supabaseClient
-            .from('productos')
-            .select('*')
-            .eq('tipo', 'granel')
-            .eq('activo', true)
-            .order('nombre')
-            .limit(5000);
+        productosGranel = await cargarTodosLosProductosPaginados((offset, pageSize) => {
+            return window.supabaseClient
+                .from('productos')
+                .select('*')
+                .eq('tipo', 'granel')
+                .eq('activo', true)
+                .order('nombre')
+                .range(offset, offset + pageSize - 1);
+        });
 
-        if (error) throw error;
-
-        productosGranel = data || [];
         mostrarProductosGranel(productosGranel);
     } catch (error) {
         manejarError(error, {
@@ -13283,17 +13349,16 @@ function actualizarResumenAsignacionCodigos() {
 
 async function cargarProductosConCodigoAsignado() {
     try {
-        const { data, error } = await window.supabaseClient
-            .from('productos')
-            .select('id, nombre, marca, categoria, stock, codigo_barras, updated_at')
-            .not('codigo_barras', 'is', null)
-            .neq('codigo_barras', '')
-            .order('updated_at', { ascending: false })
-            .limit(5000);
+        productosConCodigoAsignados = await cargarTodosLosProductosPaginados((offset, pageSize) => {
+            return window.supabaseClient
+                .from('productos')
+                .select('id, nombre, marca, categoria, stock, codigo_barras, updated_at')
+                .not('codigo_barras', 'is', null)
+                .neq('codigo_barras', '')
+                .order('updated_at', { ascending: false })
+                .range(offset, offset + pageSize - 1);
+        });
 
-        if (error) throw error;
-
-        productosConCodigoAsignados = data || [];
         renderProductosConCodigoAsignado(productosConCodigoAsignados);
         actualizarResumenAsignacionCodigos();
     } catch (error) {
@@ -13393,16 +13458,15 @@ async function cargarProductosSinCodigo() {
     try {
         console.log('­ƒôª Cargando productos sin código de barras...');
 
-        const { data, error } = await window.supabaseClient
-            .from('productos')
-            .select('*')
-            .or('codigo_barras.is.null,codigo_barras.eq.')
-            .order('nombre')
-            .limit(5000);
+        productosSinCodigo = await cargarTodosLosProductosPaginados((offset, pageSize) => {
+            return window.supabaseClient
+                .from('productos')
+                .select('*')
+                .or('codigo_barras.is.null,codigo_barras.eq.')
+                .order('nombre')
+                .range(offset, offset + pageSize - 1);
+        });
 
-        if (error) throw error;
-
-        productosSinCodigo = data;
         console.log(`Ô£à Encontrados ${productosSinCodigo.length} productos sin código`);
 
         renderProductosSinCodigo(productosSinCodigo);
@@ -16123,7 +16187,7 @@ function buscarProductoMerma() {
         const nombreMatch = p.nombre.toLowerCase().includes(query);
         const categoriaMatch = p.categoria && p.categoria.toLowerCase().includes(query);
         return nombreMatch || categoriaMatch;
-    }).slice(0, 8); // Máximo 8 resultados
+    });
     
     // Mostrar resultados
     if (resultados.length === 0) {
